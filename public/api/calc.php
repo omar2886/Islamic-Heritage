@@ -22,15 +22,42 @@ if (!is_array($data)) {
   exit;
 }
 
-$flags = $data['cli_flags'] ?? null;
-if (!is_array($flags)) {
-  $flags = ['--explain', '--audit'];
-  $data['cli_flags'] = $flags;
+$clean = [];
+
+$clean['heirs'] = $data['heirs'] ?? null;
+if (!is_array($clean['heirs']) || count($clean['heirs']) === 0) {
+  http_response_code(400);
+  echo json_encode(['ok' => false, 'error' => 'Lista de herederos requerida']);
+  exit;
 }
+
+if (array_key_exists('estate_value', $data)) {
+  $clean['estate_value'] = $data['estate_value'];
+}
+
+if (array_key_exists('currency', $data)) {
+  $clean['currency'] = $data['currency'];
+}
+
+if (array_key_exists('ui_meta', $data)) {
+  $clean['ui_meta'] = $data['ui_meta'];
+}
+
+$allowedFlags = ['--explain', '--audit'];
+$flags = $data['cli_flags'] ?? null;
+if (is_array($flags)) {
+  $flags = array_values(array_intersect($allowedFlags, $flags));
+}
+
+if (!is_array($flags) || count($flags) === 0) {
+  $flags = $allowedFlags;
+}
+
+$clean['cli_flags'] = $flags;
 
 try {
   require_once __DIR__ . '/../../scripts/calc_lib.php';
-  $out = calc_from_array($data);
+  $out = calc_from_array($clean);
 
   echo json_encode([
     'ok' => true,
@@ -39,8 +66,14 @@ try {
 
 } catch (Throwable $e) {
   http_response_code(500);
-  echo json_encode([
+  $error = [
     'ok' => false,
     'error' => 'Error interno de cálculo',
-  ]);
+  ];
+
+  if (getenv('HERITAGE_DEBUG') === '1') {
+    $error['error_detail'] = $e->getMessage();
+  }
+
+  echo json_encode($error);
 }
