@@ -1,4 +1,4 @@
-# Heritage
+# Islamic Heritage – Cálculo de herencia islámica según fiqh clásico
 
 
 ## Edge Pack M-E1..E8
@@ -26,6 +26,10 @@ El motor expone `meta.residual_policy` para indicar qué mecanismo resolvió el 
 - `bayt_al_mal`: queda remanente tras excluir cónyuges del `RADD`; se debe al Bayt al-Mal.
 
 Consulta `public/tools/bootstrap_check.php` para una verificación rápida del runtime en despliegues sin shell.
+
+## Créditos / Licencia
+
+El cálculo y las herramientas fueron elaborados por el equipo de Islamic Heritage para difundir la distribución clásica de herencias. Se publica bajo la licencia MIT; si reutilizas el código, conserva este aviso de autoría y la licencia correspondiente.
 
 ## Fuzz
 - `php tests/fuzz/fuzz.php --cases=1000 --seed=42`

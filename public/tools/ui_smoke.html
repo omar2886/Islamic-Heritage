@@ -362,7 +362,6 @@ async function run(){
 
     if (mm.length) {
       alert('Diferencias vs expectativa:\n - ' + mm.join('\n - '));
-      console.warn('Expect/Actual mismatches:', mm, out.group_shares);
     }
 
     lastPayload = { input: res.input, output: res.output };
@@ -371,7 +370,6 @@ async function run(){
     document.getElementById('engine').textContent = '';
     lastPayload = null;
     alert(`Fallo del endpoint: ${err.message}`);
-    console.error(err);
   }
 }
 

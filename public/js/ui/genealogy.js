@@ -12,8 +12,7 @@ function readIndex(){
     const raw = localStorage.getItem(KEY_INDEX);
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('No se pudo leer el índice de árboles', e);
+  } catch {
     return [];
   }
 }
@@ -36,8 +35,7 @@ export function loadTree(id){
     const raw = localStorage.getItem(treeKey(id));
     if (!raw) return null;
     return JSON.parse(raw);
-  } catch (e) {
-    console.error('No se pudo leer el árbol', id, e);
+  } catch {
     return null;
   }
 }

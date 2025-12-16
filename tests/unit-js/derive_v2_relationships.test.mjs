@@ -127,5 +127,3 @@ assertRole(
 const groupFullSister = heirs.find((entry) => entry.role === 'full_sister');
 assert.equal(groupFullSister?.count, 1, 'Aggregated heirs should include full sister group');
 assert.deepEqual(groupFullSister?.personIds, [fullSisterId], 'Group should track unique person ids');
-
-console.log('deriveHeirs v2 relationships test passed');

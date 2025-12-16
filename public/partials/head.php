@@ -44,6 +44,14 @@
   ];
   $bootPath = $bootMap[$page] ?? $bootMap['home'];
 
+  $titleMap = [
+    'home' => 'Herencia Islámica – Inicio',
+    'builder' => 'Herencia Islámica – Constructor',
+    'results' => 'Herencia Islámica – Resultados',
+    'genealogy' => 'Herencia Islámica – Genealogía',
+  ];
+  $pageTitle = $titleMap[$page] ?? 'Herencia Islámica';
+
   $cssHref = $joinPath($PUBLIC_BASE, 'css/styles.css');
   $bootSrc = $joinPath($PUBLIC_BASE, $bootPath);
   $URL_ROLES = $joinPath($PUBLIC_BASE, 'api/roles.php');
@@ -55,7 +63,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Calculadora de herencia — Maliki</title>
+  <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
 
   <link rel="stylesheet" href="<?= htmlspecialchars($cssHref, ENT_QUOTES, 'UTF-8') ?>">
 
