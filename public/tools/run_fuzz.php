@@ -2,9 +2,6 @@
 declare(strict_types=1);
 require_once __DIR__ . '/_guard.php';
 
-// CONFIG: token compartido (mejor por env si lo tenéis)
-const FUZZ_WEB_TOKEN = 'REEMPLAZAR_CON_SECRETO_UNICO';
-
 // CORS/cache básico (opcional)
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store');
@@ -13,13 +10,6 @@ require_once __DIR__ . '/../../scripts/calc_lib.php'; // expone calc_from_array(
 
 function param(string $k, $def) {
     return isset($_GET[$k]) ? $_GET[$k] : $def;
-}
-
-$token = (string) param('token', '');
-if ($token !== FUZZ_WEB_TOKEN) {
-    http_response_code(403);
-    echo '<h1>403 Forbidden</h1><p>Invalid or missing token.</p>';
-    exit;
 }
 
 $cases = max(1, (int) param('cases', 300));

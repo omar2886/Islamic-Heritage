@@ -4,7 +4,15 @@ require_once __DIR__ . '/_guard.php';
 
 use App\Domain\Math\Fraction;
 
-require_once __DIR__ . '/../../scripts/calc_lib.php';
+$libRel = __DIR__ . '/../../scripts/calc_lib.php';
+$libAbs = realpath($libRel);
+if (!$libAbs || !is_file($libAbs)) {
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => 'calc_lib_not_found']);
+    return;
+}
+
+require_once $libAbs;
 
 header('Content-Type: application/json');
 

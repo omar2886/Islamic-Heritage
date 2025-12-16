@@ -4,7 +4,6 @@
 /public/genealogy/uploads/
 /public/_legacy_cleanup/
 /tests/.cache/
-composer.lock
 *.db
 *.sqlite
 *.sqlite3
