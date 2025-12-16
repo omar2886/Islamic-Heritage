@@ -7,7 +7,7 @@ final class RolesCatalog
     /**
      * @return array<int, string>
      */
-    public static function all(): array
+    public static function heirRoles(): array
     {
         return [
             'consanguine_brother',
@@ -34,11 +34,18 @@ final class RolesCatalog
             'son',
             'sons_daughter',
             'sons_son',
-            'unknown',
             'uterine_brother',
             'uterine_sister',
             'wife',
         ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function all(): array
+    {
+        return self::heirRoles();
     }
 
     private function __construct()
