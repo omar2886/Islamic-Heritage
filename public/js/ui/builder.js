@@ -1,5 +1,5 @@
 // Builder con export/import, autosave y duplicado (Sprint 6)
-import { setSex, setEstateValue, setCount, getCount, snapshot, State } from '../state.js';
+import { setSex, setDecedent, setEstateValue, setCount, getCount, snapshot, State } from '../state.js';
 import { Roles, loadRoles } from '../roles.js';
 import { validate } from '../validation.js';
 import { toPayload } from '../serializer.js';
