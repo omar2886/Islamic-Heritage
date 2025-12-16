@@ -492,18 +492,63 @@ final class MoneyAllocator
 
         for ($i = 0, $len = strlen($value); $i < $len; $i++) {
             $remainder = self::trimLeadingZeros($remainder . $value[$i]);
-            $digit = 0;
-            while (self::compareAbs($remainder, $divisorInt) >= 0) {
-                $remainder = self::subAbs($remainder, $divisorInt);
-                $digit++;
+            $low = 0;
+            $high = 9;
+            $bestDigit = 0;
+
+            while ($low <= $high) {
+                $mid = intdiv($low + $high, 2);
+                $product = self::mulByDigitAbs($divisorInt, $mid);
+                $comparison = self::compareAbs($product, $remainder);
+
+                if ($comparison <= 0) {
+                    $bestDigit = $mid;
+                    $low = $mid + 1;
+                } else {
+                    $high = $mid - 1;
+                }
             }
-            $quotient .= (string) $digit;
+
+            if ($bestDigit > 0) {
+                $remainder = self::subAbs($remainder, self::mulByDigitAbs($divisorInt, $bestDigit));
+            }
+
+            $quotient .= (string) $bestDigit;
         }
 
         $quotient = self::trimLeadingZeros($quotient);
         $remainder = self::trimLeadingZeros($remainder);
 
         return [$quotient, $remainder];
+    }
+
+    private static function mulByDigitAbs(string $value, int $digit): string
+    {
+        if ($digit < 0 || $digit > 9) {
+            throw new InvalidArgumentException('Digit multiplier must be between 0 and 9.');
+        }
+
+        $value = self::trimLeadingZeros($value);
+        if ($digit === 0 || $value === '0') {
+            return '0';
+        }
+
+        $carry = 0;
+        $result = '';
+        $len = strlen($value);
+
+        for ($i = $len - 1; $i >= 0; $i--) {
+            $digitValue = (int) $value[$i];
+            $product = $digitValue * $digit + $carry;
+            $carry = intdiv($product, 10);
+            $result .= (string) ($product % 10);
+        }
+
+        if ($carry > 0) {
+            $result .= (string) $carry;
+        }
+
+        return strrev($result);
     }
 
     private static function compareAbs(string $a, string $b): int
