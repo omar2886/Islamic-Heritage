@@ -8,6 +8,7 @@ function join(base, path){
 }
 
 const ROLES_URL = URLS.roles || join(PUB, 'api/roles.php');
+const CALC_URL  = URLS.calc  || join(PUB, 'api/calc.php');
 const TOOLS_URL = URLS.tools || join(PUB, 'tools/explain_smoke.php');
 
 export async function getRoles(){
@@ -21,7 +22,7 @@ export async function getRoles(){
 }
 
 export async function postCalc(payload){
-  const r = await fetch(TOOLS_URL,{
+  const r = await fetch(CALC_URL,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify(payload)

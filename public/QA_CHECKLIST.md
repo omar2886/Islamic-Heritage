@@ -8,7 +8,7 @@
 - [ ] Previsualización de payload; handoff a results vía `sessionStorage`.
 
 ## Resultados
-- [ ] POST a `/public/tools/explain_smoke.php` con `cli_flags ["--explain","--audit"]`.
+- [ ] POST a `/public/api/calc.php` con `cli_flags ["--explain","--audit"]`.
 - [ ] Render de `group_shares`, `individual_shares`, `sum_final`.
 - [ ] Tablas visibles o, ante error, banner rojo + cURL reproducible.
 - [ ] Botones “Descargar resultado / payload” y “Copiar cURL / resultado”.

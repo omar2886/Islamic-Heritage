@@ -13,6 +13,7 @@ public/
     state.js, persons.js, derive.js, aliases.js, caseio.js, storage.js
     ui/components.js, ui/builder.js, ui/persons.js, ui/results.js
   api/roles.php         Catálogo de roles (fallback si vacío)
+  api/calc.php          Endpoint principal de cálculo (JSON POST)
   tools/explain_smoke.php
                         Herramienta de backend para desarrollo
 
@@ -20,8 +21,8 @@ Legacy PHP archivado en `docs/_legacy/` (fuera del docroot) junto con `docs/_leg
 
 Contrato de entrada al backend
 ------------------------------
-El endpoint estable se añadirá en /public/api/calc.php en un PR posterior; por ahora se usa la herramienta de desarrollo.
-POST public/tools/explain_smoke.php
+Endpoint estable de cálculo:
+POST public/api/calc.php
 Content-Type: application/json
 
 {
@@ -60,4 +61,4 @@ Cálculo de ejemplo (curl)
 -------------------------
 curl -s -X POST -H 'Content-Type: application/json' \
   --data '{"heirs":[{"role":"wife","count":1},{"role":"daughter","count":1}],"estate_value":"1000","amount":"1000","cli_flags":["--explain","--audit"]}' \
-  http://localhost:8000/tools/explain_smoke.php
+  http://localhost:8000/api/calc.php

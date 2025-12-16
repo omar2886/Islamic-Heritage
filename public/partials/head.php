@@ -46,6 +46,7 @@
   $cssHref = $joinPath($PUBLIC_BASE, 'css/styles.css');
   $bootSrc = $joinPath($PUBLIC_BASE, $bootPath);
   $URL_ROLES = $joinPath($PUBLIC_BASE, 'api/roles.php');
+  $URL_CALC = $joinPath($PUBLIC_BASE, 'api/calc.php');
   $URL_TOOLS = $joinPath($PUBLIC_BASE, 'tools/explain_smoke.php');
 ?>
 <!doctype html>
@@ -62,6 +63,7 @@
     window.__PUBLIC_BASE__ = "<?= htmlspecialchars($PUBLIC_BASE, ENT_QUOTES, 'UTF-8') ?>";
     window.__URLS__ = {
       roles: "<?= htmlspecialchars($URL_ROLES, ENT_QUOTES, 'UTF-8') ?>",
+      calc: "<?= htmlspecialchars($URL_CALC, ENT_QUOTES, 'UTF-8') ?>",
       tools: "<?= htmlspecialchars($URL_TOOLS, ENT_QUOTES, 'UTF-8') ?>"
     };
   </script>
