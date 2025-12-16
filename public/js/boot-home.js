@@ -6,8 +6,8 @@ function focusFirstRoot(){
       try {
         el.setAttribute('tabindex', '-1');
         el.focus();
-      } catch (e) {
-        console.warn('No se pudo enfocar', id, e);
+      } catch {
+        /* ignore focus issues */
       }
       break;
     }

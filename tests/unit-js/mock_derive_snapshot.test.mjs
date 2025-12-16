@@ -34,5 +34,3 @@ const result = await mockDerive(snapshot);
 assert.equal(result.totals.nodes, snapshot.nodes.length, 'mockDerive nodes count should match snapshot');
 assert.equal(result.totals.edges, snapshot.edges.length, 'mockDerive edges count should match snapshot');
 assert.deepStrictEqual(result.samplePath, snapshot.edges.map((edge) => edge.to));
-
-console.log('mockDerive snapshot smoke passed');

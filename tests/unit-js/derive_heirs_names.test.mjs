@@ -29,5 +29,3 @@ const daughterEntry = result.find((entry) => entry.role === 'daughter');
 assert.ok(daughterEntry, 'Expected daughter entry');
 assert.deepStrictEqual(daughterEntry.person_ids, ['child1']);
 assert.deepStrictEqual(daughterEntry.persons, [{ id: 'child1', name: 'Fatima' }]);
-
-console.log('deriveHeirs names test passed');

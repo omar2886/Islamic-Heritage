@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Resultados del Cálculo de Herencia</title>
+    <title>Herencia Islámica – Resultados</title>
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>public/assets/css/styles.css">
 </head>
 <body>

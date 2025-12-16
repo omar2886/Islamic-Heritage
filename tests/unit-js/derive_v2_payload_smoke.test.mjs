@@ -32,4 +32,3 @@ const php = spawnSync('php', ['-r', phpCode], {
 });
 
 assert.equal(php.status, 0, php.stderr || php.stdout || 'validatePayload did not exit cleanly');
-console.log('deriveHeirs v2 payload smoke test passed');

@@ -6,8 +6,8 @@ function focusGenealogy(){
   try {
     el.setAttribute('tabindex','-1');
     el.focus();
-  } catch (e) {
-    console.warn('No se pudo enfocar genealogía', e);
+  } catch {
+    /* ignore focus issues */
   }
 }
 

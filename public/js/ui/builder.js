@@ -355,7 +355,14 @@ function offerRestoreDraft(root){
   b.focus();
   restore.addEventListener('click',()=>{
     const cs = loadDraft(); if (!cs) return;
-    try{ applyCase(cs); location.reload(); }catch(e){ console.error(e); }
+    try{
+      applyCase(cs);
+      location.reload();
+    }catch(e){
+      const err = banner('error','No se pudo restaurar el borrador', e.message || String(e));
+      root.prepend(err);
+      err.focus();
+    }
   });
   discard.addEventListener('click',()=>{ clearDraft(); wrap.remove(); });
 }
