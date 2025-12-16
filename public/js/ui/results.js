@@ -133,7 +133,7 @@ async function run(payload, root){
 
   let data;
   try{
-    data = await postCalc(payload);
+    data = await postCalc(payload, { meta: true });
   }catch(e){
     status.textContent = 'Error en cálculo';
     root.replaceChildren(status);
