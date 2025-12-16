@@ -86,11 +86,57 @@ foreach ($clean['heirs'] as $i => $h) {
 $clean['heirs'] = $validatedHeirs;
 
 if (array_key_exists('estate_value', $data)) {
-  $clean['estate_value'] = $data['estate_value'];
+  $estateValue = $data['estate_value'];
+
+  if (is_int($estateValue) || is_float($estateValue)) {
+    $estateValue = rtrim(rtrim(sprintf('%.6F', $estateValue), '0'), '.');
+  } elseif (is_string($estateValue)) {
+    $estateValue = trim($estateValue);
+
+    if (strpos($estateValue, '.') === false && strpos($estateValue, ',') !== false) {
+      $estateValue = str_replace(',', '.', $estateValue);
+    }
+  } else {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'estate_value inválido']);
+    exit;
+  }
+
+  if (!preg_match('/^[0-9]{1,18}(\.[0-9]{1,6})?$/', $estateValue)) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'estate_value inválido']);
+    exit;
+  }
+
+  [$intPart, $decimalPart] = array_pad(explode('.', $estateValue, 2), 2, '');
+
+  if (strlen($intPart) === 18 && $intPart === '999999999999999999' && $decimalPart !== '' && (int) $decimalPart > 0) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'estate_value inválido']);
+    exit;
+  }
+
+  $clean['estate_value'] = $estateValue;
 }
 
 if (array_key_exists('currency', $data)) {
-  $clean['currency'] = $data['currency'];
+  $currency = $data['currency'];
+
+  if (!is_string($currency)) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'currency inválido']);
+    exit;
+  }
+
+  $currency = trim($currency);
+
+  if (!preg_match('/^[A-Z]{3}$/', $currency)) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'currency inválido']);
+    exit;
+  }
+
+  $clean['currency'] = $currency;
 }
 
 if (array_key_exists('ui_meta', $data)) {
