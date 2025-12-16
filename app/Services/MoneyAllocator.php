@@ -9,6 +9,8 @@ use InvalidArgumentException;
 
 final class MoneyAllocator
 {
+    private static bool $forceFallback = false;
+
     /**
      * @param array<array-key,Fraction> $fractions
      * @return array<array-key,string>
@@ -46,6 +48,14 @@ final class MoneyAllocator
         }
 
         return array_map(static fn (string $units): string => self::formatUnits($units, $scale), $allocations);
+    }
+
+    /**
+     * @internal For tests only.
+     */
+    public static function __setForceFallbackForTests(bool $v): void
+    {
+        self::$forceFallback = $v;
     }
 
     private static function allocateShare(Fraction $share, string $estateUnits): string
@@ -217,7 +227,7 @@ final class MoneyAllocator
 
     private static function bcAdd(string $a, string $b, int $scale = 0): string
     {
-        if (function_exists('bcadd')) {
+        if (!self::$forceFallback && function_exists('bcadd')) {
             return \bcadd($a, $b, $scale);
         }
 
@@ -228,7 +238,7 @@ final class MoneyAllocator
 
     private static function bcSub(string $a, string $b, int $scale = 0): string
     {
-        if (function_exists('bcsub')) {
+        if (!self::$forceFallback && function_exists('bcsub')) {
             return \bcsub($a, $b, $scale);
         }
 
@@ -239,7 +249,7 @@ final class MoneyAllocator
 
     private static function bcMul(string $a, string $b, int $scale = 0): string
     {
-        if (function_exists('bcmul')) {
+        if (!self::$forceFallback && function_exists('bcmul')) {
             return \bcmul($a, $b, $scale);
         }
 
@@ -260,7 +270,7 @@ final class MoneyAllocator
 
     private static function bcDiv(string $a, string $b, int $scale = 0): string
     {
-        if (function_exists('bcdiv')) {
+        if (!self::$forceFallback && function_exists('bcdiv')) {
             return \bcdiv($a, $b, $scale);
         }
 
@@ -273,7 +283,7 @@ final class MoneyAllocator
 
     private static function bcMod(string $a, string $b): string
     {
-        if (function_exists('bcmod')) {
+        if (!self::$forceFallback && function_exists('bcmod')) {
             $mod = \bcmod($a, $b);
 
             return $mod ?? '0';
@@ -286,7 +296,7 @@ final class MoneyAllocator
 
     private static function bcComp(string $a, string $b, int $scale = 0): int
     {
-        if (function_exists('bccomp')) {
+        if (!self::$forceFallback && function_exists('bccomp')) {
             return \bccomp($a, $b, $scale);
         }
 
