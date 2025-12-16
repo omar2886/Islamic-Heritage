@@ -23,6 +23,9 @@
 - [ ] Exporta caso (JSON) y lo reimporta sin pérdidas.
 - [ ] Import con alias normaliza a roles canónicos y muestra avisos.
 
+## smoke CLI
+- [ ] `php scripts/smoke_http.php`
+
 ## Paquete
 - [ ] `python3 scripts/make_public_zip.py` genera `public.zip`.
 - [ ] El zip **excluye** `public/tools/`; el legacy PHP vive en `docs/_legacy/`.
