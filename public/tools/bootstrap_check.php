@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/_guard.php';
 
 header('Content-Type: application/json');
 

@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/_guard.php';
 
 // CONFIG: token compartido (mejor por env si lo tenéis)
 const FUZZ_WEB_TOKEN = 'REEMPLAZAR_CON_SECRETO_UNICO';
