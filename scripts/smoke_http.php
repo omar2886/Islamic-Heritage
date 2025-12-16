@@ -95,6 +95,59 @@ try {
     }
 
     echo "[OK] API calc rechaza roles desconocidos con 400\n";
+
+    $rolesResponse = @file_get_contents("http://127.0.0.1:{$port}/api/roles.php");
+    $rolesStatus = $http_response_header[0] ?? '';
+
+    if (strpos($rolesStatus, ' 200 ') === false) {
+        fwrite(STDERR, sprintf('[FAIL] HTTP inesperado en roles: %s\n', $rolesStatus));
+        exit(1);
+    }
+
+    $rolesDecoded = json_decode($rolesResponse, true);
+    $roles = $rolesDecoded['roles'] ?? [];
+    if (!is_array($roles)) {
+        fwrite(STDERR, "[FAIL] respuesta de roles inválida\n");
+        exit(1);
+    }
+
+    if (in_array('unknown', $roles, true)) {
+        fwrite(STDERR, "[FAIL] roles incluye entry 'unknown'\n");
+        exit(1);
+    }
+
+    echo "[OK] API roles expone catálogo sin 'unknown'\n";
+
+    $unknownContext = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => "Content-Type: application/json\r\n",
+            'content' => json_encode([
+                'heirs' => [
+                    ['role' => 'unknown', 'count' => 1],
+                ],
+            ], JSON_UNESCAPED_SLASHES),
+            'ignore_errors' => true,
+            'timeout' => 5,
+        ],
+    ]);
+
+    $unknownResponse = @file_get_contents("http://127.0.0.1:{$port}/api/calc.php", false, $unknownContext);
+    $unknownStatus = $http_response_header[0] ?? '';
+
+    if (strpos($unknownStatus, ' 400 ') === false) {
+        fwrite(STDERR, sprintf('[FAIL] HTTP inesperado para rol unknown: %s\n', $unknownStatus));
+        exit(1);
+    }
+
+    $unknownDecoded = json_decode($unknownResponse, true);
+    $unknownError = $unknownDecoded['error'] ?? '';
+    if ($unknownError !== 'Rol de heredero inválido en posición 0') {
+        fwrite(STDERR, sprintf('[FAIL] error inesperado para rol unknown: %s\n', is_string($unknownError) ? $unknownError : '(sin error)'));
+        exit(1);
+    }
+
+    echo "[OK] API calc rechaza rol 'unknown' con 400 específico\n";
 } finally {
     if (is_resource($server)) {
         proc_terminate($server);

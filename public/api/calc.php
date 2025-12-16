@@ -28,60 +28,66 @@ if (!is_array($data)) {
 
 $clean = [];
 
-$clean['heirs'] = $data['heirs'] ?? null;
-if (!is_array($clean['heirs']) || count($clean['heirs']) === 0) {
-  http_response_code(400);
-  echo json_encode(['ok' => false, 'error' => 'Lista de herederos requerida']);
-  exit;
-}
-
-$validatedHeirs = [];
-$allowedRoles = RolesCatalog::all();
-
-foreach ($clean['heirs'] as $i => $h) {
-  if (!is_array($h)) {
+  $clean['heirs'] = $data['heirs'] ?? null;
+  if (!is_array($clean['heirs']) || count($clean['heirs']) === 0) {
     http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => "Heredero inválido en posición {$i}"]); 
+    echo json_encode(['ok' => false, 'error' => 'Lista de herederos requerida']);
     exit;
   }
 
-  $role = $h['role'] ?? null;
-  $count = $h['count'] ?? null;
+  $validatedHeirs = [];
+  $allowedRoles = RolesCatalog::heirRoles();
 
-  $role = is_string($role) ? trim($role) : '';
-  if ($role === '' || strlen($role) > 64) {
-    http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => "Rol de heredero inválido en posición {$i}"]);
-    exit;
+  foreach ($clean['heirs'] as $i => $h) {
+    if (!is_array($h)) {
+      http_response_code(400);
+      echo json_encode(['ok' => false, 'error' => "Heredero inválido en posición {$i}"]);
+      exit;
+    }
+
+    $role = $h['role'] ?? null;
+    $count = $h['count'] ?? null;
+
+    $role = is_string($role) ? trim($role) : '';
+    if ($role === '' || strlen($role) > 64) {
+      http_response_code(400);
+      echo json_encode(['ok' => false, 'error' => "Rol de heredero inválido en posición {$i}"]);
+      exit;
+    }
+
+    if ($role === 'unknown') {
+      http_response_code(400);
+      echo json_encode(['ok' => false, 'error' => "Rol de heredero inválido en posición {$i}"]);
+      exit;
+    }
+
+    if (!in_array($role, $allowedRoles, true)) {
+      http_response_code(400);
+      echo json_encode(['ok' => false, 'error' => "Rol desconocido en posición {$i}"]);
+      exit;
+    }
+
+    if (is_int($count)) {
+      $countInt = $count;
+    } elseif (is_string($count) && ctype_digit($count)) {
+      $countInt = (int) $count;
+    } else {
+      http_response_code(400);
+      echo json_encode(['ok' => false, 'error' => "Cantidad inválida en posición {$i}"]);
+      exit;
+    }
+
+    if ($countInt < 1 || $countInt > 100) {
+      http_response_code(400);
+      echo json_encode(['ok' => false, 'error' => "Cantidad fuera de rango en posición {$i}"]);
+      exit;
+    }
+
+    $validatedHeirs[] = [
+      'role' => $role,
+      'count' => $countInt,
+    ];
   }
-
-  if (!in_array($role, $allowedRoles, true)) {
-    http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => "Rol desconocido en posición {$i}"]);
-    exit;
-  }
-
-  if (is_int($count)) {
-    $countInt = $count;
-  } elseif (is_string($count) && ctype_digit($count)) {
-    $countInt = (int) $count;
-  } else {
-    http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => "Cantidad inválida en posición {$i}"]);
-    exit;
-  }
-
-  if ($countInt < 1 || $countInt > 100) {
-    http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => "Cantidad fuera de rango en posición {$i}"]);
-    exit;
-  }
-
-  $validatedHeirs[] = [
-    'role' => $role,
-    'count' => $countInt,
-  ];
-}
 
 $clean['heirs'] = $validatedHeirs;
 
