@@ -2,6 +2,10 @@
 
 header('Content-Type: application/json; charset=utf-8');
 
+require_once __DIR__ . '/../../scripts/calc_runtime.php';
+
+use App\Domain\RolesCatalog;
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
   http_response_code(405);
   echo json_encode(['ok' => false, 'error' => 'POST requerido']);
@@ -32,11 +36,12 @@ if (!is_array($clean['heirs']) || count($clean['heirs']) === 0) {
 }
 
 $validatedHeirs = [];
+$allowedRoles = RolesCatalog::all();
 
 foreach ($clean['heirs'] as $i => $h) {
   if (!is_array($h)) {
     http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => "Heredero inválido en posición {$i}"]);
+    echo json_encode(['ok' => false, 'error' => "Heredero inválido en posición {$i}"]); 
     exit;
   }
 
@@ -47,6 +52,12 @@ foreach ($clean['heirs'] as $i => $h) {
   if ($role === '' || strlen($role) > 64) {
     http_response_code(400);
     echo json_encode(['ok' => false, 'error' => "Rol de heredero inválido en posición {$i}"]);
+    exit;
+  }
+
+  if (!in_array($role, $allowedRoles, true)) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => "Rol desconocido en posición {$i}"]);
     exit;
   }
 
