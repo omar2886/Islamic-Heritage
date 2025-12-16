@@ -390,6 +390,34 @@ function preloadGenealogy(root){
   }
 }
 
+function applyDerivedCountsFromPersonsIfPossible(root){
+  const params = new URLSearchParams(window.location.search || '');
+  if (!params.get('tree_id')) return;
+
+  enforceUsePersonsDefault();
+
+  const decedentId = snapshot().decedentId || window.__DecedentId || null;
+  const list = personsSource();
+  if (!decedentId || !Array.isArray(list) || !list.length) return;
+
+  const cb = document.getElementById('usePersons');
+  if (cb) cb.checked = true;
+
+  try {
+    const derived = deriveCountsGraph(decedentId);
+    const { counts: screened } = applyHierarchyScreening(derived);
+    const counts = screened || derived;
+    if (!(counts instanceof Map) || !counts.size) return;
+    counts.forEach((n, r) => setCount(r, n));
+  } catch (e) {
+    const b = banner('warn', 'Avisos', [FALLBACK_WARNING]);
+    root.prepend(b);
+    b.focus();
+    if (cb) cb.checked = false;
+    enforceUsePersonsDefault();
+  }
+}
+
 export async function mount(){
   await loadRoles();
   const root = document.getElementById('builder-root');
@@ -401,6 +429,8 @@ export async function mount(){
   const personsHost = el('div',{id:'persons-host'});
   root.append(personsHost);
   mountPersonsSection(personsHost);
+
+  applyDerivedCountsFromPersonsIfPossible(root);
 
   buildSpouses(root);
   buildChildren(root);
