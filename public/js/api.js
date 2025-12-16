@@ -28,9 +28,14 @@ export async function postCalc(payload){
     body:JSON.stringify(payload)
   });
   const t = await r.text();
+  let json = null;
   try{
-    return JSON.parse(t);
-  }catch(e){
+    json = JSON.parse(t);
+  }catch{
+    // se maneja más arriba
+  }
+  if (!r.ok && !json){
     throw new Error(`Respuesta no-JSON (${r.status})\n${t}`);
   }
+  return { status:r.status, ok:r.ok, json, text:t };
 }
