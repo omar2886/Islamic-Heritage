@@ -32,17 +32,14 @@ function normalizeServer(data){
   return { out, warnings, errors, raw: data };
 }
 
-function renderExplain(explain){
-  if (!Array.isArray(explain) || explain.length===0) return null;
-  const sect = el('section',{}, el('h3',{}, 'Explicación'));
-  const ul = el('ul',{}, ...explain.map(ev=>{
-    if (typeof ev === 'string') return el('li',{}, ev);
-    const stage = ev?.stage || 'TRACE';
-    const msg = ev?.message || JSON.stringify(ev);
-    return el('li',{}, el('span',{class:'small muted'},`[${stage}] `), msg);
-  }));
-  sect.append(ul);
-  return sect;
+function makeCurl(payload){
+  const endpoint = calcUrl();
+  return [
+    'curl -s -X POST',
+    `-H 'Content-Type: application/json'`,
+    `--data '${JSON.stringify(payload).replace(/'/g,"'\\''")}'`,
+    endpoint
+  ].join(' ');
 }
 
 async function copy(text){
@@ -58,78 +55,131 @@ function copyButton(label, getText){
   return b;
 }
 
-async function run(payload, root){
-  const diag = el('section',{}, el('h3',{}, 'Diagnóstico'));
-  const top = el('div',{}, el('p',{class:'muted small',id:'results-status',role:'status','aria-live':'polite'}, 'Enviando cálculo…'));
-  root.append(top);
-
-  let data;
-  try{
-    data = await postCalc(payload);
-  }catch(e){
-    root.innerHTML = '';
-    const endpoint = calcUrl();
-    const curl = [
-      'curl -s -X POST',
-      `-H 'Content-Type: application/json'`,
-      `--data '${JSON.stringify(payload).replace(/'/g,"'\\''")}'`,
-      endpoint
-    ].join(' ');
-    const tools = el('div',{class:'actions'},
-      copyButton('Copiar cURL', ()=>curl),
-      copyButton('Copiar payload', ()=>JSON.stringify(payload,null,2))
-    );
-    tools.dataset.endpoint = endpoint;
-    tools.dataset.curl = curl;
-    root.append(
-      banner('error','Error del servidor', [String(e.message || e)]),
-      el('pre',{}, curl),
-      tools,
-      el('details',{}, el('summary',{},'Payload enviado'), el('pre',{}, JSON.stringify(payload,null,2)))
-    );
-    console.error(e);
-    return;
+function renderSummary(out){
+  const hasGroupShares = out.group_shares && Object.keys(out.group_shares).length>0;
+  const sect = el('section',{class:'summary'}, el('h2',{}, 'Resumen'));
+  const metricsItems = [
+    el('div',{class:'summary-item'}, el('p',{class:'muted small'},'Σ final'), el('strong',{}, String(out.sum_final ?? '—'))),
+    out.sum_fixed!=null ? el('div',{class:'summary-item'}, el('p',{class:'muted small'},'Σ fijo'), el('strong',{}, String(out.sum_fixed))) : null,
+    out.residual_share!=null ? el('div',{class:'summary-item'}, el('p',{class:'muted small'},'Residual'), el('strong',{}, String(out.residual_share))) : null
+  ].filter(Boolean);
+  const metrics = el('div',{class:'summary-grid'}, metricsItems);
+  sect.append(metrics);
+  if (hasGroupShares){
+    const tbl = el('table',{class:'compact'}, el('thead',{}, el('tr',{}, el('th',{},'Grupo'), el('th',{},'Cuota'))), el('tbody',{}));
+    Object.entries(out.group_shares).forEach(([k,v])=>{
+      tbl.querySelector('tbody').append(el('tr',{}, el('td',{}, el('code',{}, k)), el('td',{}, String(v))));
+    });
+    sect.append(el('div',{class:'summary-table'}, tbl));
   }
+  return sect;
+}
 
-  const { out, warnings, errors, raw } = normalizeServer(data);
-  root.innerHTML = '';
-
-  const sum = el('div',{class:'muted small'},
-    'Σ final: ', el('strong',{}, String(out.sum_final ?? '—')),
-    (out.sum_fixed ? ` · Σ fijo: ${out.sum_fixed}` : ''),
-    (out.residual_share ? ` · residual: ${out.residual_share}` : '')
-  );
-  root.append(sum);
-
+function renderSharesTables(out){
   const blocks = [
     tableKV('Cuotas por grupo', out.group_shares, {k:'Rol', v:'Cuota'}),
     tableKV('Cuotas por individuo', out.individual_shares, {k:'Rol(i)', v:'Cuota'}),
     tableKV('Importes por rol', out.amounts_by_role, {k:'Rol', v:'Importe'}),
     tableKV('Importes por individuo', out.amounts_by_individual, {k:'Rol(i)', v:'Importe'}),
   ].filter(Boolean);
-  blocks.forEach(b => root.append(b));
+  if (!blocks.length) return null;
+  const sect = el('section',{}, el('h2',{}, 'Detalle de cuotas'));
+  blocks.forEach(b=>sect.append(b));
+  return sect;
+}
+
+function renderTraces(out){
+  const traces = [];
+  if (Array.isArray(out.traces)) traces.push(...out.traces);
+  if (Array.isArray(out.explain)) traces.push(...out.explain);
+  if (!traces.length) return null;
+
+  const grouped = traces.reduce((acc, ev)=>{
+    const phase = ev?.phase || ev?.stage || 'General';
+    if (!acc[phase]) acc[phase] = [];
+    acc[phase].push(ev);
+    return acc;
+  },{});
+
+  const details = el('details',{class:'explain'}, el('summary',{}, 'Explicación'));
+  Object.entries(grouped).forEach(([phase, items])=>{
+    const tbl = el('table',{class:'compact'}, el('thead',{}, el('tr',{}, el('th',{},'Regla'), el('th',{},'Razón'), el('th',{},'Δ'))), el('tbody',{}));
+    items.forEach(ev=>{
+      const rule = ev?.rule_id || ev?.rule || ev?.id || '—';
+      const reason = ev?.reason || ev?.message || ev?.explanation || JSON.stringify(ev);
+      const delta = ev?.delta ?? ev?.value ?? ev?.change ?? '—';
+      tbl.querySelector('tbody').append(el('tr',{}, el('td',{}, String(rule)), el('td',{}, String(reason)), el('td',{}, String(delta))));
+    });
+    const phaseBlock = el('section',{}, el('h3',{}, phase), tbl);
+    details.append(phaseBlock);
+  });
+  return details;
+}
+
+function renderError(message, payload){
+  const curl = makeCurl(payload);
+  const alert = banner('error','No se pudo calcular', [message]);
+  const tools = el('div',{class:'actions'},
+    copyButton('Copiar cURL', ()=>curl),
+    downloadJsonLink('payload_enviado.json', payload, 'Descargar payload')
+  );
+  setTimeout(()=>{ try{ alert.focus(); }catch{} }, 0);
+  return el('div',{}, alert, tools);
+}
+
+async function run(payload, root){
+  const status = el('p',{class:'muted small',id:'results-status',role:'status','aria-live':'polite'}, 'Enviando cálculo…');
+  root.append(status);
+
+  let data;
+  try{
+    data = await postCalc(payload);
+  }catch(e){
+    status.textContent = 'Error en cálculo';
+    root.replaceChildren(status);
+    root.append(renderError(String(e.message || e), payload));
+    return;
+  }
+
+  const { status: httpStatus, ok: httpOk, json, text } = data;
+  const hasJson = json && typeof json==='object';
+  if (!httpOk || (hasJson && json.ok===false)){
+    status.textContent = 'Error en cálculo';
+    root.replaceChildren(status);
+    const message = hasJson ? (json.error || 'El cálculo devolvió un error.') : `HTTP ${httpStatus}`;
+    root.append(renderError(message, payload));
+    return;
+  }
+  if (!hasJson){
+    status.textContent = 'Error en cálculo';
+    root.replaceChildren(status);
+    root.append(renderError(`Respuesta inesperada (${httpStatus}): ${text}`, payload));
+    return;
+  }
+
+  const { out, warnings, errors, raw } = normalizeServer(json);
+  status.textContent = 'Cálculo listo';
+  root.replaceChildren(status);
+
+  const summary = renderSummary(out);
+  if (summary) root.append(summary);
+
+  const shares = renderSharesTables(out);
+  if (shares) root.append(shares);
 
   if (warnings?.length) root.append(banner('warn','Avisos', warnings));
   if (errors?.length)   root.append(banner('error','Errores', errors));
 
-  const exp = renderExplain(out.explain);
-  if (exp) root.append(exp);
+  const traces = renderTraces(out);
+  if (traces) root.append(traces);
 
-  const endpoint = calcUrl();
-  const curlOk = [
-    'curl -s -X POST',
-    `-H 'Content-Type: application/json'`,
-    `--data '${JSON.stringify(payload).replace(/'/g,"'\\''")}'`,
-    endpoint
-  ].join(' ');
-
+  const curlOk = makeCurl(payload);
   const tools = el('div',{class:'actions'},
     downloadJsonLink('resultado.json', raw, 'Descargar resultado'),
     downloadJsonLink('payload_enviado.json', payload, 'Descargar payload'),
     copyButton('Copiar cURL', ()=>curlOk),
     copyButton('Copiar resultado', ()=>JSON.stringify(raw,null,2))
   );
-  tools.dataset.endpoint = endpoint;
   tools.dataset.curl = curlOk;
   root.append(tools);
 }
