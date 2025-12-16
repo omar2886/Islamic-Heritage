@@ -7,6 +7,7 @@ import { deriveCountsFromPersons, applyHierarchyScreening, deriveCountsGraph } f
 import { Persons } from '../persons.js';
 import { mountPersonsSection } from './persons.js';
 import { banner, filePicker, downloadJsonLink } from './components.js';
+import { loadTree as loadGenealogyTree, applyPersonsSnapshot, listTrees as listGenealogyTrees } from './genealogy.js';
 import { makeCase, applyCase, validateCaseShape } from '../caseio.js';
 import { saveDraft, loadDraft, clearDraft, hasDraft } from '../storage.js';
 
@@ -359,11 +360,43 @@ function offerRestoreDraft(root){
   discard.addEventListener('click',()=>{ clearDraft(); wrap.remove(); });
 }
 
+function preloadGenealogy(root){
+  const params = new URLSearchParams(window.location.search || '');
+  const treeId = params.get('tree_id');
+  if (!treeId) return;
+
+  try {
+    const tree = loadGenealogyTree(treeId);
+    if (!tree) {
+      const b = banner('error','No se pudo cargar el árbol','No se encontró el árbol solicitado en este dispositivo.');
+      root.prepend(b); b.focus();
+      return;
+    }
+    if (!Array.isArray(tree.persons)) throw new Error('El árbol no contiene una lista de personas válida.');
+    applyPersonsSnapshot(tree.persons);
+    const meta = tree.ui_meta || {};
+    setSex(meta.sex || 'unknown');
+    const dec = meta.decedentId || null;
+    window.__DecedentId = dec;
+    setDecedent(dec);
+
+    const entry = listGenealogyTrees().find(t => t.id === treeId);
+    const name = (entry && entry.name) || meta.title || treeId;
+    const b = banner('info','Árbol precargado', [`Se cargó "${name}" desde Genealogía.`]);
+    root.prepend(b); b.focus();
+  } catch (e) {
+    const b = banner('error','Genealogía no disponible', e.message || e.toString());
+    root.prepend(b); b.focus();
+  }
+}
+
 export async function mount(){
   await loadRoles();
   const root = document.getElementById('builder-root');
   root.innerHTML = '';
   buildHeader(root);
+
+  preloadGenealogy(root);
 
   const personsHost = el('div',{id:'persons-host'});
   root.append(personsHost);

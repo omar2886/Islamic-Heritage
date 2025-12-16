@@ -81,6 +81,9 @@ export function mountPersonsSection(root){
       rb.addEventListener('change',()=>{
         window.__DecedentId = p.id;
         setDecedent(p.id);
+        if (typeof window !== 'undefined' && typeof window.__onModelChanged === 'function') {
+          try { window.__onModelChanged(); } catch (e) { /* noop */ }
+        }
         renderBody();
       });
 

@@ -40,6 +40,7 @@
     'builder' => 'js/boot-builder.js',
     'results' => 'js/boot-results.js',
     'home'    => 'js/boot-home.js',
+    'genealogy' => 'js/boot-genealogy.js',
   ];
   $bootPath = $bootMap[$page] ?? $bootMap['home'];
 
