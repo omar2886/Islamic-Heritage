@@ -186,7 +186,7 @@ async function run(payload, root){
 
 export async function mount(){
   const root = document.getElementById('results-root');
-  root.innerHTML = '';
+  root.replaceChildren();
   let payload = null;
   try { payload = JSON.parse(sessionStorage.getItem('heritage_payload') || 'null'); } catch { payload = null; }
 

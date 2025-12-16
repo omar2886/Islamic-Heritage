@@ -161,14 +161,14 @@ export function mount(){
 
   function showBanner(kind, title, items){
     if (!bannerRoot) return;
-    bannerRoot.innerHTML = '';
+    bannerRoot.replaceChildren();
     const b = banner(kind, title, items || []);
     bannerRoot.append(b);
     try { b.focus(); } catch (e) { /* noop */ }
   }
 
   function clearBanner(){
-    if (bannerRoot) bannerRoot.innerHTML = '';
+    if (bannerRoot) bannerRoot.replaceChildren();
   }
 
   function selectedName(){
@@ -178,13 +178,13 @@ export function mount(){
 
   function refreshSelect(targetId){
     const trees = listTrees();
-    select.innerHTML = '';
-    trees.forEach(t => {
+    const options = trees.map(t => {
       const opt = document.createElement('option');
       opt.value = t.id;
       opt.textContent = t.name || t.id;
-      select.append(opt);
+      return opt;
     });
+    select.replaceChildren(...options);
     if (targetId) select.value = targetId;
     if (!select.value && select.options.length){
       select.selectedIndex = 0;
@@ -217,7 +217,7 @@ export function mount(){
     window.__DecedentId = decId;
     setDecedent(decId);
     setSex(meta.sex || 'unknown');
-    personsRoot.innerHTML = '';
+    personsRoot.replaceChildren();
     mountPersonsSection(personsRoot);
     setModelChangeHook();
   }
