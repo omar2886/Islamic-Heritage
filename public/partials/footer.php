@@ -1,5 +1,5 @@
 <footer class="container muted">
-  <p>UI pública (MVP). Endpoints en <code>/public/api/</code> (y herramientas dev en <code>/public/tools/</code>).</p>
+  <p>UI pública (MVP). Endpoint principal: <code>/public/api/calc.php</code>. Herramientas de desarrollo en <code>/public/tools/</code>.</p>
 </footer>
 </body>
 </html>

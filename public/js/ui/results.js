@@ -17,12 +17,12 @@ function builderHref(){
   return base ? `${base}/${path}` : path;
 }
 
-function toolsUrl(){
-  if (typeof window === 'undefined') return 'tools/explain_smoke.php';
-  const configured = window.__URLS__?.tools;
+function calcUrl(){
+  if (typeof window === 'undefined') return 'api/calc.php';
+  const configured = window.__URLS__?.calc;
   if (configured) return configured;
   const publicBase = cleanBase(window.__PUBLIC_BASE__ || '');
-  return publicBase ? `${publicBase}/tools/explain_smoke.php` : 'tools/explain_smoke.php';
+  return publicBase ? `${publicBase}/api/calc.php` : 'api/calc.php';
 }
 
 function normalizeServer(data){
@@ -68,7 +68,7 @@ async function run(payload, root){
     data = await postCalc(payload);
   }catch(e){
     root.innerHTML = '';
-    const endpoint = toolsUrl();
+    const endpoint = calcUrl();
     const curl = [
       'curl -s -X POST',
       `-H 'Content-Type: application/json'`,
@@ -115,7 +115,7 @@ async function run(payload, root){
   const exp = renderExplain(out.explain);
   if (exp) root.append(exp);
 
-  const endpoint = toolsUrl();
+  const endpoint = calcUrl();
   const curlOk = [
     'curl -s -X POST',
     `-H 'Content-Type: application/json'`,
