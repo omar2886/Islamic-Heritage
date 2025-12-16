@@ -1,0 +1,20 @@
+{
+  "case_id": "SON100_one_son_blocks_brothers",
+  "input": {
+    "heirs": [
+      { "role": "son", "count": 1 },
+      { "role": "full_brother", "count": 2 }
+    ]
+  },
+  "expected_cli": {
+    "group_shares": {
+      "son": "1/1",
+      "full_brothers": "0/1"
+    },
+    "sum_final": "1/1",
+    "meta": {
+      "residual_policy": "asaba",
+      "bayt_due": "0/1"
+    }
+  }
+}

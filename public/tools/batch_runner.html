@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Batch Runner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 1.5rem;
+      background: #f7f7f7;
+      color: #1b1b1b;
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 1.8rem;
+    }
+
+    .panel {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 220px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.9rem;
+      padding: 0.75rem;
+      border-radius: 8px;
+      border: 1px solid #cbd5f5;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin: 1rem 0 0.5rem;
+      align-items: center;
+    }
+
+    button {
+      background: #2563eb;
+      border: none;
+      color: white;
+      padding: 0.6rem 1.2rem;
+      border-radius: 999px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+
+    button:hover:not(:disabled) {
+      background: #1d4ed8;
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .status {
+      min-height: 1.5rem;
+      font-size: 0.95rem;
+      color: #1d4ed8;
+    }
+
+    .status.error {
+      color: #dc2626;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1.5rem;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      border-bottom: 1px solid #e2e8f0;
+      padding: 0.55rem 0.75rem;
+      text-align: left;
+      vertical-align: top;
+      white-space: pre-line;
+    }
+
+    thead th {
+      background: #eef2ff;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    tbody tr.row-ok {
+      background: #dcfce7;
+    }
+
+    tbody tr.row-amber {
+      background: #fef3c7;
+    }
+
+    tbody tr.row-fail {
+      background: #fee2e2;
+    }
+
+    .downloads {
+      margin-top: 0.5rem;
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .downloads button {
+      background: #4b5563;
+    }
+
+    .downloads button:hover:not(:disabled) {
+      background: #374151;
+    }
+
+    .small {
+      font-size: 0.8rem;
+      color: #475569;
+    }
+
+    .monospace {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    @media (max-width: 900px) {
+      table {
+        font-size: 0.8rem;
+      }
+
+      th, td {
+        padding: 0.45rem 0.55rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>Batch Runner (Maliki)</h1>
+    <p class="small">Pega casos en formato JSON array o NDJSON. Cada caso debe contener al menos <code>heirs</code>. Opcionalmente añade <code>cli_flags</code> como en <code>calc_cli.php</code>.</p>
+
+    <textarea id="cases-input" placeholder='[\n  {"heirs":[{"role":"wife","count":3}]},\n  {"heirs":[{"role":"daughter","count":2},{"role":"paternal_uncle","count":1}]}\n]'></textarea>
+
+    <div class="controls">
+      <button id="run-btn">Ejecutar</button>
+      <div id="status" class="status"></div>
+    </div>
+
+    <div class="downloads">
+      <button id="download-json" disabled>Descargar JSON</button>
+      <button id="download-csv" disabled>Descargar CSV</button>
+    </div>
+
+    <div class="small" id="csv-hint"></div>
+
+    <div class="table-wrapper">
+      <table id="results-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>OK</th>
+            <th>sum_final</th>
+            <th>residual_policy</th>
+            <th>bayt_due</th>
+            <th>group_shares</th>
+            <th>warnings</th>
+            <th>errors</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const inputEl = document.getElementById('cases-input');
+    const runBtn = document.getElementById('run-btn');
+    const statusEl = document.getElementById('status');
+    const tableBody = document.querySelector('#results-table tbody');
+    const downloadJsonBtn = document.getElementById('download-json');
+    const downloadCsvBtn = document.getElementById('download-csv');
+    const csvHintEl = document.getElementById('csv-hint');
+
+    let lastResults = [];
+
+    runBtn.addEventListener('click', async () => {
+      const raw = inputEl.value.trim();
+      if (!raw) {
+        showStatus('Introduce al menos un caso.', true);
+        return;
+      }
+
+      let cases;
+      try {
+        cases = parseCases(raw);
+      } catch (error) {
+        showStatus(error.message, true);
+        return;
+      }
+
+      runBtn.disabled = true;
+      downloadJsonBtn.disabled = true;
+      downloadCsvBtn.disabled = true;
+      showStatus('Procesando…');
+      tableBody.innerHTML = '';
+      csvHintEl.textContent = '';
+
+      try {
+        const response = await fetch('batch_runner.php', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({cases})
+        });
+
+        if (!response.ok) {
+          const payload = await safeJson(response);
+          const message = payload && payload.error ? payload.error : `Error ${response.status}`;
+          throw new Error(message);
+        }
+
+        const payload = await response.json();
+        lastResults = Array.isArray(payload.results) ? payload.results : [];
+        renderResults(lastResults);
+        downloadJsonBtn.disabled = lastResults.length === 0;
+        downloadCsvBtn.disabled = lastResults.length === 0;
+        showStatus(`Procesados ${lastResults.length} caso(s).`);
+      } catch (error) {
+        showStatus(error.message || 'Error inesperado.', true);
+        lastResults = [];
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+
+    downloadJsonBtn.addEventListener('click', () => {
+      if (!lastResults.length) return;
+      const blob = new Blob([JSON.stringify({generated_at: new Date().toISOString(), results: lastResults}, null, 2)], {type: 'application/json'});
+      triggerDownload(blob, 'batch_results.json');
+    });
+
+    downloadCsvBtn.addEventListener('click', () => {
+      if (!lastResults.length) return;
+      const csv = buildCsv(lastResults);
+      const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+      triggerDownload(blob, 'batch_results.csv');
+    });
+
+    function parseCases(raw) {
+      if (raw.startsWith('[')) {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+          throw new Error('El JSON debe ser un array de casos.');
+        }
+        return parsed;
+      }
+
+      const lines = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+      if (!lines.length) {
+        throw new Error('No se detectaron líneas con JSON válido.');
+      }
+      return lines.map((line, idx) => {
+        try {
+          return JSON.parse(line);
+        } catch (error) {
+          throw new Error(`Línea ${idx + 1}: JSON inválido.`);
+        }
+      });
+    }
+
+    function renderResults(results) {
+      tableBody.innerHTML = '';
+      const fragment = document.createDocumentFragment();
+
+      results.forEach((entry, idx) => {
+        const tr = document.createElement('tr');
+        const policy = entry?.diagnostics?.residual_policy || '';
+        if (policy === 'bayt_al_mal') {
+          tr.classList.add('row-amber');
+        } else if (entry.ok) {
+          tr.classList.add('row-ok');
+        } else {
+          tr.classList.add('row-fail');
+        }
+
+        const diag = entry.diagnostics || {};
+        const output = entry.output || {};
+        const warnings = Array.isArray(output.warnings) ? output.warnings : [];
+        const errors = Array.isArray(output.errors) ? output.errors : [];
+        const groupShares = output.group_shares || {};
+
+        tr.appendChild(createCell(idx + 1));
+        tr.appendChild(createCell(entry.ok ? '✅' : '❌'));
+        tr.appendChild(createCell(diag.sum_final || ''));
+        tr.appendChild(createCell(diag.residual_policy || ''));
+        tr.appendChild(createCell(diag.bayt_due || ''));
+        tr.appendChild(createCell(formatGroupShares(groupShares)));
+        tr.appendChild(createCell(formatList(warnings)));
+        tr.appendChild(createCell(formatList(errors)));
+
+        fragment.appendChild(tr);
+      });
+
+      tableBody.appendChild(fragment);
+
+      if (results.length) {
+        const groupColumns = collectGroupColumns(results, 50);
+        if (groupColumns.length) {
+          csvHintEl.textContent = `CSV incluirá columnas dinámicas para: ${groupColumns.join(', ')}`;
+        }
+      }
+    }
+
+    function createCell(content) {
+      const td = document.createElement('td');
+      if (typeof content === 'string' || typeof content === 'number') {
+        td.textContent = String(content);
+      } else if (content instanceof Node) {
+        td.appendChild(content);
+      } else {
+        td.textContent = '';
+      }
+      return td;
+    }
+
+    function formatGroupShares(groupShares) {
+      if (!groupShares || typeof groupShares !== 'object') return '';
+      return Object.entries(groupShares)
+        .map(([role, share]) => `${role}: ${share}`)
+        .join('\n');
+    }
+
+    function formatList(items) {
+      if (!Array.isArray(items) || !items.length) return '';
+      return items.join('\n');
+    }
+
+    function triggerDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    async function safeJson(response) {
+      try {
+        return await response.json();
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function collectGroupColumns(results, maxColumns) {
+      const roles = new Set();
+      results.forEach(entry => {
+        const groupShares = entry?.output?.group_shares;
+        if (groupShares && typeof groupShares === 'object') {
+          Object.keys(groupShares).forEach(role => roles.add(role));
+        }
+      });
+      return Array.from(roles).slice(0, maxColumns);
+    }
+
+    function buildCsv(results) {
+      const baseColumns = ['idx', 'ok', 'sum_final', 'residual_policy', 'bayt_due', 'warnings_count', 'errors_count'];
+      const groupColumns = collectGroupColumns(results, 50);
+      const header = [...baseColumns, ...groupColumns];
+
+      const rows = [header.join(',')];
+      results.forEach((entry, idx) => {
+        const diag = entry.diagnostics || {};
+        const output = entry.output || {};
+        const warnings = Array.isArray(output.warnings) ? output.warnings.length : 0;
+        const errors = Array.isArray(output.errors) ? output.errors.length : 0;
+        const groupShares = output.group_shares || {};
+
+        const baseValues = [
+          idx + 1,
+          entry.ok ? 'true' : 'false',
+          diag.sum_final || '',
+          diag.residual_policy || '',
+          diag.bayt_due || '',
+          warnings,
+          errors
+        ];
+
+        const groupValues = groupColumns.map(role => sanitizeCsvValue(groupShares[role] ?? ''));
+        const rowValues = [...baseValues.map(sanitizeCsvValue), ...groupValues];
+        rows.push(rowValues.join(','));
+      });
+
+      return rows.join('\n');
+    }
+
+    function sanitizeCsvValue(value) {
+      const str = String(value ?? '');
+      if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    }
+
+    function showStatus(message, isError = false) {
+      statusEl.textContent = message;
+      statusEl.classList.toggle('error', Boolean(isError));
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "case_id": "DU101_son_blocks_paternal_uncle",
+  "input": {
+    "heirs": [
+      {"role": "son", "count": 1},
+      {"role": "paternal_uncle", "count": 1}
+    ],
+    "cli_flags": ["--strict"]
+  },
+  "expected": {
+    "shares": {
+      "son": "1/1",
+      "paternal_uncle": "0/1"
+    },
+    "invariants": {
+      "sum_to_one": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "son": "1/1",
+      "paternal_uncle": "0/1"
+    },
+    "sum_final": "1/1",
+    "warnings_not_contains": ["Unknown heir role"]
+  }
+}

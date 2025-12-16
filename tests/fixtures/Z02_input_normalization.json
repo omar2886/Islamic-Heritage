@@ -1,0 +1,50 @@
+{
+  "case_id": "Z02_input_normalization",
+  "input": {
+    "heirs": [
+      {"role": "esposas", "count": 6},
+      {"role": "hijas", "count": 2},
+      {"role": "madre", "count": 1},
+      {"role": "daugter", "count": 0}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "wives": {
+        "group": "1/8",
+        "individuals": ["1/48", "1/48", "1/48", "1/48", "1/48", "1/48"]
+      },
+      "mother": "7/40",
+      "daughter": {
+        "group": "7/10",
+        "individuals": ["7/20", "7/20"]
+      }
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "collective_matches_individuals": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "daughter": "7/10",
+      "mother": "7/40",
+      "wives": "1/8"
+    },
+    "individual_shares": {
+      "daughter": ["7/20", "7/20"],
+      "mother": ["7/40"],
+      "wives": ["1/48", "1/48", "1/48", "1/48", "1/48", "1/48"]
+    },
+    "warnings_contains": [
+      "normalized role 'esposas' -> 'wife'",
+      "normalized role 'hijas' -> 'daughter'",
+      "normalized role 'madre' -> 'mother'",
+      "Unknown heir role 'daugter'",
+      "normalized wives group to 'wives' (from label 'wife', count=6)",
+      "wives count > 4"
+    ],
+    "input_roles": ["wives", "daughter", "mother", "unknown"],
+    "strict_exit_code": 2
+  }
+}

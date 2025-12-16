@@ -1,0 +1,19 @@
+{
+  "case_id": "Z14_audit_asaba_check",
+  "input": {
+    "heirs": [
+      { "role": "son", "count": 1 }
+    ],
+    "cli_flags": ["--audit"]
+  },
+  "expected": {
+    "group_shares": {
+      "son": "1/1"
+    },
+    "sum_final": "1/1",
+    "invariants": { "sum_to_one": true },
+    "audit_asaba_alloc_contains": {
+      "son": "1/1"
+    }
+  }
+}

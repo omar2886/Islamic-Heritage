@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <title>Constructor de casos — Maliki (lite)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif; }
+    body { margin:0; padding:16px; background:#f7f7f7; color:#1b1b1b; }
+    .panel { background:#fff; border-radius:12px; padding:16px; max-width:1100px; margin:0 auto; box-shadow:0 6px 24px rgba(15,23,42,.08);}
+    h1 { margin-top:0; font-size:1.6rem; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap:12px; }
+    .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:12px; }
+    label { display:block; font-weight:600; margin:6px 0 4px; }
+    select, input[type="number"], input[type="text"] { width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px; }
+    .controls { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; align-items:center;}
+    button { background:#2563eb; color:#fff; border:none; padding:8px 14px; border-radius:999px; cursor:pointer; font-weight:600;}
+    button.secondary { background:#4b5563; }
+    button.warn { background:#ea580c; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .list { margin-top:8px; }
+    .item { border:1px solid #e5e7eb; border-radius:10px; padding:8px; display:flex; align-items:center; justify-content:space-between; margin:6px 0; background:#fafafa;}
+    .muted { color:#64748b; font-size:.9rem;}
+    .banner { padding:10px 12px; border-radius:10px; margin:10px 0; font-weight:600; }
+    .banner.ok { background:#dcfce7; }
+    .banner.err { background:#fee2e2; }
+    .banner.warn { background:#fef3c7;}
+    table { width:100%; border-collapse:collapse; margin-top:10px; font-size:.92rem;}
+    th,td { border-bottom:1px solid #e5e7eb; padding:6px 8px; text-align:left; vertical-align:top; white-space:pre-line;}
+    thead th { background:#eef2ff; position:sticky; top:0; z-index:1;}
+    .flex { display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+    .item-controls { justify-content:flex-end; }
+    .alive-toggle { display:flex; align-items:center; gap:6px; font-weight:600; }
+    .alive-toggle input { width:1.1rem; height:1.1rem; }
+    .alive-label { font-size:.85rem; }
+    .alive-label.alive { color:#15803d; }
+    .alive-label.dead { color:#b91c1c; }
+    .right { text-align:right; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-weight:700; font-size:.8rem; }
+    .pill.ok { background:#10b981; color:#fff; }
+    .pill.fail { background:#ef4444; color:#fff; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size:.9rem;}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+  </style>
+</head>
+<body>
+  <div class="panel" role="main" aria-labelledby="title">
+    <h1 id="title">Constructor de casos — Maliki (lite)</h1>
+    <p class="muted">MVP independiente basado en <code>tools/</code>. Publica en la misma carpeta: este archivo llama a <code>explain_smoke.php</code> con <code>--explain</code> + <code>--audit</code> y muestra cuotas/explicaciones. Inspirado en <em>batch_runner</em> / <em>UI smoke</em>. </p>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Datos del caso</h3>
+        <label for="sex">Sexo del causante</label>
+        <select id="sex">
+          <option value="unknown">Desconocido</option>
+          <option value="male">Hombre</option>
+          <option value="female">Mujer</option>
+        </select>
+
+        <label for="amount">Monto total (valor de la herencia)</label>
+        <input type="number" id="amount" min="0" step="0.01" placeholder="1000.00"/>
+
+        <div class="controls">
+          <label class="flex" aria-label="banderas">
+            <input type="checkbox" id="flagExplain" checked/> --explain
+          </label>
+          <label class="flex" aria-label="banderas">
+            <input type="checkbox" id="flagAudit" checked/> --audit
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Añadir heredero</h3>
+        <label for="role">Relación</label>
+        <select id="role">
+          <optgroup label="Cónyuges">
+            <option value="husband">Esposo (husband)</option>
+            <option value="wife">Esposa (wife)</option>
+          </optgroup>
+          <optgroup label="Descendientes">
+            <option value="son">Hijo (son)</option>
+            <option value="daughter">Hija (daughter)</option>
+            <option value="sons_son">Nieto (sons_son)</option>
+            <option value="sons_daughter">Nieta (sons_daughter)</option>
+          </optgroup>
+          <optgroup label="Ascendientes">
+            <option value="father">Padre (father)</option>
+            <option value="mother">Madre (mother)</option>
+            <option value="paternal_grandfather">Abuelo paterno</option>
+            <option value="paternal_grandmother">Abuela paterna</option>
+            <option value="maternal_grandfather">Abuelo materno</option>
+            <option value="maternal_grandmother">Abuela materna</option>
+          </optgroup>
+          <optgroup label="Hermanos/as">
+            <option value="full_brother">Hermano pleno</option>
+            <option value="full_sister">Hermana plena</option>
+            <option value="consanguine_brother">Hermano consanguíneo</option>
+            <option value="consanguine_sister">Hermana consanguínea</option>
+            <option value="uterine_brother">Hermano uterino</option>
+            <option value="uterine_sister">Hermana uterina</option>
+          </optgroup>
+          <optgroup label="Tíos/Primos (agnáticos)">
+            <option value="paternal_uncle">Tío paterno</option>
+            <option value="paternal_uncle_son">Primo paterno</option>
+          </optgroup>
+        </select>
+
+        <label for="count">Cantidad</label>
+        <input type="number" id="count" min="1" value="1"/>
+
+        <div class="controls">
+          <button id="add">Añadir</button>
+          <button id="preset-wives" class="secondary" title="3 esposas">Preset: 3 esposas</button>
+          <button id="preset-du" class="secondary" title="Hija + tío paterno">Preset: hija + tío</button>
+          <button id="preset-umariyya" class="secondary" title="’Umariyyātān">Preset: ’Umariyyātān</button>
+          <button id="preset-real" class="secondary" title="2 esposas, 1 hijo, 2 hijas, padre y madre">Preset: familia básica</button>
+        </div>
+        <p class="muted">Los presets reflejan los casos de <em>tools</em> que ya te funcionan (p. ej. “wives_three”, “daughters_uncle2”, ’Umariyyātān). Ahora también incluye la “familia básica” (2 esposas, hijo, 2 hijas, padre y madre), que debería devolver cuotas grupales: wives → 1/8, father → 1/6, mother → 1/6, sons → 13/48, daughters → 13/48. Se validan contra el mismo endpoint.</p>
+      </div>
+    </div>
+
+    <div id="warn" class="banner warn" style="display:none"></div>
+
+    <div class="card">
+      <h3>Herederos añadidos</h3>
+      <div id="list" class="list" aria-live="polite"></div>
+      <div class="controls">
+        <button id="clear" class="secondary">Limpiar</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="calc" class="warn">Calcular</button>
+      <span id="sumBadge" class="pill">Σ — pendiente</span>
+      <span id="engine" class="muted"></span>
+    </div>
+
+    <div id="status" class="banner" style="display:none"></div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Group shares</h3>
+        <table>
+          <thead><tr><th>Rol</th><th>Fracción</th></tr></thead>
+          <tbody id="tbl-gs"></tbody>
+        </table>
+
+        <h3>Individual shares</h3>
+        <table>
+          <thead><tr><th>Rol</th><th>Fracciones</th></tr></thead>
+          <tbody id="tbl-ind"></tbody>
+        </table>
+      </div>
+
+      <div class="card" style="grid-column: span 2;">
+        <h3>Explain steps</h3>
+        <table>
+          <thead><tr><th>#</th><th>Stage</th><th>Rule</th><th>Note</th><th>Changes</th><th>byPerson</th></tr></thead>
+          <tbody id="tbl-steps"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="download" class="secondary">Descargar JSON (entrada+salida)</button>
+    </div>
+
+    <p class="muted mono" id="curl"></p>
+  </div>
+
+  <script>
+  // === Config ===
+  // Este archivo vive en /public/tools/. El endpoint es relativo:
+  const ENDPOINT = new URL('explain_smoke.php', location.href).href; // mismo patrón que tus UIs en tools :contentReference[oaicite:5]{index=5} :contentReference[oaicite:6]{index=6}
+
+  // === Estado ===
+  const state = {
+    sex: 'unknown',
+    heirs: [], // [{role, count, alive}]
+    amount: '',
+  };
+
+  // === Utilidades (inspiradas en tools/) ===
+  function show(el, yes){ el.style.display = yes ? '' : 'none'; }
+  function fracParse(s){ if(typeof s!=='string'){s='0/1';} const [p,q]=(s||'0/1').split('/').map(Number); return {p:p||0, q:q||1}; }
+  function gcd(a,b){ a=Math.abs(a); b=Math.abs(b); while(b){ [a,b]=[b,a%b]; } return a||1; }
+  function addF(a,b){ return {p:a.p*b.q + b.p*a.q, q:a.q*b.q}; }
+  function normF(f){ const g=gcd(f.p,f.q); return {p:f.p/g, q:f.q/g}; }
+  function sumShares(gs){ let acc={p:0,q:1}; for(const v of Object.values(gs||{})){ acc=normF(addF(acc, fracParse(v))); } return acc; }
+  function badge(sum){
+    const el = document.getElementById('sumBadge');
+    if (!sum || !sum.q){ el.textContent='Σ — pendiente'; el.className='pill'; return; }
+    const ok = (sum.p===1 && sum.q===1);
+    el.textContent = ok ? 'Σ = 1/1 — OK' : `Σ = ${sum.p}/${sum.q}`;
+    el.className = 'pill ' + (ok ? 'ok' : 'fail');
+  }
+
+  function mkWarn(msg){
+    const w = document.getElementById('warn');
+    w.textContent = msg || '';
+    show(w, Boolean(msg));
+  }
+
+  function renderList(){
+    const list = document.getElementById('list');
+    list.innerHTML = '';
+    state.heirs.forEach((h,idx)=>{
+      if (typeof h.alive === 'undefined') h.alive = true;
+      const isAlive = h.alive !== false;
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `
+        <div><strong>${h.role}</strong> — ${h.count}</div>
+        <div class="flex item-controls">
+          <label class="alive-toggle">
+            <input type="checkbox" class="alive-checkbox" data-idx="${idx}" ${isAlive ? 'checked' : ''} aria-label="Alternar estado de vida">
+            <span class="alive-label ${isAlive ? 'alive' : 'dead'}">${isAlive ? 'Vivo' : 'Fallecido'}</span>
+          </label>
+          <div class="flex">
+            <button aria-label="restar" class="secondary" data-idx="${idx}" data-op="-">−</button>
+            <button aria-label="sumar" class="secondary" data-idx="${idx}" data-op="+">+</button>
+            <button aria-label="eliminar" class="secondary" data-idx="${idx}" data-op="x">Eliminar</button>
+          </div>
+        </div>`;
+      list.appendChild(div);
+    });
+  }
+
+  function bump(idx, op){
+    const h = state.heirs[idx]; if(!h) return;
+    if (op === '+') h.count++;
+    else if (op === '-') h.count = Math.max(1, h.count-1);
+    else if (op === 'x') state.heirs.splice(idx,1);
+    renderList();
+  }
+
+  document.getElementById('list').addEventListener('click', (e)=>{
+    const btn = e.target.closest('button'); if(!btn) return;
+    const idx = +btn.dataset.idx; const op = btn.dataset.op;
+    bump(idx, op);
+  });
+
+  document.getElementById('list').addEventListener('change', (e)=>{
+    const chk = e.target.closest('.alive-checkbox'); if(!chk) return;
+    const idx = +chk.dataset.idx;
+    if (!Number.isInteger(idx)) return;
+    const h = state.heirs[idx]; if(!h) return;
+    h.alive = chk.checked;
+    renderList();
+  });
+
+  // === Validaciones mínimas previas (UI) ===
+  function checkSpousesAndBlocks(){
+    const livingHeirs = state.heirs.filter(h=>h && h.alive !== false);
+    const counts = Object.fromEntries(livingHeirs.map(h=>[h.role,h.count]));
+    const sex = state.sex;
+
+    // Cónyuges
+    const husbands = counts.husband||0, wives = counts.wife||0;
+    if (sex === 'male' && husbands>0) return 'Causante varón: no puede haber husband.';
+    if (sex === 'male' && wives>4) return 'Causante varón: máximo 4 wives.';
+    if (sex === 'female' && wives>0) return 'Causante mujer: no puede haber wife.';
+    if (sex === 'female' && husbands>1) return 'Causante mujer: máximo 1 husband.';
+    if (sex === 'unknown' && (husbands+wives)>1) return 'Sexo desconocido: máximo un cónyuge en total.';
+
+    // Bloqueos sencillos de screening (UI) — el motor hará el resto
+    if ((counts.father||0) > 0 && ((counts.paternal_grandfather||0) > 0 || (counts.paternal_grandmother||0) > 0))
+      return 'Padre vivo: elimina abuelos paternos.';
+    if ((counts.mother||0) > 0 && ((counts.maternal_grandmother||0) > 0))
+      return 'Madre viva: elimina abuela materna.';
+    if ((counts.father||0) > 0 &&
+       ((counts.full_brother||0)+(counts.full_sister||0)+(counts.consanguine_brother||0)+(counts.consanguine_sister||0)+(counts.uterine_brother||0)+(counts.uterine_sister||0)) > 0)
+      return 'Padre vivo: elimina hermanos (bloqueo).';
+
+    return '';
+  }
+
+  // === Entradas ===
+  document.getElementById('sex').addEventListener('change', e => { state.sex = e.target.value; });
+  document.getElementById('amount').addEventListener('change', e => { state.amount = e.target.value; });
+
+  document.getElementById('add').addEventListener('click', ()=>{
+    const role = document.getElementById('role').value;
+    const count = Math.max(1, parseInt(document.getElementById('count').value||'1',10));
+    // fusiona por rol
+    const idx = state.heirs.findIndex(h=>h.role===role);
+    if (idx>=0) state.heirs[idx].count += count; else state.heirs.push({role, count, alive:true});
+    renderList();
+  });
+
+  document.getElementById('clear').addEventListener('click', ()=>{
+    state.heirs = []; renderList(); mkWarn('');
+  });
+
+  // Presets basados en tus herramientas de /tools (ya probados)
+  document.getElementById('preset-wives').addEventListener('click', ()=>{
+    state.heirs = [{role:'wife', count:3, alive:true}]; renderList();
+  });
+  document.getElementById('preset-du').addEventListener('click', ()=>{
+    state.heirs = [
+      {role:'daughter', count:2, alive:true},
+      {role:'paternal_uncle', count:1, alive:true}
+    ];
+    renderList();
+  });
+  document.getElementById('preset-umariyya').addEventListener('click', ()=>{
+    state.heirs = [
+      {role:'wife', count:1, alive:true},
+      {role:'father', count:1, alive:true},
+      {role:'mother', count:1, alive:true}
+    ];
+    renderList();
+  });
+  document.getElementById('preset-real').addEventListener('click', ()=>{
+    state.heirs = [
+      {role:'wife', count:2, alive:true},
+      {role:'son', count:1, alive:true},
+      {role:'daughter', count:2, alive:true},
+      {role:'father', count:1, alive:true},
+      {role:'mother', count:1, alive:true},
+    ];
+    renderList();
+  });
+
+  // === POST al backend (patrón de tools/) ===
+  async function postJSON(url, data){
+    // Reutiliza lógica de tools: si el servidor no devuelve JSON, mostramos el cuerpo crudo. :contentReference[oaicite:7]{index=7}
+    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data) });
+    const txt = await res.text();
+    let payload=null; try { payload = JSON.parse(txt); } catch(_){}
+    if (!res.ok || (payload && payload.ok === false)) {
+      const msg = (payload && (payload.error||payload.message)) || `HTTP ${res.status} — ${txt.slice(0,200)}`;
+      throw new Error(msg);
+    }
+    return payload || {};
+  }
+
+  function renderPairs(tblId, obj){
+    const tb = document.getElementById(tblId); tb.innerHTML='';
+    if (!obj || typeof obj !== 'object') return;
+    Object.entries(obj).forEach(([k,v])=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${k}</td><td>${Array.isArray(v)? v.join(', ') : String(v)}</td>`;
+      tb.appendChild(tr);
+    });
+  }
+
+  function renderSteps(steps){
+    const tb = document.getElementById('tbl-steps'); tb.innerHTML='';
+    (steps?.steps || []).forEach((s,i)=>{
+      const changes = s.changes ? Object.entries(s.changes).map(([r,c])=>`${r}: ${c.before}→${c.after}`).join(' | ') : '';
+      const byP = s.byPerson ? Object.entries(s.byPerson).map(([r,ids])=>`${r}: [${ids.join(', ')}]`).join(' | ') : '';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${i+1}</td><td>${s.stage||''}</td><td>${s.rule||''}</td><td>${s.note||''}</td><td>${changes}</td><td>${byP}</td>`;
+      tb.appendChild(tr);
+    });
+  }
+
+  function setStatus(msg, kind){ const el=document.getElementById('status'); el.textContent=msg||''; el.className='banner '+(kind||''); show(el,Boolean(msg)); }
+
+  document.getElementById('calc').addEventListener('click', async ()=>{
+    setStatus('', '');
+    mkWarn('');
+    const w = checkSpousesAndBlocks(); if (w){ mkWarn(w); return; }
+
+    // Validación de monto (opcional, pero si se indica debe ser número válido)
+    const amtRaw = String(state.amount||'').trim();
+    let amount = null;
+    if (amtRaw !== '') {
+      const n = Number(amtRaw);
+      if (!Number.isFinite(n) || n < 0) { setStatus('Debes indicar un monto válido (número ≥ 0) o dejarlo en blanco.', 'err'); return; }
+      amount = n;
+    }
+
+    // Debe haber al menos un heredero con count>0
+    const heirs = state.heirs
+      .filter(h=>h && h.count>0 && h.alive !== false)
+      .map(h=>({role:h.role, count:h.count}));
+    if (!heirs.length){ setStatus('Debes añadir al menos un heredero con count > 0.', 'err'); return; }
+
+    // Banderas CLI
+    const flags = [];
+    if (document.getElementById('flagExplain').checked) flags.push('--explain');
+    if (document.getElementById('flagAudit').checked) flags.push('--audit');
+
+    // Payload final: el motor ya conoce agrupar en plural si procede.
+    const payload = { heirs, cli_flags: flags };
+    if (amount !== null){ payload.amount = amount; payload.estate_value = amount; }
+
+    // cURL (útil para debug)
+    document.getElementById('curl').textContent =
+      `curl -s -X POST -H 'Content-Type: application/json' --data '${JSON.stringify(payload)}' '${ENDPOINT}'`;
+
+    try{
+      const out = await postJSON(ENDPOINT, payload);
+      const res = out.output || {};
+
+      renderPairs('tbl-gs', res.group_shares||{});
+      renderPairs('tbl-ind', res.individual_shares||{});
+      renderSteps(res.explain || {});
+
+      const sum = sumShares(res.group_shares||{});
+      badge(sum);
+      const eng = (res?.meta?.engine_version) || '';
+      const rb  = (res?.meta?.rulebook_sha256 ? res.meta.rulebook_sha256.slice(0,8) : '');
+      document.getElementById('engine').textContent = eng ? `engine=${eng}${rb? ' · rulebook='+rb : ''}` : '';
+
+      setStatus('OK — cálculo completado.', 'ok');
+      window.__lastPayload__ = { input: payload, output: res };
+    } catch(e){
+      setStatus('Error: '+ e.message, 'err');
+      badge(null);
+      document.getElementById('engine').textContent = '';
+      window.__lastPayload__ = null;
+    }
+  });
+
+  document.getElementById('download').addEventListener('click', ()=>{
+    const obj = window.__lastPayload__;
+    if (!obj){ setStatus('No hay resultado que descargar.', 'err'); return; }
+    const blob = new Blob([JSON.stringify(obj, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'inheritance_case.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  // Estado inicial
+  renderList();
+  </script>
+</body>
+</html>

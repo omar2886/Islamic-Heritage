@@ -1,0 +1,52 @@
+{
+  "case_id": "C04_spouse_parents_no_descendants",
+  "input": {
+    "heirs": [
+      {"role": "husband", "count": 1},
+      {"role": "mother", "count": 1},
+      {"role": "father", "count": 1}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "husband": "1/2",
+      "mother": "1/6",
+      "father": {
+        "group": "1/3",
+        "individuals": ["1/3"]
+      }
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "spouses_excluded_from_radd": true,
+      "awl_preserves_ratios": true,
+      "no_blocked_receives_share": true,
+      "collective_matches_individuals": true,
+      "deterministic": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "husband": "1/2",
+      "mother": "1/6",
+      "father": "1/3"
+    },
+    "individual_shares": {
+      "husband": ["1/2"],
+      "mother": ["1/6"],
+      "father": ["1/3"]
+    },
+    "sum_fixed": "2/3",
+    "sum_fixed_normalized": "2/3",
+    "sum_final": "1/1",
+    "residual_before_asaba": "1/3",
+    "residual_consumed": "1/3",
+    "traces": [
+      {
+        "rule_id": "asaba.precedence.father",
+        "targets": ["father"],
+        "reason": "Father absorbs entire residual as sole residuary."
+      }
+    ]
+  }
+}

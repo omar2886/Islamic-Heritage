@@ -1,0 +1,56 @@
+{
+  "case_id": "C01_widower_daughter",
+  "input": {
+    "heirs": [
+      {"role": "husband", "count": 1},
+      {"role": "daughter", "count": 1}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "husband": "1/4",
+      "daughters": {
+        "group": "3/4",
+        "individuals": ["3/4"]
+      }
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "spouses_excluded_from_radd": true,
+      "awl_preserves_ratios": true,
+      "no_blocked_receives_share": true,
+      "collective_matches_individuals": true,
+      "deterministic": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "husband": "1/4",
+      "daughters": "3/4"
+    },
+    "individual_shares": {
+      "husband": ["1/4"],
+      "daughters": ["3/4"]
+    },
+    "sum_fixed": "3/4",
+    "sum_fixed_normalized": "1/1",
+    "sum_final": "1/1",
+    "residual_before_asaba": "1/4",
+    "residual_consumed": "0/1",
+    "traces": []
+  },
+    "expected_explain": {
+      "includes": [
+        {
+          "stage": "radd",
+          "rule": "normalizer.radd",
+          "changes": {
+            "daughter": {
+              "after": "3/4"
+            }
+          }
+        }
+      ],
+      "forbid_stages": ["awl"]
+    }
+  }

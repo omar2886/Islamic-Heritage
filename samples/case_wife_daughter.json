@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "meta": { "sex": "male", "decedentId": null },
+  "estate_value": "1000",
+  "counts": { "wife": 1, "daughter": 1 },
+  "persons": [
+    { "id":"P1","name":"D","sex":"male","alive":true,"role":"", "fatherId":null,"motherId":null,"spouseIds":[] },
+    { "id":"P2","name":"W1","sex":"female","alive":true,"role":"wife","fatherId":null,"motherId":null,"spouseIds":["P1"] }
+  ]
+}

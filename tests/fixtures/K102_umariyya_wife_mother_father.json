@@ -1,0 +1,19 @@
+{
+  "case_id": "K102_umariyya_wife_mother_father",
+  "input": {
+    "heirs": [
+      { "role": "wife", "count": 1 },
+      { "role": "mother", "count": 1 },
+      { "role": "father", "count": 1 }
+    ]
+  },
+  "expected": {
+    "group_shares": {
+      "wife": "1/4",
+      "mother": "1/4",
+      "father": "1/2"
+    },
+    "sum_final": "1/1",
+    "invariants": { "sum_to_one": true }
+  }
+}

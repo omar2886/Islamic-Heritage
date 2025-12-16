@@ -1,0 +1,26 @@
+{
+  "case_id": "M02_amounts_husband_daughter_10_01",
+  "input": {
+    "heirs": [
+      { "role": "husband", "count": 1 },
+      { "role": "daughter", "count": 1 }
+    ],
+    "estate_value": 10.01
+  },
+  "expected": {
+    "group_shares": {
+      "husband": "1/4",
+      "daughter": "3/4"
+    },
+    "amounts_by_role": {
+      "husband": "2.50",
+      "daughter": "7.51"
+    },
+    "currency": "USD",
+    "sum_final": "1/1",
+    "invariants": {
+      "sum_to_one": true,
+      "spouses_excluded_from_radd": true
+    }
+  }
+}

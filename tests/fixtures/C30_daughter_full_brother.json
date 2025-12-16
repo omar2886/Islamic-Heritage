@@ -1,0 +1,17 @@
+{
+  "case_id": "C30_daughter_full_brother",
+  "input": {
+    "heirs": [
+      {"role": "daughter", "count": 1},
+      {"role": "full_brother", "count": 1}
+    ]
+  },
+  "expected": {
+    "group_shares": {
+      "daughter": "1/2",
+      "full_brother": "1/2"
+    },
+    "sum_final": "1/1",
+    "invariants": { "sum_to_one": true }
+  }
+}

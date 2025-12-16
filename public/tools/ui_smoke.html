@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <title>UI Smoke — Inheritance Explain</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial,sans-serif; margin:20px;}
+    header,section{margin-bottom:24px}
+    table{border-collapse:collapse;width:100%;margin:8px 0}
+    th,td{border:1px solid #ddd;padding:6px 8px;font-size:14px}
+    th{background:#f7f7f7;text-align:left}
+    .row{display:flex;gap:16px;flex-wrap:wrap}
+    .card{flex:1 1 380px;border:1px solid #eee;border-radius:12px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,0.04)}
+    #chart{width:100%;height:260px;border:1px dashed #ccc;border-radius:8px;position:relative}
+    .bar{position:absolute;bottom:0;width:28px;background:#4a90e2;border-radius:4px 4px 0 0;opacity:0.9}
+    .bar-label{position:absolute;bottom:-18px;white-space:nowrap;transform:rotate(-35deg);transform-origin:left top;font-size:12px}
+    .bar-value{position:absolute;bottom:100%;font-size:12px;background:#000;color:#fff;padding:1px 4px;border-radius:4px;transform:translateY(-4px)}
+    .muted{color:#777}
+    select,button{padding:6px 10px;border-radius:8px;border:1px solid #ccc;background:#fff}
+    .badge{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;background:#ccc;color:#fff;vertical-align:middle}
+    .badge.ok{background:#2ecc71}
+    .badge.fail{background:#e74c3c}
+  </style>
+</head>
+<body>
+<header>
+  <h1>UI Smoke — Inheritance Explain</h1>
+  <p class="muted">Visual de verificación rápida: cuotas finales + pasos <code>--explain</code>.</p>
+</header>
+
+<div id="status" style="margin:8px 0;">
+  <span id="sum-badge" style="display:inline-block;padding:4px 8px;border-radius:8px;background:#ccc;color:#000;font-weight:600">
+    Σ — pendiente
+  </span>
+  <span id="engine" class="muted" style="margin-left:8px;"></span>
+</div>
+
+<section>
+  <div class="row">
+    <div class="card">
+      <h3>Caso</h3>
+      <label>Plantilla:
+        <select id="case">
+          <option value="awl">AWL — esposo + madre + 2 hijas</option>
+          <option value="du100">DU100 — hija + tío paterno</option>
+          <option value="umariyya">’Umariyyātān — esposa + padre + madre</option>
+          <option value="daughters_uncle2">2 hijas + tío paterno (residuo)</option>
+          <option value="son_blocks_siblings">Hijo bloquea hermanos</option>
+          <option value="pgf100">PGF100 — padre bloquea abuelo paterno</option>
+          <option value="wife_mother_two_sons">Esposa + madre + 2 hijos</option>
+          <option value="basic_family">Familia básica — 2 esposas, 1 hijo, 2 hijas, padre y madre</option>
+          <option value="wives_three">3 esposas (pluralización y tope)</option>
+          <option value="maternal_siblings_no_desc_asc">Hnos uterinos sin descend/asc</option>
+        </select>
+      </label>
+      <button id="run">Calcular</button>
+      <button id="download">Descargar JSON</button>
+      <small class="muted">El endpoint añade <code>--explain</code> y <code>--audit</code> automáticamente.</small>
+    </div>
+    <div class="card">
+      <h3>Cuotas (gráfico)</h3>
+      <div id="chart" aria-label="Chart quotas"></div>
+    </div>
+  </div>
+</section>
+
+<section class="row">
+  <div class="card" style="flex:1 1 480px;">
+    <h3>Group shares</h3>
+    <table id="tbl-group"><thead><tr><th>Rol</th><th>Fracción</th></tr></thead><tbody></tbody></table>
+    <h3>Individual shares</h3>
+    <table id="tbl-ind"><thead><tr><th>Rol</th><th>Fracciones</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="card" style="flex:2 1 560px;">
+    <h3>Explain steps</h3>
+    <table id="tbl-steps">
+      <thead><tr><th>#</th><th>Stage</th><th>Rule</th><th>Note</th><th>Changes</th><th>byPerson</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+const ENDPOINT = 'explain_smoke.php';
+
+const cases = {
+  awl: {
+    title: 'AWL — esposo + madre + 2 hijas',
+    heirs: [
+      { role:'husband', count:1 },
+      { role:'mother', count:1 },
+      { role:'daughter', count:2 }
+    ],
+    expect: { husband:'3/13', mother:'2/13', daughters:'8/13' }
+  },
+  du100: {
+    title: 'DU100 — hija + tío paterno',
+    heirs: [
+      { role:'daughter', count:1 },
+      { role:'paternal_uncle', count:1 }
+    ],
+    expect: { daughter:'1/2', paternal_uncle:'1/2' }
+  },
+  umariyya: {
+    title: '’Umariyyātān — esposa + padre + madre (sin descend.)',
+    heirs: [
+      { role:'wife', count:1 },
+      { role:'father', count:1 },
+      { role:'mother', count:1 }
+    ],
+    expect: { wife:'1/4', father:'1/2', mother:'1/4' }
+  },
+  daughters_uncle2: {
+    title: '2 hijas + tío paterno (residuo)',
+    heirs: [
+      { role:'daughter', count:2 },
+      { role:'paternal_uncle', count:1 }
+    ],
+    expect: { daughters:'2/3', paternal_uncle:'1/3' }
+  },
+  son_blocks_siblings: {
+    title: 'Hijo bloquea hermanos',
+    heirs: [
+      { role:'son', count:1 },
+      { role:'full_brother', count:2 }
+    ],
+    expect: { son:'1/1' }
+  },
+  pgf100: {
+    title: 'PGF100 — padre bloquea abuelo paterno',
+    heirs: [
+      { role:'father', count:1 },
+      { role:'paternal_grandfather', count:1 }
+    ],
+    expect: { father:'1/1' }
+  },
+  wife_mother_two_sons: {
+    title: 'Esposa + madre + 2 hijos',
+    heirs: [
+      { role:'wife', count:1 },
+      { role:'mother', count:1 },
+      { role:'son', count:2 }
+    ],
+    expect: { wife:'1/8', mother:'1/6', sons:'17/24' }
+  },
+  basic_family: {
+    title: 'Familia básica — 2 esposas, 1 hijo, 2 hijas, padre y madre',
+    heirs: [
+      { role:'wife', count:2 },
+      { role:'son', count:1 },
+      { role:'daughter', count:2 },
+      { role:'father', count:1 },
+      { role:'mother', count:1 }
+    ],
+    expect: { wives:'1/8', father:'1/6', mother:'1/6', sons:'13/48', daughters:'13/48' }
+  },
+  wives_three: {
+    title: '3 esposas (pluralización y tope)',
+    heirs: [
+      { role:'wife', count:3 }
+    ],
+    expect: { wives:'1/4' }
+  },
+  maternal_siblings_no_desc_asc: {
+    title: 'Hnos uterinos sin descend/asc',
+    heirs: [
+      { role:'uterine_brother', count:1 },
+      { role:'uterine_sister', count:1 }
+    ],
+    // RADD redistribuye el remanente → cuota final 1/1
+    expect: { uterine_siblings:'1/1' }
+  }
+};
+
+const EXPECTATION_FALLBACKS = {
+  sons: ['son'],
+  daughters: ['daughter'],
+  wives: ['wife'],
+  uterine_siblings: ['uterine_brothers', 'uterine_sisters', 'uterine_brother', 'uterine_sister'],
+  full_brothers: ['full_brother'],
+  full_sisters: ['full_sister'],
+  consanguine_brothers: ['consanguine_brother'],
+  consanguine_sisters: ['consanguine_sister']
+};
+
+function resolveGroupShare(gotGroups, role) {
+  if (!gotGroups) { return null; }
+  const candidates = [role, ...(EXPECTATION_FALLBACKS[role] ?? [])];
+  for (const candidate of candidates) {
+    if (Object.prototype.hasOwnProperty.call(gotGroups, candidate)) {
+      return { key: candidate, value: gotGroups[candidate] };
+    }
+  }
+  return null;
+}
+
+function parseFrac(s){
+  if (typeof s !== 'string') { s = '0/1'; }
+  const parts = s.split('/');
+  const p = Number(parts[0] ?? 0) || 0;
+  const q = Number(parts[1] ?? 1) || 1;
+  return {p, q};
+}
+function gcd(a,b){ a=Math.abs(a); b=Math.abs(b); while(b){ [a,b]=[b,a%b]; } return a||1; }
+function addFrac(a,b){ return {p:a.p*b.q + b.p*a.q, q:a.q*b.q}; }
+function normFrac(f){ const g=gcd(f.p,f.q); return {p:f.p/g, q:f.q/g}; }
+function sumShares(gs){ let acc={p:0,q:1}; for(const f of Object.values(gs||{})){ acc=normFrac(addFrac(acc, parseFrac(f))); } return acc; }
+function setBadge(sum, options = {}){
+  const el = document.getElementById('sum-badge');
+  if (!el) return;
+  const mode = options.mode || 'default';
+
+  if (mode === 'spouses_radd_exclusion' && sum && typeof sum.p === 'number' && typeof sum.q === 'number' && sum.q) {
+    el.textContent = `Σ = ${sum.p}/${sum.q} — Residuo a Bayt al-Māl (Maliki, sin radd al cónyuge)`;
+    el.style.background = '#f1c40f';
+    el.style.color = '#000';
+    return;
+  }
+  if (!sum || typeof sum.p !== 'number' || typeof sum.q !== 'number' || !sum.q) {
+    el.textContent = 'Σ — pendiente';
+    el.style.background = '#ccc';
+    el.style.color = '#000';
+    return;
+  }
+  const ok = (sum.p===1 && sum.q===1);
+  el.textContent = ok ? 'Σ = 1/1 — OK' : `Σ = ${sum.p}/${sum.q} — MISMATCH`;
+  el.style.background = ok ? '#2ecc71' : '#e74c3c';
+  el.style.color = '#fff';
+}
+
+function compareExpectations(expect, gotGroups){
+  const mismatches = [];
+  if (!expect) return mismatches;
+  for (const [role, want] of Object.entries(expect)) {
+    const resolved = resolveGroupShare(gotGroups, role);
+    if (!resolved) {
+      mismatches.push(`${role}: esperado ${want}, faltante en salida`);
+    } else if (resolved.value !== want) {
+      mismatches.push(`${role}: esperado ${want}, got ${resolved.value} (${resolved.key})`);
+    }
+  }
+  return mismatches;
+}
+
+let lastPayload = null;
+
+function postJSON(url, data){
+  return fetch(url, {
+    method:'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ ...data, cli_flags:['--explain','--audit'] })
+  }).then(async r => {
+    const txt = await r.text();
+    let payload = null;
+    try { payload = JSON.parse(txt); }
+    catch(e) {
+      throw new Error(`HTTP ${r.status} — cuerpo: ${txt.slice(0,200)}`);
+    }
+    if (!r.ok || payload.ok === false) {
+      const msg = payload && (payload.error || payload.message) || `HTTP ${r.status}`;
+      throw new Error(`Servidor: ${msg}`);
+    }
+    return payload;
+  });
+}
+
+function renderTableGroupShares(gs){
+  const tb = document.querySelector('#tbl-group tbody');
+  tb.innerHTML = '';
+  if(!gs){ return; }
+  Object.entries(gs).forEach(([role, frac])=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${role}</td><td>${frac}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function renderTableIndividualShares(ind){
+  const tb = document.querySelector('#tbl-ind tbody');
+  tb.innerHTML = '';
+  if(!ind){ return; }
+  Object.entries(ind).forEach(([role, arr])=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${role}</td><td>${arr.join(', ')}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function renderSteps(explain){
+  const tb = document.querySelector('#tbl-steps tbody');
+  tb.innerHTML = '';
+  const steps = (explain && explain.steps) || [];
+  steps.forEach((s, i)=>{
+    const changes = s.changes ? Object.entries(s.changes).map(([r,c])=>`${r}: ${c.before}→${c.after}`).join(' | ') : '';
+    const byP = s.byPerson ? Object.entries(s.byPerson).map(([r,ids])=>`${r}: [${ids.join(', ')}]`).join(' | ') : '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i+1}</td><td>${s.stage||''}</td><td>${s.rule||''}</td><td>${s.note||''}</td><td>${changes}</td><td>${byP}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function drawChart(gs){
+  const div = document.getElementById('chart');
+  div.innerHTML = '';
+  if(!gs){ return; }
+  const w = div.clientWidth, h = div.clientHeight;
+  const entries = Object.entries(gs);
+  // Convertir fracciones p/q a valor decimal
+  const vals = entries.map(([r, f])=>{
+    const [p,q] = f.split('/').map(Number);
+    return {role:r, frac:f, val:p/q};
+  });
+  const max = Math.max(1, ...vals.map(v=>v.val));
+  const pad = 24, gap = 12, bw = 28;
+  vals.forEach((v, idx)=>{
+    const x = pad + idx*(bw+gap);
+    const barH = Math.round((v.val/max)*(h-40));
+    const b = document.createElement('div');
+    b.className='bar';
+    b.style.left = x+'px';
+    b.style.height = barH+'px';
+    b.style.width = bw+'px';
+    const lab = document.createElement('div');
+    lab.className='bar-label';
+    lab.style.left = x+'px';
+    lab.textContent = v.role;
+    const val = document.createElement('div');
+    val.className='bar-value';
+    val.style.left = x+'px';
+    val.textContent = v.frac;
+    b.appendChild(val);
+    div.appendChild(b);
+    div.appendChild(lab);
+  });
+}
+
+async function run(){
+  try {
+    const sel = document.getElementById('case').value;
+    const base = cases[sel];
+    const input = { heirs: base.heirs.map(h => ({...h})) };
+    const res = await postJSON(ENDPOINT, input);
+    const out = res.output || {};
+    renderTableGroupShares(out.group_shares);
+    renderTableIndividualShares(out.individual_shares);
+    renderSteps(out.explain);
+    drawChart(out.group_shares);
+    const sum = sumShares(out.group_shares || {});
+    const policy = out?.meta?.residual_policy || 'none';
+    if (policy === 'bayt_al_mal') {
+      setBadge(sum, { mode: 'spouses_radd_exclusion' });
+    } else {
+      setBadge(sum, { mode: 'default' });
+    }
+
+    const eng = (out.meta && out.meta.engine_version) ? out.meta.engine_version : '';
+    const rb  = (out.meta && out.meta.rulebook_sha256) ? out.meta.rulebook_sha256.slice(0,8) : '';
+    document.getElementById('engine').textContent = eng ? `engine=${eng}${rb? ' · rulebook='+rb : ''}` : '';
+
+    const mm = compareExpectations(base.expect, out.group_shares);
+
+    if (mm.length) {
+      alert('Diferencias vs expectativa:\n - ' + mm.join('\n - '));
+      console.warn('Expect/Actual mismatches:', mm, out.group_shares);
+    }
+
+    lastPayload = { input: res.input, output: res.output };
+  } catch (err) {
+    setBadge(null);
+    document.getElementById('engine').textContent = '';
+    lastPayload = null;
+    alert(`Fallo del endpoint: ${err.message}`);
+    console.error(err);
+  }
+}
+
+document.getElementById('run').addEventListener('click', run);
+
+document.getElementById('download').addEventListener('click', ()=>{
+  if (!lastPayload) { alert('Aún no hay resultado.'); return; }
+  const blob = new Blob([JSON.stringify(lastPayload, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'inheritance_result.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+// auto-load default
+run();
+</script>
+</body>
+</html>

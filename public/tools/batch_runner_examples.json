@@ -1,0 +1,110 @@
+{
+    "generated_at": "2025-10-01T21:22:31+00:00",
+    "cases": [
+        {
+            "case_id": "WIV300_three_wives",
+            "input": {
+                "heirs": [
+                    {
+                        "role": "wife",
+                        "count": 3
+                    }
+                ]
+            },
+            "sum_final": "1/4",
+            "group_shares": {
+                "wives": "1/4"
+            },
+            "meta": {
+                "residual_policy": "bayt_al_mal",
+                "bayt_due": "3/4",
+                "assertions": {
+                    "sum_ok": true,
+                    "radd_gated": true,
+                    "blocks": {
+                        "father_blocks_pgf": true,
+                        "son_blocks_siblings": true,
+                        "male_desc_blocks_uncle": true
+                    },
+                    "uterines_ok": true
+                }
+            }
+        },
+        {
+            "case_id": "DA210_two_daughters_uncle",
+            "input": {
+                "heirs": [
+                    {
+                        "role": "daughter",
+                        "count": 2
+                    },
+                    {
+                        "role": "paternal_uncle",
+                        "count": 1
+                    }
+                ]
+            },
+            "sum_final": "1/1",
+            "group_shares": {
+                "daughters": "2/3",
+                "paternal_uncle": "1/3"
+            },
+            "meta": {
+                "residual_policy": "asaba",
+                "bayt_due": "0/1",
+                "assertions": {
+                    "sum_ok": true,
+                    "radd_gated": true,
+                    "blocks": {
+                        "father_blocks_pgf": true,
+                        "son_blocks_siblings": true,
+                        "male_desc_blocks_uncle": true
+                    },
+                    "uterines_ok": true
+                }
+            }
+        },
+        {
+            "case_id": "UM110_husband_mother_father",
+            "input": {
+                "heirs": [
+                    {
+                        "role": "husband",
+                        "count": 1
+                    },
+                    {
+                        "role": "mother",
+                        "count": 1
+                    },
+                    {
+                        "role": "father",
+                        "count": 1
+                    }
+                ],
+                "cli_flags": [
+                    "--strict"
+                ]
+            },
+            "sum_final": "1/1",
+            "group_shares": {
+                "husband": "1/2",
+                "father": "1/3",
+                "mother": "1/6"
+            },
+            "meta": {
+                "residual_policy": "asaba",
+                "bayt_due": "0/1",
+                "assertions": {
+                    "sum_ok": true,
+                    "radd_gated": true,
+                    "blocks": {
+                        "father_blocks_pgf": true,
+                        "son_blocks_siblings": true,
+                        "male_desc_blocks_uncle": true
+                    },
+                    "uterines_ok": true
+                }
+            }
+        }
+    ]
+}

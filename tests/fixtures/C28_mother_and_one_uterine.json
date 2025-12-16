@@ -1,0 +1,23 @@
+{
+  "case_id": "C28_mother_and_one_uterine",
+  "input": {
+    "heirs": [
+      {"role": "mother", "count": 1},
+      {"role": "uterine_brother", "count": 1}
+    ]
+  },
+  "expected": {
+    "group_shares": {
+      "mother": "2/3",
+      "uterines": "1/3"
+    },
+    "individual_shares": {
+      "uterine_brother": ["1/3"]
+    },
+    "sum_final": "1/1",
+    "invariants": {
+      "sum_to_one": true,
+      "spouses_excluded_from_radd": true
+    }
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "case_id": "Z16_yaml_schema_fail",
+  "input": {
+    "heirs": [
+      {"role": "husband", "count": 1},
+      {"role": "daughter", "count": 1}
+    ],
+    "rulebook_path": "tests/fixtures/rulebooks/invalid_context_flags.yml"
+  },
+  "expected": {
+    "shares": {
+      "husband": "1/4",
+      "daughters": {
+        "group": "3/4",
+        "individuals": ["3/4"]
+      }
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "spouses_excluded_from_radd": true,
+      "awl_preserves_ratios": true,
+      "no_blocked_receives_share": true,
+      "collective_matches_individuals": true,
+      "deterministic": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "husband": "1/4",
+      "daughters": "3/4"
+    },
+    "individual_shares": {
+      "husband": ["1/4"],
+      "daughters": ["3/4"]
+    },
+    "sum_fixed": "3/4",
+    "sum_fixed_normalized": "1/1",
+    "sum_final": "1/1",
+    "residual_before_asaba": "0/1",
+    "residual_consumed": "0/1",
+    "traces": [],
+    "meta": {
+      "rulebook_sha256": "bd23992de09721736ecde79cac96d74e2cd5696c77affd4f3482ab2477d5237f",
+      "schema_version": "1"
+    },
+    "schema_validation_errors": [
+      "context_flags missing/invalid"
+    ],
+    "strict_exit_code": 2,
+    "strict_errors": [
+      "context_flags missing/invalid"
+    ]
+  }
+}

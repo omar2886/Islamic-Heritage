@@ -1,0 +1,17 @@
+{
+  "case_id": "DA200_two_daughters_uncle",
+  "input": {
+    "heirs": [
+      { "role": "daughter", "count": 2 },
+      { "role": "paternal_uncle", "count": 1 }
+    ],
+    "cli_flags": ["--strict"]
+  },
+  "expect": {
+    "group_shares": {
+      "daughters": "2/3",
+      "paternal_uncle": "1/3"
+    },
+    "sum_final": "1/1"
+  }
+}

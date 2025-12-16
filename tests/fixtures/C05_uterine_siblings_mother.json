@@ -1,0 +1,27 @@
+{
+  "case_id": "C05_uterine_siblings_mother",
+  "input": {
+    "heirs": [
+      {"role": "uterine_brother", "count": 1},
+      {"role": "uterine_sister", "count": 1},
+      {"role": "mother", "count": 1}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "uterine_siblings": {
+        "group": "2/3",
+        "individuals": ["1/3", "1/3"]
+      },
+      "mother": "1/3"
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "spouses_excluded_from_radd": true,
+      "awl_preserves_ratios": true,
+      "no_blocked_receives_share": true,
+      "collective_matches_individuals": true,
+      "deterministic": true
+    }
+  }
+}

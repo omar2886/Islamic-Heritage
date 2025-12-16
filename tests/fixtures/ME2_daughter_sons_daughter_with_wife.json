@@ -1,0 +1,21 @@
+{
+  "case_id": "ME2_daughter_sons_daughter_with_wife",
+  "input": {
+    "heirs": [
+      {"role": "wife", "count": 1},
+      {"role": "daughter", "count": 1},
+      {"role": "sons_daughter", "count": 1}
+    ]
+  },
+  "expected_cli": {
+    "group_shares": {
+      "wife": "1/8",
+      "daughter": "21/32",
+      "sons_daughter": "7/32"
+    },
+    "sum_final": "1/1",
+    "meta": {
+      "residual_policy": "radd"
+    }
+  }
+}

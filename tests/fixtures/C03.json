@@ -1,0 +1,28 @@
+{
+  "case": "C03",
+  "heirs": [
+    {"role": "husband", "count": 1},
+    {"role": "daughter", "count": 2},
+    {"role": "mother", "count": 1},
+    {"role": "father", "count": 1}
+  ],
+  "expected": {
+    "normalizedGroups": {
+      "daughter": "8/13",
+      "husband": "3/13",
+      "mother": "2/13"
+    },
+    "normalizedIndividuals": {
+      "daughter": ["4/13", "4/13"],
+      "husband": ["3/13"],
+      "mother": ["2/13"]
+    },
+    "sumFixedNormalized": "1/1",
+    "residualForAsaba": "0/1",
+    "fixedSum": "13/12"
+  },
+  "checks": {
+    "sum_to_one": true,
+    "awl_factor": "12/13"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "case_id": "ME6_both_grandmothers_share_radd",
+  "input": {
+    "heirs": [
+      {"role": "maternal_grandmother", "count": 1},
+      {"role": "paternal_grandmother", "count": 1}
+    ]
+  },
+  "expected_cli": {
+    "group_shares": {
+      "maternal_grandmother": "1/2",
+      "paternal_grandmother": "1/2"
+    },
+    "sum_final": "1/1",
+    "meta": {
+      "residual_policy": "radd"
+    }
+  }
+}

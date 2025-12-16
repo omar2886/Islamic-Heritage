@@ -1,0 +1,23 @@
+{
+  "case_id": "AWL120_wife_father_two_daughters",
+  "input": {
+    "heirs": [
+      { "role": "wife", "count": 1 },
+      { "role": "father", "count": 1 },
+      { "role": "daughter", "count": 2 }
+    ],
+    "cli_flags": ["--strict"]
+  },
+  "expected_cli": {
+    "group_shares": {
+      "wife": "1/8",
+      "father": "5/24",
+      "daughters": "2/3"
+    },
+    "sum_final": "1/1",
+    "meta": {
+      "residual_policy": "asaba",
+      "bayt_due": "0/1"
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "case_id": "Z06_wife_wives_merge",
+  "input": {
+    "heirs": [
+      {"role": "wife", "count": 1},
+      {"role": "wives", "count": 2},
+      {"role": "daughter", "count": 1}
+    ],
+    "cli_flags": ["--strict=false"]
+  },
+  "expected": {
+
+    "shares": {
+      "daughter": {
+        "group": "7/8",
+        "individuals": ["7/8"]
+      },
+      "wives": {
+        "group": "1/8",
+        "individuals": ["1/24", "1/24", "1/24"]
+      }
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "collective_matches_individuals": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "daughter": "7/8",
+      "wives": "1/8"
+    },
+    "individual_shares": {
+      "daughter": ["7/8"],
+      "wives": ["1/24", "1/24", "1/24"]
+    },
+    "warnings": [
+      "merged 'wife' and 'wives' entries into canonical 'wives' group (wife=3, wives=3, total=3)",
+      "normalized wives group to 'wives' (from label 'wife', count=3)"
+    ],
+    "input_roles": ["wives", "daughter"],
+
+    "shares": {},
+    "normalized_roles": ["wives","daughter"],
+    "warnings_contains": [
+      "merged 'wife' and 'wives'",
+      "normalized wives group to 'wives'"
+    ]
+
+  }
+}

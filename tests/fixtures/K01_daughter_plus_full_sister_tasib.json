@@ -1,0 +1,21 @@
+{
+  "case_id": "K01_daughter_plus_full_sister_tasib",
+  "input": {
+    "heirs": [
+      { "role": "daughter", "count": 1 },
+      { "role": "full_sister", "count": 1 }
+    ],
+    "cli_flags": ["--audit"]
+  },
+  "expected": {
+    "group_shares": {
+      "daughter": "1/2",
+      "full_sister": "1/2"
+    },
+    "sum_final": "1/1",
+    "invariants": { "sum_to_one": true },
+    "audit_asaba_alloc_contains": {
+      "full_sister": "1/2"
+    }
+  }
+}
