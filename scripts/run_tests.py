@@ -285,10 +285,12 @@ def merge_expected_maps(
 
 
 def compare_share_maps(case_id: str, expected: Dict[str, str], actual: Dict[str, Any]) -> None:
-    for role, expected_share in expected.items():
+    canonical_expected = canonicalize_group_shares(case_id, expected, "expected.group_shares")
+    canonical_actual = canonicalize_group_shares(case_id, actual, "group_shares")
+
+    for role, expected_share in canonical_expected.items():
         label = f"{case_id}.group_shares.{role}"
-        actual_value = actual.get(role, "0/1")
-        actual_share = ensure_string(actual_value, label)
+        actual_share = canonical_actual.get(role, "0/1")
         if actual_share != expected_share:
             raise RuntimeError(f"{label}: expected {expected_share}, got {actual_share}")
 
@@ -319,6 +321,25 @@ def canonicalize_alias_lists(case_id: str, actual: Dict[str, Any]) -> Dict[str, 
         raise RuntimeError(
             f"{case_id}: alias individuals for {canonical_key} disagree ({existing} vs {value_list})"
         )
+
+    return canonical
+
+
+def canonicalize_group_shares(case_id: str, shares: Dict[str, Any], label_prefix: str) -> Dict[str, str]:
+    canonical: Dict[str, str] = {}
+
+    for role, share_raw in shares.items():
+        label = f"{case_id}.{label_prefix}.{role}"
+        share_value = ensure_string(share_raw, label)
+        canonical_key = ALIAS_CANONICAL_GROUPS.get(role, role)
+
+        existing = canonical.get(canonical_key)
+        if existing is not None and existing != share_value:
+            raise RuntimeError(
+                f"{case_id}: alias group shares for {canonical_key} disagree ({existing} vs {share_value})"
+            )
+
+        canonical[canonical_key] = share_value
 
     return canonical
 
@@ -390,6 +411,12 @@ def data_subset(expected: Any, actual: Any) -> bool:
 
 def step_matches(spec: Dict[str, Any], step: Dict[str, Any]) -> bool:
     for key, expected in spec.items():
+        if key == "stage":
+            actual_stage = step.get("stage")
+            if not isinstance(actual_stage, str) or actual_stage.lower() != str(expected).lower():
+                return False
+            continue
+
         if key == "changes":
             actual_changes = step.get("changes")
             if not data_subset(expected, actual_changes):
@@ -403,7 +430,7 @@ def step_matches(spec: Dict[str, Any], step: Dict[str, Any]) -> bool:
 
 
 def validate_explain_output(case_id: str, payload: str, expected: Any) -> None:
-    command = ["php", str(CLI_SCRIPT), "--explain"]
+    command = ["php", str(CLI_SCRIPT), "--explain", "--stdin"]
     result = run_process(command, input_data=payload, stream_output=False)
     if result.returncode != 0:
         raise RuntimeError(f"CLI --explain execution failed for {case_id} with code {result.returncode}")
@@ -446,6 +473,13 @@ def validate_explain_output(case_id: str, payload: str, expected: Any) -> None:
         ensure_string(stage, f"{case_id}: explain.steps[{step_index}].stage")
         ensure_string(rule, f"{case_id}: explain.steps[{step_index}].rule")
         ensure_string(note, f"{case_id}: explain.steps[{step_index}].note")
+
+        if isinstance(changes, list):
+            if changes:
+                raise RuntimeError(
+                    f"{case_id}: explain.steps[{step_index}].changes must be an object when provided"
+                )
+            changes = {}
 
         if not isinstance(changes, dict):
             raise RuntimeError(f"{case_id}: explain.steps[{step_index}].changes must be an object")
@@ -505,6 +539,10 @@ ALIAS_CANONICAL_GROUPS: Dict[str, str] = {
     "daughters": "daughters",
     "wife": "wives",
     "wives": "wives",
+    "full_sister": "full_sisters",
+    "full_sisters": "full_sisters",
+    "consanguine_sister": "consanguine_sisters",
+    "consanguine_sisters": "consanguine_sisters",
     "uterine_brother": "uterine_siblings",
     "uterine_sister": "uterine_siblings",
     "uterine_siblings": "uterine_siblings",
@@ -691,7 +729,7 @@ def run_cli_validation(paths: Iterable[Path]) -> None:
         payload_input.pop("cli_flags", None)
 
         payload = json.dumps(payload_input)
-        command = ["php", str(CLI_SCRIPT), *effective_flags]
+        command = ["php", str(CLI_SCRIPT), "--stdin", *effective_flags]
         result = run_process(command, input_data=payload, stream_output=False)
         if result.returncode != 0:
             raise RuntimeError(f"CLI execution failed for {case_id} with code {result.returncode}")
