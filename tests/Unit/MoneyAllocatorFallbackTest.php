@@ -8,7 +8,6 @@ require_once __DIR__ . '/../../app/Domain/Math/Fraction.php';
 
 use App\Domain\Math\Fraction;
 use App\Services\MoneyAllocator;
-
 final class MoneyAllocatorFallbackTest extends MiniTestCase
 {
     public function testAllocateHandlesEstateValue(): void
@@ -31,5 +30,22 @@ final class MoneyAllocatorFallbackTest extends MiniTestCase
 
         $formattedTotal = sprintf('%d.%02d', intdiv($totalUnits, 100), $totalUnits % 100);
         $this->assertSame('1000.00', $formattedTotal);
+    }
+
+    public function testFallbackDivisionMatchesIntDiv(): void
+    {
+        $dividend = '999999999999';
+        $divisor = '3';
+
+        $bcDiv = new ReflectionMethod(MoneyAllocator::class, 'bcDiv');
+        $bcDiv->setAccessible(true);
+        $bcMod = new ReflectionMethod(MoneyAllocator::class, 'bcMod');
+        $bcMod->setAccessible(true);
+
+        $quotient = $bcDiv->invoke(null, $dividend, $divisor, 0);
+        $remainder = $bcMod->invoke(null, $dividend, $divisor);
+
+        $this->assertSame((string) intdiv(999999999999, 3), $quotient);
+        $this->assertSame('0', $remainder);
     }
 }
