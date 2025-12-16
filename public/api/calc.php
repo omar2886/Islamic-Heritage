@@ -31,6 +31,49 @@ if (!is_array($clean['heirs']) || count($clean['heirs']) === 0) {
   exit;
 }
 
+$validatedHeirs = [];
+
+foreach ($clean['heirs'] as $i => $h) {
+  if (!is_array($h)) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => "Heredero inválido en posición {$i}"]);
+    exit;
+  }
+
+  $role = $h['role'] ?? null;
+  $count = $h['count'] ?? null;
+
+  $role = is_string($role) ? trim($role) : '';
+  if ($role === '' || strlen($role) > 64) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => "Rol de heredero inválido en posición {$i}"]);
+    exit;
+  }
+
+  if (is_int($count)) {
+    $countInt = $count;
+  } elseif (is_string($count) && ctype_digit($count)) {
+    $countInt = (int) $count;
+  } else {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => "Cantidad inválida en posición {$i}"]);
+    exit;
+  }
+
+  if ($countInt < 1 || $countInt > 100) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => "Cantidad fuera de rango en posición {$i}"]);
+    exit;
+  }
+
+  $validatedHeirs[] = [
+    'role' => $role,
+    'count' => $countInt,
+  ];
+}
+
+$clean['heirs'] = $validatedHeirs;
+
 if (array_key_exists('estate_value', $data)) {
   $clean['estate_value'] = $data['estate_value'];
 }
