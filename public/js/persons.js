@@ -53,6 +53,36 @@ export function resetPersons(){
   Persons.list = []; Persons.byId.clear(); seq = 1;
   notifyChange();
 }
+
+export function hydratePersons(list = []){
+  resetPersons();
+  Persons.list = [];
+  Persons.byId.clear();
+
+  let nextSeq = 1;
+  list.forEach((data = {}) => {
+    const p = {
+      id: String(data.id || '').trim() || `P${nextSeq}`,
+      name: String(data.name || '').trim(),
+      sex: (['male', 'female'].includes(data.sex) ? data.sex : 'unknown'),
+      alive: data.alive !== false,
+      role: String(data.role || '').trim(),
+      fatherId: data.fatherId || null,
+      motherId: data.motherId || null,
+      spouseIds: Array.isArray(data.spouseIds) ? Array.from(new Set(data.spouseIds)) : [],
+    };
+    Persons.list.push(p);
+    Persons.byId.set(p.id, p);
+
+    const num = parseInt(String(p.id).replace(/\D/g, ''), 10);
+    if (Number.isFinite(num)) {
+      nextSeq = Math.max(nextSeq, num + 1);
+    }
+  });
+
+  seq = Math.max(nextSeq, Persons.list.length + 1);
+  notifyChange();
+}
 export function snapshotPersons(){
   return Persons.list.map(({id,name,sex,alive,role,fatherId,motherId,spouseIds}) =>
     ({id,name,sex,alive,role,fatherId:fatherId||null,motherId:motherId||null,spouseIds:Array.from(new Set(spouseIds||[]))}));

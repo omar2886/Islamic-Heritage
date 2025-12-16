@@ -1,6 +1,14 @@
 <?php
   $page = $_GET['page'] ?? 'home';
-  $targetId = $page === 'builder' ? 'builder-root' : ($page === 'results' ? 'results-root' : 'home-root');
+  if ($page === 'builder') {
+    $targetId = 'builder-root';
+  } elseif ($page === 'results') {
+    $targetId = 'results-root';
+  } elseif ($page === 'genealogy') {
+    $targetId = 'genealogy-root';
+  } else {
+    $targetId = 'home-root';
+  }
   $APP_BASE = $APP_BASE ?? (rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/'));
   $appBaseClean = rtrim($APP_BASE ?? '', '/');
   $navHref = function(string $dest) use ($appBaseClean) {
@@ -16,5 +24,6 @@
     <a href="<?= $navHref('home') ?>">Inicio</a>
     <a href="<?= $navHref('builder') ?>">Constructor</a>
     <a href="<?= $navHref('results') ?>">Resultados</a>
+    <a href="<?= $navHref('genealogy') ?>">Genealogía</a>
   </nav>
 </header>
