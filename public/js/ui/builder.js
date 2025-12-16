@@ -7,7 +7,7 @@ import { deriveCountsFromPersons, applyHierarchyScreening, deriveCountsGraph } f
 import { Persons } from '../persons.js';
 import { mountPersonsSection } from './persons.js';
 import { banner, filePicker, downloadJsonLink } from './components.js';
-import { loadTree as loadGenealogyTree, applyPersonsSnapshot, listTrees as listGenealogyTrees } from './genealogy.js';
+import { loadTree as loadGenealogyTree, applyPersonsSnapshot, listTrees as listGenealogyTrees, deleteTree as deleteGenealogyTree } from './genealogy.js';
 import { makeCase, applyCase, validateCaseShape } from '../caseio.js';
 import { saveDraft, loadDraft, clearDraft, hasDraft } from '../storage.js';
 
@@ -16,6 +16,15 @@ const num=(v)=>Number.isFinite(+v)?+v:0;
 
 let autosaveTimer = null;
 const FALLBACK_WARNING = 'No se pudieron derivar counts desde Personas; se conservaron los valores manuales.';
+
+function fillBannerList(target, title, items){
+  if (!target) return;
+  const list = el('ul',{class:'clean'});
+  (Array.isArray(items) ? items : [items]).filter(Boolean).forEach(item=>{
+    list.append(el('li',{}, String(item)));
+  });
+  target.replaceChildren(el('strong',{}, title), list);
+}
 
 function personsSource(){
   if (typeof window !== 'undefined' && Array.isArray(window.__PersonsSnapshot)) return window.__PersonsSnapshot;
@@ -182,7 +191,7 @@ function buildActions(root){
 
   function warnFallback(){
     preWarn.hidden = false;
-    preWarn.innerHTML = '<strong>Avisos</strong><ul class="clean"><li>' + FALLBACK_WARNING + '</li></ul>';
+    fillBannerList(preWarn, 'Avisos', [FALLBACK_WARNING]);
     preWarn.dataset.kind = 'warn';
     const cb = document.getElementById('usePersons');
     if (cb) cb.checked = false;
@@ -207,7 +216,7 @@ function buildActions(root){
     }
     if (!entries.length){
       preWarn.hidden = false;
-      preWarn.innerHTML = '<strong>Avisos</strong><ul class="clean"><li>' + FALLBACK_WARNING + '</li></ul>';
+      fillBannerList(preWarn, 'Avisos', [FALLBACK_WARNING]);
       preWarn.dataset.kind = 'warn';
       notifyModelChanged();
       preWarn.focus();
@@ -216,7 +225,7 @@ function buildActions(root){
     derived.forEach((n,r)=> setCount(r, n));
     notifyModelChanged();
     preWarn.hidden=false;
-    preWarn.innerHTML = '<strong>Counts derivados</strong><ul class="clean">' + entries.map(([r,n])=>`<li>${r}: ${n}</li>`).join('') + '</ul>';
+    fillBannerList(preWarn, 'Counts derivados', entries.map(([r,n])=>`${r}: ${n}`));
     preWarn.dataset.kind = 'info';
     preWarn.focus();
   });
@@ -271,7 +280,7 @@ function buildActions(root){
 
     if (allErrors.length){
       preErr.hidden=false;
-      preErr.innerHTML='<strong>Errores</strong><ul class="clean">'+allErrors.map(x=>`<li>${x}</li>`).join('')+'</ul>';
+      fillBannerList(preErr, 'Errores', allErrors);
       preErr.dataset.kind = 'errors';
       preErr.focus();
     }
@@ -282,7 +291,7 @@ function buildActions(root){
     }
     if (finalWarns.length){
       preWarn.hidden=false;
-      preWarn.innerHTML='<strong>Avisos</strong><ul class="clean">'+finalWarns.map(x=>`<li>${x}</li>`).join('')+'</ul>';
+      fillBannerList(preWarn, 'Avisos', finalWarns);
       preWarn.dataset.kind = 'warn';
     }
     else {
@@ -372,11 +381,27 @@ function preloadGenealogy(root){
   const treeId = params.get('tree_id');
   if (!treeId) return;
 
+  const showResetBanner = (message) => {
+    const resetBtn = el('button',{type:'button',class:'btn-secondary'},'Reset árbol');
+    resetBtn.addEventListener('click',()=>{
+      try { deleteGenealogyTree(treeId); } catch {}
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('tree_id');
+        window.location.href = url.toString();
+      } catch {
+        window.location.reload();
+      }
+    });
+    const b = banner('error','Genealogía no disponible', [message || 'No se pudo cargar el árbol solicitado en este dispositivo.']);
+    b.append(el('div',{class:'actions'}, resetBtn));
+    root.prepend(b); b.focus();
+  };
+
   try {
     const tree = loadGenealogyTree(treeId);
     if (!tree) {
-      const b = banner('error','No se pudo cargar el árbol','No se encontró el árbol solicitado en este dispositivo.');
-      root.prepend(b); b.focus();
+      showResetBanner('No se encontró el árbol solicitado en este dispositivo.');
       return;
     }
     if (!Array.isArray(tree.persons)) throw new Error('El árbol no contiene una lista de personas válida.');
@@ -392,8 +417,7 @@ function preloadGenealogy(root){
     const b = banner('info','Árbol precargado', [`Se cargó "${name}" desde Genealogía.`]);
     root.prepend(b); b.focus();
   } catch (e) {
-    const b = banner('error','Genealogía no disponible', e.message || e.toString());
-    root.prepend(b); b.focus();
+    showResetBanner(e?.message || e?.toString() || 'No se pudo cargar el árbol solicitado.');
   }
 }
 
@@ -428,7 +452,7 @@ function applyDerivedCountsFromPersonsIfPossible(root){
 export async function mount(){
   await loadRoles();
   const root = document.getElementById('builder-root');
-  root.innerHTML = '';
+  root.replaceChildren();
   buildHeader(root);
 
   preloadGenealogy(root);

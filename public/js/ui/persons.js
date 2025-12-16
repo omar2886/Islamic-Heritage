@@ -70,7 +70,7 @@ export function mountPersonsSection(root){
 
   function renderBody(){
     const tbody = table.querySelector('tbody');
-    tbody.innerHTML = '';
+    tbody.replaceChildren();
     Persons.list.forEach(p=>{
       const tr = el('tr',{'data-id':p.id});
       const rb = el('input',{type:'radio',name:'rbDecedent',checked:null});
