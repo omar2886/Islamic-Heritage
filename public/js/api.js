@@ -21,7 +21,7 @@ export async function getRoles(){
   }
 }
 
-export async function postCalc(payload){
+export async function postCalc(payload, opts = {}){
   const r = await fetch(CALC_URL,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
@@ -34,8 +34,11 @@ export async function postCalc(payload){
   }catch{
     // se maneja más arriba
   }
-  if (!r.ok && !json){
+  if (!json){
     throw new Error(`Respuesta no-JSON (${r.status})\n${t}`);
   }
-  return { status:r.status, ok:r.ok, json, text:t };
+  if (opts.meta===true){
+    return { status:r.status, ok:r.ok, json, text:t };
+  }
+  return json;
 }

@@ -11,3 +11,7 @@
 Thumbs.db
 __pycache__/
 *.log
+
+*.zip
+/public.zip
+/dist/
