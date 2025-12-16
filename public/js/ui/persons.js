@@ -64,9 +64,6 @@ export function mountPersonsSection(root){
       spouseIds: [],
     });
     renderBody();
-    if (typeof window !== 'undefined' && typeof window.__onModelChanged === 'function') {
-      try { window.__onModelChanged(); } catch (e) { /* noop */ }
-    }
   });
   sec.append(help, table, el('div',{class:'actions'}, btnAdd));
   root.append(sec);

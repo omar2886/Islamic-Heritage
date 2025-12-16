@@ -5,10 +5,15 @@ export const Persons = {
   byId: new Map(),
 };
 
+const listeners = [];
+
 function notifyChange(){
-  if (typeof window !== 'undefined' && typeof window.__onModelChanged === 'function') {
-    try { window.__onModelChanged(); } catch (e) { /* noop */ }
-  }
+  listeners.forEach(fn => { try { fn(); } catch (e) { /* noop */ } });
+  try {
+    if (typeof window !== 'undefined' && typeof window.__onModelChanged === 'function') {
+      window.__onModelChanged();
+    }
+  } catch (e) { /* noop */ }
 }
 
 export function addPerson(data = {}){
