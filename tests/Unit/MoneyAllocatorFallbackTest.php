@@ -34,6 +34,8 @@ final class MoneyAllocatorFallbackTest extends MiniTestCase
 
     public function testFallbackDivisionMatchesIntDiv(): void
     {
+        MoneyAllocator::__setForceFallbackForTests(true);
+
         $dividend = '999999999999';
         $divisor = '3';
 
@@ -47,5 +49,7 @@ final class MoneyAllocatorFallbackTest extends MiniTestCase
 
         $this->assertSame((string) intdiv(999999999999, 3), $quotient);
         $this->assertSame('0', $remainder);
+
+        MoneyAllocator::__setForceFallbackForTests(false);
     }
 }
