@@ -16,9 +16,7 @@ $libAbs = realpath($libRel);
 if (!$libAbs || !is_file($libAbs)) {
     jexit(500, [
         'ok' => false,
-        'error' => 'calc_lib_not_found',
-        'libRel' => $libRel,
-        'libAbs' => $libAbs
+        'error' => 'calc_lib_not_found'
     ]);
 }
 
