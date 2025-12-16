@@ -1,0 +1,14 @@
+/vendor/
+/storage/
+/public/genealogy/db/
+/public/genealogy/uploads/
+/public/_legacy_cleanup/
+/tests/.cache/
+composer.lock
+*.db
+*.sqlite
+*.sqlite3
+.DS_Store
+Thumbs.db
+__pycache__/
+*.log

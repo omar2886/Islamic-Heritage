@@ -6,17 +6,21 @@ public/
   index.php             Router simple (home, builder, results)
   css/styles.css        Estilos base (contraste ≥ 4.5:1, focus-visible)
   js/                   Módulos JS (sin frameworks)
-    app.js, router.js
+    boot-home.js        Entrypoint de la portada
+    boot-builder.js     Entrypoint del constructor (formulario)
+    boot-results.js     Entrypoint de resultados
     api.js, roles.js, validation.js, serializer.js
     state.js, persons.js, derive.js, aliases.js, caseio.js, storage.js
     ui/components.js, ui/builder.js, ui/persons.js, ui/results.js
   api/roles.php         Catálogo de roles (fallback si vacío)
-  tools/                (backend existente; NO se empaqueta en public.zip)
+  tools/explain_smoke.php
+                        Herramienta de backend para desarrollo
 
-Legacy PHP archivado en `docs/_legacy/` para que no forme parte del docroot.
+Legacy PHP archivado en `docs/_legacy/` (fuera del docroot) junto con `docs/_legacy_cleanup/`.
 
 Contrato de entrada al backend
 ------------------------------
+El endpoint estable se añadirá en /public/api/calc.php en un PR posterior; por ahora se usa la herramienta de desarrollo.
 POST public/tools/explain_smoke.php
 Content-Type: application/json
 
