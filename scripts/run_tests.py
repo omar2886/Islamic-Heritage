@@ -25,6 +25,14 @@ ELIGIBILITY_CLI_SCRIPT = ROOT / "scripts" / "eligibility_cli.php"
 CANONICAL_CASE_NUMBERS = list(range(1, 19)) + [21, 22, 23, 24]
 CANONICAL_CASE_PREFIXES = tuple(f"C{index:02d}" for index in CANONICAL_CASE_NUMBERS)
 ADDITIONAL_CASE_PREFIXES = ("C04b", "Z02")
+JS_SYNTAX_FILES: Tuple[str, ...] = (
+    "public/js/ui/builder.js",
+    "public/js/ui/results.js",
+    "public/js/bootstrap.js",
+    "public/js/boot-builder.js",
+    "public/js/boot-results.js",
+    "public/js/boot-home.js",
+)
 
 ASABA_MIXED_PAIRS: Tuple[Tuple[str, str], ...] = (
     ("son", "daughter"),
@@ -76,6 +84,18 @@ def run_fuzz_api() -> None:
     result = run_process(command)
     if result.returncode != 0:
         raise RuntimeError("HTTP API fuzz test failed.")
+
+
+def run_js_syntax_check() -> None:
+    version_check = run_process(["node", "--version"])
+    if version_check.returncode != 0:
+        raise RuntimeError("JS syntax check requires Node.js (node --version failed).")
+
+    for rel_path in JS_SYNTAX_FILES:
+        target = ROOT / rel_path
+        result = run_process(["node", "--check", str(target)])
+        if result.returncode != 0:
+            raise RuntimeError(f"JS syntax check failed for {rel_path}.")
 
 
 def load_fraction_cases() -> List[Dict[str, Any]]:
@@ -1202,6 +1222,7 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
 
 def main(argv: List[str]) -> int:
     try:
+        run_js_syntax_check()
         run_rulebook_smoke()
         cases = load_fraction_cases()
         run_fraction_validation(cases)

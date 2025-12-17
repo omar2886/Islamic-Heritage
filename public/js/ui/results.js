@@ -4,7 +4,7 @@ import { el, banner, tableKV, downloadJsonLink } from './components.js';
 import { loadStoredPayloads, clearStoredPayloads } from '../storage.js';
 
 function cleanBase(base){
-  return base ? String(base).replace(/\/+$, '') : '';
+  return base ? String(base).replace(/\/+$/, '') : '';
 }
 
 function appBase(){
