@@ -13,6 +13,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
 }
 
 $raw = file_get_contents('php://input');
+if ($raw !== false && strlen($raw) > 200000) {
+  http_response_code(413);
+  echo json_encode(['ok' => false, 'error' => 'Payload demasiado grande']);
+  exit;
+}
+
 if ($raw === false || trim($raw) === '') {
   http_response_code(400);
   echo json_encode(['ok' => false, 'error' => 'Body vacío']);
@@ -88,8 +94,29 @@ $clean = [];
       'count' => $countInt,
     ];
   }
+  $normalizedHeirs = [];
+  $roleIndex = [];
 
-$clean['heirs'] = $validatedHeirs;
+  foreach ($validatedHeirs as $heir) {
+    $role = $heir['role'];
+
+    if (isset($roleIndex[$role])) {
+      $normalizedHeirs[$roleIndex[$role]]['count'] += $heir['count'];
+    } else {
+      $roleIndex[$role] = count($normalizedHeirs);
+      $normalizedHeirs[] = $heir;
+    }
+  }
+
+  foreach ($normalizedHeirs as $i => $heir) {
+    if ($heir['count'] > 100) {
+      http_response_code(400);
+      echo json_encode(['ok' => false, 'error' => "Cantidad fuera de rango en posición {$i}"]);
+      exit;
+    }
+  }
+
+  $clean['heirs'] = $normalizedHeirs;
 
 if (array_key_exists('estate_value', $data)) {
   $estateValue = $data['estate_value'];
@@ -146,7 +173,90 @@ if (array_key_exists('currency', $data)) {
 }
 
 if (array_key_exists('ui_meta', $data)) {
-  $clean['ui_meta'] = $data['ui_meta'];
+  $uiMeta = $data['ui_meta'];
+
+  if (!is_array($uiMeta)) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'ui_meta inválido']);
+    exit;
+  }
+
+  $allowedMetaKeys = ['sex', 'decedentId', 'source'];
+  $filteredUiMeta = [];
+
+  foreach ($allowedMetaKeys as $key) {
+    if (array_key_exists($key, $uiMeta)) {
+      $filteredUiMeta[$key] = $uiMeta[$key];
+    }
+  }
+
+  if (array_key_exists('sex', $filteredUiMeta)) {
+    $sex = $filteredUiMeta['sex'];
+
+    if (!is_string($sex)) {
+      http_response_code(400);
+      echo json_encode(['ok' => false, 'error' => 'ui_meta inválido']);
+      exit;
+    }
+
+    $sex = trim($sex);
+
+    if (!in_array($sex, ['male', 'female', 'unknown'], true)) {
+      http_response_code(400);
+      echo json_encode(['ok' => false, 'error' => 'ui_meta inválido']);
+      exit;
+    }
+
+    $filteredUiMeta['sex'] = $sex;
+  }
+
+  if (array_key_exists('decedentId', $filteredUiMeta)) {
+    $decedentId = $filteredUiMeta['decedentId'];
+
+    if (!is_string($decedentId)) {
+      http_response_code(400);
+      echo json_encode(['ok' => false, 'error' => 'ui_meta inválido']);
+      exit;
+    }
+
+    $decedentId = trim($decedentId);
+
+    if (strlen($decedentId) > 32) {
+      http_response_code(400);
+      echo json_encode(['ok' => false, 'error' => 'ui_meta inválido']);
+      exit;
+    }
+
+    if ($decedentId !== '' && !preg_match('/^P[0-9]+$/', $decedentId)) {
+      http_response_code(400);
+      echo json_encode(['ok' => false, 'error' => 'ui_meta inválido']);
+      exit;
+    }
+
+    $filteredUiMeta['decedentId'] = $decedentId;
+  }
+
+  if (array_key_exists('source', $filteredUiMeta)) {
+    $source = $filteredUiMeta['source'];
+
+    if (!is_string($source)) {
+      http_response_code(400);
+      echo json_encode(['ok' => false, 'error' => 'ui_meta inválido']);
+      exit;
+    }
+
+    $source = trim($source);
+
+    if (strlen($source) > 40) {
+      http_response_code(400);
+      echo json_encode(['ok' => false, 'error' => 'ui_meta inválido']);
+      exit;
+    }
+
+    $filteredUiMeta['source'] = $source;
+  }
+
+  $clean['ui_meta'] = $filteredUiMeta;
 }
 
 $allowedFlags = ['--explain', '--audit'];
