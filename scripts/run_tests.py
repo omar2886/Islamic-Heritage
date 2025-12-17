@@ -41,7 +41,7 @@ FULL_SIBLING_PRIORITY_BLOCKS: Tuple[Tuple[str, ...], ...] = (
 )
 
 
-def discover_js_syntax_targets() -> List[Path]:
+def discover_js_files() -> List[Path]:
     targets: List[Path] = []
     if not JS_ROOT.exists():
         return targets
@@ -49,6 +49,8 @@ def discover_js_syntax_targets() -> List[Path]:
     for path in JS_ROOT.rglob("*.js"):
         relative = path.relative_to(JS_ROOT)
         if relative.parts and relative.parts[0] == "vendor":
+            continue
+        if path.name.endswith(".min.js"):
             continue
         targets.append(path)
 
@@ -137,7 +139,7 @@ def run_js_syntax_check() -> None:
     if version_check.returncode != 0:
         raise RuntimeError("JS syntax check requires Node.js (node --version failed).")
 
-    targets = discover_js_syntax_targets()
+    targets = discover_js_files()
     if not targets:
         raise RuntimeError(f"No JS files discovered under {JS_ROOT} for syntax check.")
 
