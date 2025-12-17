@@ -3,7 +3,10 @@ export const el=(t,a={},...k)=>{const n=document.createElement(t);for(const [k1,
 export function banner(kind, title, items){
   const div = el('div',{class:`banner ${kind}`, role: kind==='error'?'alert':'status', 'aria-live': kind==='error'?'assertive':'polite'});
   const h = el('strong',{}, title);
-  const ul = el('ul',{class:'clean'}, ...(Array.isArray(items)?items:[items]).filter(Boolean).map(x=>el('li',{}, String(x))));
+  const ulItems = (Array.isArray(items) ? items : [items])
+    .filter(Boolean)
+    .map(x => el('li',{}, x instanceof Node ? x : String(x)));
+  const ul = el('ul',{class:'clean'}, ...ulItems);
   div.append(h, ul);
   div.tabIndex = -1; // para foco programático
   return div;

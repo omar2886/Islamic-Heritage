@@ -49,7 +49,7 @@
     'builder' => 'js/boot-builder.js',
     'builder2' => 'js/boot-builder2.js',
     'results' => 'js/boot-results.js',
-    'results2' => 'js/boot-results.js',
+    'results2' => 'js/boot-results2.js',
     'home'    => 'js/boot-home.js',
     'genealogy' => 'js/boot-genealogy.js',
     'genealogy2' => 'js/boot-genealogy2.js',
