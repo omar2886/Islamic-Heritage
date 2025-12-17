@@ -1,22 +1,7 @@
 <?php
   $scriptName = $_SERVER['SCRIPT_NAME'] ?? '';
-
-  if (preg_match('#^(.*?/public)(?=/|$)#', $scriptName, $matches)) {
-    $PUBLIC_BASE = $matches[1];
-  } else {
-    $fallbackBase = rtrim(dirname($scriptName ?: '/'), '/');
-    if ($fallbackBase === '/') {
-      $fallbackBase = '';
-    }
-    $PUBLIC_BASE = $fallbackBase;
-  }
-
-  $appBase = dirname($scriptName ?: '/');
-  if ($appBase === '.' || $appBase === DIRECTORY_SEPARATOR) {
-    $APP_BASE = '';
-  } else {
-    $APP_BASE = $appBase;
-  }
+  $requestUri = $_SERVER['REQUEST_URI'] ?? '';
+  $requestPath = parse_url($requestUri, PHP_URL_PATH) ?? '';
 
   $normalizeBase = static function ($value) {
     if ($value === null) {
@@ -26,14 +11,38 @@
     return $trimmed === DIRECTORY_SEPARATOR ? '' : $trimmed;
   };
 
+  $detectPublicBase = static function (string $scriptName, string $requestPath) {
+    foreach ([$scriptName, $requestPath] as $candidate) {
+      if ($candidate && preg_match('#^(.*?/public)(?=/|$)#', $candidate, $matches)) {
+        return $matches[1];
+      }
+    }
+    $fallback = rtrim(dirname($requestPath ?: $scriptName ?: '/'), '/');
+    return $fallback === DIRECTORY_SEPARATOR ? '' : $fallback;
+  };
+
   $joinPath = static function (string $base, string $path) use ($normalizeBase): string {
     $cleanBase = $normalizeBase($base);
     $cleanPath = ltrim($path, '/');
     return $cleanBase === '' ? $cleanPath : $cleanBase . '/' . $cleanPath;
   };
 
-  $PUBLIC_BASE = $normalizeBase($PUBLIC_BASE ?? '');
-  $APP_BASE = $normalizeBase($APP_BASE ?? '');
+  $PUBLIC_BASE = $normalizeBase($detectPublicBase($scriptName, $requestPath));
+
+  $appBaseCandidates = [
+    dirname($scriptName ?: '/'),
+    dirname($requestPath ?: '/'),
+    $PUBLIC_BASE,
+  ];
+
+  $APP_BASE = '';
+  foreach ($appBaseCandidates as $candidate) {
+    $normalized = $normalizeBase($candidate);
+    if ($normalized !== '') {
+      $APP_BASE = $normalized;
+      break;
+    }
+  }
 
   $page = $_GET['page'] ?? 'home';
   $bootMap = [
@@ -53,6 +62,7 @@
   $pageTitle = $titleMap[$page] ?? 'Herencia Islámica';
 
   $cssHref = $joinPath($PUBLIC_BASE, 'css/styles.css');
+  $bootstrapSrc = $joinPath($PUBLIC_BASE, 'js/bootstrap.js');
   $bootSrc = $joinPath($PUBLIC_BASE, $bootPath);
   $URL_ROLES = $joinPath($PUBLIC_BASE, 'api/roles.php');
   $URL_CALC = $joinPath($PUBLIC_BASE, 'api/calc.php');
@@ -76,6 +86,8 @@
       tools: "<?= htmlspecialchars($URL_TOOLS, ENT_QUOTES, 'UTF-8') ?>"
     };
   </script>
+
+  <script src="<?= htmlspecialchars($bootstrapSrc, ENT_QUOTES, 'UTF-8') ?>" crossorigin="anonymous"></script>
 
   <script type="module" src="<?= htmlspecialchars($bootSrc, ENT_QUOTES, 'UTF-8') ?>"></script>
 </head>
