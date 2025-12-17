@@ -121,7 +121,8 @@
 
   async function probeImports(bootUrl){
     try {
-      const res = await fetch(bootUrl, { cache: 'no-store' });
+      const absBootUrl = new URL(bootUrl, window.location.href).toString();
+      const res = await fetch(absBootUrl, { cache: 'no-store' });
       const text = await res.text();
       const contentType = res.headers.get('content-type') || '';
       const summary = summarizeBody(text, contentType);
@@ -140,7 +141,7 @@
       }
       imports.forEach((spec) => {
         try {
-          const resolved = new URL(spec, bootUrl).toString();
+          const resolved = new URL(spec, absBootUrl).toString();
           const label = `import ${spec} → ${resolved}`;
           void probe(resolved, label);
         } catch (e){

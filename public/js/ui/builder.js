@@ -56,7 +56,7 @@ function notifyModelChanged(){
 window.__onModelChanged = notifyModelChanged; // personas y counts lo invocan
 
 function cleanBase(base){
-  return base ? String(base).replace(/\/+$, '') : '';
+  return base ? String(base).replace(/\/+$/, '') : '';
 }
 
 function joinBase(base, path){
