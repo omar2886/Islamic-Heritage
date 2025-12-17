@@ -139,11 +139,32 @@ def run_js_syntax_check() -> None:
     if version_check.returncode != 0:
         raise RuntimeError("JS syntax check requires Node.js (node --version failed).")
 
+    required_targets = [
+        ROOT / "public" / "js" / "bootstrap.js",
+        ROOT / "public" / "js" / "ui" / "builder.js",
+        ROOT / "public" / "js" / "ui" / "results.js",
+    ]
+
+    for target in required_targets:
+        if not target.exists():
+            rel_missing = target.relative_to(ROOT)
+            raise RuntimeError(f"Required JS file missing for syntax check: {rel_missing}")
+
+        result = run_process(["node", "--check", str(target)])
+        if result.returncode != 0:
+            rel_path = target.relative_to(ROOT)
+            raise RuntimeError(f"JS syntax check failed for {rel_path}.")
+
     targets = discover_js_files()
     if not targets:
         raise RuntimeError(f"No JS files discovered under {JS_ROOT} for syntax check.")
 
+    seen = {path.resolve() for path in required_targets}
     for target in targets:
+        resolved = target.resolve()
+        if resolved in seen:
+            continue
+
         rel_path = target.relative_to(ROOT)
         result = run_process(["node", "--check", str(target)])
         if result.returncode != 0:

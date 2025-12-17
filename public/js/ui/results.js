@@ -3,14 +3,19 @@ import { postCalc } from '../api.js';
 import { el, banner, tableKV, downloadJsonLink } from './components.js';
 import { loadStoredPayloads, clearStoredPayloads } from '../storage.js';
 
-function cleanBase(base){
-  return base ? String(base).replace(/\/+$/, '') : '';
-}
+const cleanBase = (v) => String(v || '').trim().replace(/\/+$/, '');
+const cleanPath = (v) => String(v || '').trim().replace(/^\/+/, '');
 
 function appBase(){
   if (typeof window === 'undefined') return '';
   return cleanBase(window.__APP_BASE__ || '');
 }
+
+const joinPath = (base, path) => {
+  const b = cleanBase(base);
+  const p = cleanPath(path);
+  return b ? `${b}/${p}` : `/${p}`;
+};
 
 let preferredBuilder = null;
 
@@ -18,7 +23,7 @@ function builderHref(){
   const base = appBase();
   const page = preferredBuilder || (document?.body?.dataset?.page === 'results2' ? 'builder2' : 'builder');
   const path = `index.php?page=${page}`;
-  return base ? `${base}/${path}` : path;
+  return joinPath(base, path);
 }
 
 function makeClearHandler(){
@@ -42,7 +47,7 @@ function calcUrl(){
   const configured = window.__URLS__?.calc;
   if (configured) return configured;
   const publicBase = cleanBase(window.__PUBLIC_BASE__ || '');
-  return publicBase ? `${publicBase}/api/calc.php` : 'api/calc.php';
+  return joinPath(publicBase, 'api/calc.php');
 }
 
 function normalizeServer(data){

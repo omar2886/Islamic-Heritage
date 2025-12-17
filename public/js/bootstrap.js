@@ -211,11 +211,22 @@
     }
   }
 
+  async function parseModuleImports(moduleUrl){
+    const res = await fetch(moduleUrl, { cache: 'no-store' });
+    const text = await res.text();
+    const regex = /import\s+(?:[^'";]+\s+from\s+)?['"]([^'"`]+)['"]/g;
+    const imports = new Set();
+    let m;
+    while ((m = regex.exec(text)) !== null){
+      if (m[1]) imports.add(m[1]);
+    }
+    return { imports, res, text };
+  }
+
   async function probeImports(bootUrl){
     try {
       const absBootUrl = new URL(bootUrl, window.location.href).toString();
-      const res = await fetch(absBootUrl, { cache: 'no-store' });
-      const text = await res.text();
+      const { imports, res, text } = await parseModuleImports(absBootUrl);
       const contentType = res.headers.get('content-type') || '';
       const summary = summarizeBody(text, contentType);
       const statusMsg = `boot-builder.js (lectura para imports): ${res.status}${res.statusText ? ' ' + res.statusText : ''} (${contentType || 'sin Content-Type'})`;
@@ -225,13 +236,8 @@
         addMessage(statusMsg, res.ok ? undefined : 'error');
       }
 
-      const regex = /import\s+(?:[^'";]+\s+from\s+)?['"]([^'"`]+)['"]/g;
-      const imports = new Set();
-      let m;
-      while ((m = regex.exec(text)) !== null){
-        if (m[1]) imports.add(m[1]);
-      }
-      imports.forEach((spec) => {
+      for (const spec of imports){
+        if (!spec.startsWith('.')) continue;
         try {
           const resolved = new URL(spec, absBootUrl).toString();
           const label = `import ${spec} → ${resolved}`;
@@ -239,7 +245,7 @@
         } catch (e){
           addMessage(`No se pudo resolver import ${spec}: ${e && e.message ? e.message : e}`, 'error');
         }
-      });
+      }
     } catch (err){
       addMessage(`No se pudieron analizar imports de boot-builder.js: ${err && err.message ? err.message : err}`, 'error');
     }

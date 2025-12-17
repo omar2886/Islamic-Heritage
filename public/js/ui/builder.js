@@ -55,14 +55,12 @@ function notifyModelChanged(){
 }
 window.__onModelChanged = notifyModelChanged; // personas y counts lo invocan
 
-function cleanBase(base){
-  return base ? String(base).replace(/\/+$/, '') : '';
-}
-
+const cleanBase = (v) => String(v || '').trim().replace(/\/+$/, '');
+const cleanPath = (v) => String(v || '').trim().replace(/^\/+/, '');
 function joinBase(base, path){
-  const clean = cleanBase(base);
-  const safePath = path.startsWith('/') ? path : `/${path}`;
-  return clean ? `${clean}${safePath}` : safePath;
+  const b = cleanBase(base);
+  const p = cleanPath(path);
+  return b ? `${b}/${p}` : `/${p}`;
 }
 
 function section(title,id){ return el('section',{class:'card',id,tabindex:'-1'},el('h2',{},title)); }
