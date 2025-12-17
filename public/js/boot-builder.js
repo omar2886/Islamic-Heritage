@@ -1,5 +1,7 @@
 import { mount as mountBuilder } from './ui/builder.js';
 
+window.__BOOT_BUILDER_STARTED__ = Date.now();
+
 function focusFirstRoot(){
   const ids = ['builder-root', 'results-root', 'home-root'];
   for (const id of ids){
@@ -17,7 +19,13 @@ function focusFirstRoot(){
 }
 
 async function init(){
-  await mountBuilder();
+  try {
+    await mountBuilder();
+  } catch (e) {
+    console.error(e);
+    window.__BOOT_BUILDER_ERROR__ = String(e?.stack || e);
+    throw e;
+  }
   focusFirstRoot();
 }
 

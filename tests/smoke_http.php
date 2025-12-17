@@ -81,9 +81,18 @@ $builder = request($base . '/public/index.php?page=builder');
 ensure($builder['status'] === 200, 'Builder no devolvió 200');
 ensure(strpos($builder['body'], 'Cargando constructor') !== false, 'No se encontró placeholder de constructor');
 
-$boot = request($base . '/public/js/boot-builder.js');
-ensure($boot['status'] === 200, 'boot-builder.js no devolvió 200');
-ensure(strpos($boot['content_type'], 'javascript') !== false, 'boot-builder.js no tiene Content-Type JS');
-ensure(strpos($boot['body'] ?? '', '<!doctype') === false, 'boot-builder.js devolvió HTML inesperado');
+$assets = [
+    '/public/js/boot-builder.js' => 'boot-builder.js',
+    '/public/js/ui/builder.js' => 'ui/builder.js',
+    '/public/js/ui/components.js' => 'ui/components.js',
+    '/public/js/api.js' => 'api.js',
+];
+
+foreach ($assets as $path => $label) {
+    $res = request($base . $path);
+    ensure($res['status'] === 200, sprintf('%s no devolvió 200', $label));
+    ensure(strpos($res['content_type'], 'javascript') !== false, sprintf('%s no tiene Content-Type JS', $label));
+    ensure(stripos($res['body'] ?? '', '<!doctype') === false, sprintf('%s devolvió HTML inesperado', $label));
+}
 
 echo "Smoke HTTP OK\n";
