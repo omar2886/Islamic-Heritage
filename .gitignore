@@ -4,6 +4,9 @@
 /public/genealogy/uploads/
 /public/_legacy_cleanup/
 /tests/.cache/
+/node_modules/
+/playwright-report/
+/test-results/
 *.db
 *.sqlite
 *.sqlite3
