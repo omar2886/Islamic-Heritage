@@ -443,6 +443,9 @@ function applyDerivedCountsFromPersonsIfPossible(root){
 export async function mount(){
   await loadRoles();
   const root = document.getElementById('builder-root');
+  if (!root){
+    throw new Error('Missing #builder-root');
+  }
   root.replaceChildren();
   buildHeader(root);
 
@@ -463,4 +466,5 @@ export async function mount(){
   buildActions(root);
   offerRestoreDraft(root);
   enforceUsePersonsDefault();
+  window.__BUILDER_MOUNTED__ = true;
 }

@@ -70,6 +70,18 @@
     list.appendChild(item);
   }
 
+  window.addEventListener('error', (event) => {
+    const where = [event.filename, event.lineno, event.colno].filter(Boolean).join(':');
+    const suffix = where ? ` (${where})` : '';
+    addMessage(`Error global: ${event.message}${suffix}`, 'error');
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event?.reason;
+    const detail = reason && (reason.stack || reason.message || reason) ? (reason.stack || reason.message || reason) : 'unknown';
+    addMessage(`Promesa no manejada: ${detail}`, 'error');
+  });
+
   function checkUiMounted(){
     const root = document.getElementById('builder-root');
     if (!root) return;
@@ -96,7 +108,7 @@
       const contentType = res.headers.get('content-type') || '';
       const text = await res.text();
       const summary = summarizeBody(text, contentType);
-      const statusMsg = `${label}: ${res.status}${res.statusText ? ' ' + res.statusText : ''}`;
+      const statusMsg = `${label}: ${res.status}${res.statusText ? ' ' + res.statusText : ''} (${contentType || 'sin Content-Type'})`;
       if (summary){
         addMessage(`${statusMsg} – ${summary}`, res.ok ? undefined : 'error');
       } else {
@@ -104,6 +116,57 @@
       }
     } catch (err){
       addMessage(`${label}: error al cargar (${err && err.message ? err.message : err})`, 'error');
+    }
+  }
+
+  async function probeImports(bootUrl){
+    try {
+      const res = await fetch(bootUrl, { cache: 'no-store' });
+      const text = await res.text();
+      const contentType = res.headers.get('content-type') || '';
+      const summary = summarizeBody(text, contentType);
+      const statusMsg = `boot-builder.js (lectura para imports): ${res.status}${res.statusText ? ' ' + res.statusText : ''} (${contentType || 'sin Content-Type'})`;
+      if (summary){
+        addMessage(`${statusMsg} – ${summary}`, res.ok ? undefined : 'error');
+      } else {
+        addMessage(statusMsg, res.ok ? undefined : 'error');
+      }
+
+      const regex = /import\s+(?:[^'";]+\s+from\s+)?['"]([^'"`]+)['"]/g;
+      const imports = new Set();
+      let m;
+      while ((m = regex.exec(text)) !== null){
+        if (m[1]) imports.add(m[1]);
+      }
+      imports.forEach((spec) => {
+        try {
+          const resolved = new URL(spec, bootUrl).toString();
+          const label = `import ${spec} → ${resolved}`;
+          void probe(resolved, label);
+        } catch (e){
+          addMessage(`No se pudo resolver import ${spec}: ${e && e.message ? e.message : e}`, 'error');
+        }
+      });
+    } catch (err){
+      addMessage(`No se pudieron analizar imports de boot-builder.js: ${err && err.message ? err.message : err}`, 'error');
+    }
+  }
+
+  function checkBootLifecycle(){
+    const started = Object.prototype.hasOwnProperty.call(window, '__BOOT_BUILDER_STARTED__');
+    const mounted = window.__BUILDER_MOUNTED__ === true;
+    const err = window.__BOOT_BUILDER_ERROR__;
+
+    if (!started){
+      addMessage('boot-builder.js no se evaluó (__BOOT_BUILDER_STARTED__ ausente).', 'error');
+      return;
+    }
+    if (!mounted){
+      if (err){
+        addMessage(`mountBuilder() falló: ${err}`, 'error');
+      } else {
+        addMessage('boot-builder.js se evaluó pero __BUILDER_MOUNTED__ sigue false (excepción o retorno anticipado).', 'error');
+      }
     }
   }
 
@@ -117,7 +180,10 @@
       const url = join(pb, t.path);
       void probe(url, t.label);
     });
+    const bootUrl = join(pb, 'js/boot-builder.js');
+    void probeImports(bootUrl);
     window.setTimeout(checkUiMounted, 1500);
+    window.setTimeout(checkBootLifecycle, 2000);
   }
 
   if (document.readyState === 'loading'){
