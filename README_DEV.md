@@ -3,9 +3,12 @@
 ## Pruebas locales
 
 * Smoke tests clásicos: `python3 scripts/run_tests.py`
-* Incluir auditoría UI/E2E (requiere PHP y Node): `python3 scripts/run_tests.py --include-e2e`
+* Auditoría UI/E2E en subruta local (requiere PHP y Node): `python3 scripts/run_tests.py --include-e2e`
+* Auditoría UI/E2E contra base remota existente: `python3 scripts/run_tests.py --include-e2e --e2e-base-url https://tafsir.es/Heritage/public/`
 
-El flag `--include-e2e` arranca automáticamente el servidor PHP de subruta en `http://127.0.0.1:8016/Heritage/public/` (mediante `scripts/dev_subpath_server.py`), ejecuta los tests de Playwright y luego detiene el servidor. Los artefactos de la auditoría (screenshots, HTML y `audit.json`) se escriben en `tests/e2e/artifacts/`.
+El flag `--include-e2e` arranca automáticamente el servidor PHP de subruta en `http://127.0.0.1:8016/Heritage/public/` (mediante `scripts/dev_subpath_server.py`), ejecuta los tests de Playwright y luego detiene el servidor. Los artefactos de la auditoría (screenshots, HTML y `audit.json`) se escriben en `tests/e2e/artifacts/`. Si ya tienes un entorno remoto accesible, puedes saltarte el servidor local y apuntar directamente a su base con `--e2e-base-url` (no se arrancará nada en local).
+
+Instala los browsers de Playwright una sola vez con `npx playwright install chromium` (o delega en el runner con `HERITAGE_E2E_INSTALL=1 python3 scripts/run_tests.py --include-e2e`).
 
 Si quieres levantar el servidor de subruta manualmente:
 
