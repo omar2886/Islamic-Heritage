@@ -3,6 +3,9 @@
 .container{max-width:980px;margin:0 auto;padding:1rem}
 h1{font-size:1.5rem;margin:.25rem 0 1rem}
 .nav a{margin-right:.75rem}
+.nav.nav-secondary{margin-top:.25rem;font-size:.95rem;color:var(--muted)}
+.nav.nav-secondary a{margin-right:.65rem}
+.nav .nav-label{font-weight:700;margin-right:.25rem;color:inherit}
 .btn{display:inline-block;border:1px solid #cbd5e1;border-radius:10px;padding:.5rem .8rem;text-decoration:none;color:inherit}
 .muted{color:var(--muted)}
 :focus{outline:3px solid transparent;box-shadow:0 0 0 3px var(--ring)}
