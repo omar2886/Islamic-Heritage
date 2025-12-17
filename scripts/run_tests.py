@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from decimal import Decimal, InvalidOperation
@@ -25,14 +26,7 @@ ELIGIBILITY_CLI_SCRIPT = ROOT / "scripts" / "eligibility_cli.php"
 CANONICAL_CASE_NUMBERS = list(range(1, 19)) + [21, 22, 23, 24]
 CANONICAL_CASE_PREFIXES = tuple(f"C{index:02d}" for index in CANONICAL_CASE_NUMBERS)
 ADDITIONAL_CASE_PREFIXES = ("C04b", "Z02")
-JS_SYNTAX_FILES: Tuple[str, ...] = (
-    "public/js/ui/builder.js",
-    "public/js/ui/results.js",
-    "public/js/bootstrap.js",
-    "public/js/boot-builder.js",
-    "public/js/boot-results.js",
-    "public/js/boot-home.js",
-)
+JS_ROOT = ROOT / "public" / "js"
 
 ASABA_MIXED_PAIRS: Tuple[Tuple[str, str], ...] = (
     ("son", "daughter"),
@@ -47,11 +41,27 @@ FULL_SIBLING_PRIORITY_BLOCKS: Tuple[Tuple[str, ...], ...] = (
 )
 
 
+def discover_js_syntax_targets() -> List[Path]:
+    targets: List[Path] = []
+    if not JS_ROOT.exists():
+        return targets
+
+    for path in JS_ROOT.rglob("*.js"):
+        relative = path.relative_to(JS_ROOT)
+        if relative.parts and relative.parts[0] == "vendor":
+            continue
+        targets.append(path)
+
+    targets.sort()
+    return targets
+
+
 def run_process(
     command: List[str],
     *,
     input_data: str | None = None,
     stream_output: bool = True,
+    env: Dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a subprocess and stream output to the current stdout/stderr."""
     result = subprocess.run(
@@ -61,6 +71,7 @@ def run_process(
         text=True,
         capture_output=True,
         check=False,
+        env=env,
     )
 
     if stream_output:
@@ -86,13 +97,32 @@ def run_fuzz_api() -> None:
         raise RuntimeError("HTTP API fuzz test failed.")
 
 
+def run_e2e_tests() -> None:
+    from dev_subpath_server import start_subpath_server
+
+    install = run_process(["npx", "playwright", "install", "chromium"])
+    if install.returncode != 0:
+        raise RuntimeError("Failed to install Playwright browsers.")
+
+    with start_subpath_server() as server:
+        env = os.environ.copy()
+        env["HERITAGE_BASE_URL"] = server.base_url
+        result = run_process(["npx", "playwright", "test"], env=env)
+        if result.returncode != 0:
+            raise RuntimeError("E2E UI audit failed.")
+
+
 def run_js_syntax_check() -> None:
     version_check = run_process(["node", "--version"])
     if version_check.returncode != 0:
         raise RuntimeError("JS syntax check requires Node.js (node --version failed).")
 
-    for rel_path in JS_SYNTAX_FILES:
-        target = ROOT / rel_path
+    targets = discover_js_syntax_targets()
+    if not targets:
+        raise RuntimeError(f"No JS files discovered under {JS_ROOT} for syntax check.")
+
+    for target in targets:
+        rel_path = target.relative_to(ROOT)
         result = run_process(["node", "--check", str(target)])
         if result.returncode != 0:
             raise RuntimeError(f"JS syntax check failed for {rel_path}.")
@@ -1217,11 +1247,17 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         action="store_true",
         help="run HTTP API fuzzing (starts embedded PHP server)",
     )
+    parser.add_argument(
+        "--include-e2e",
+        action="store_true",
+        help="run Playwright UI audit against subpath harness",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: List[str]) -> int:
     try:
+        args = parse_args(argv)
         run_js_syntax_check()
         run_rulebook_smoke()
         cases = load_fraction_cases()
@@ -1229,9 +1265,10 @@ def main(argv: List[str]) -> int:
         run_cli_validation(discover_cli_fixtures())
         eligibility_cases = load_eligibility_cases(ELIGIBILITY_CASES_FILE)
         run_eligibility_cases(eligibility_cases)
-        args = parse_args(argv)
         if args.include_fuzz:
             run_fuzz_api()
+        if args.include_e2e:
+            run_e2e_tests()
     except RuntimeError as exc:
         sys.stderr.write(f"{exc}\n")
         return 1

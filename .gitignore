@@ -4,6 +4,7 @@
 /public/genealogy/uploads/
 /public/_legacy_cleanup/
 /tests/.cache/
+/tests/e2e/artifacts/
 /node_modules/
 /playwright-report/
 /test-results/
