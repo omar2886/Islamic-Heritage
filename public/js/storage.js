@@ -50,22 +50,25 @@ export function persistPayload(payload){
 export function loadStoredPayloads(){
   let source = null;
   let payload = null;
+
   try {
     const sessionCopy = sessionStorage.getItem(PAYLOAD_KEY);
     if (sessionCopy) {
       payload = JSON.parse(sessionCopy);
       source = 'session';
-    } else {
+    }
+  } catch {}
+
+  if (!payload){
+    try {
       const localCopy = localStorage.getItem(LAST_PAYLOAD_KEY);
       if (localCopy) {
         payload = JSON.parse(localCopy);
         source = 'local';
       }
-    }
-  } catch {
-    source = null;
-    payload = null;
+    } catch {}
   }
+
   return { source, payload };
 }
 

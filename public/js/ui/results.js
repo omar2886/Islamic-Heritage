@@ -1,7 +1,7 @@
 // results.js — POST al backend y render con utilidades de copia
 import { postCalc } from '../api.js';
 import { el, banner, tableKV, downloadJsonLink } from './components.js';
-import { loadStoredPayloads, clearStoredPayloads, PAYLOAD_KEY } from '../storage.js';
+import { loadStoredPayloads, clearStoredPayloads } from '../storage.js';
 
 function cleanBase(base){
   return base ? String(base).replace(/\/+$, '') : '';
@@ -211,18 +211,16 @@ export async function mount(){
   const { source, payload } = loadStoredPayloads();
 
   if (!payload || !payload.heirs){
-    content.append(
-      banner('warn','Sin payload','No se encontró ningún payload en sessionStorage (heritage_payload) ni en localStorage (heritage_last_payload). Vuelve al Constructor.'),
-      el('p',{}, el('a',{href:builderHref(), class:'btn'}, 'Ir al Constructor'))
-    );
+    const warn = banner('warn','Sin payload','No se encontró ningún payload en sessionStorage (heritage_payload) ni en localStorage (heritage_last_payload). Vuelve al Constructor.');
+    const back = el('p',{}, el('a',{href:builderHref(), class:'btn'}, 'Ir al Constructor'));
+    content.replaceChildren(warn, back);
     return;
   }
 
   if (source === 'local'){
-    try { sessionStorage.setItem(PAYLOAD_KEY, JSON.stringify(payload)); } catch {}
-    const info = banner('info','Recuperado del último cálculo','Se cargó el último payload guardado en este navegador.');
+    const info = banner('info','Recuperado desde local','Se cargó el último payload guardado en este navegador.');
     const actions = el('div',{class:'actions'},
-      el('button',{type:'button',class:'btn-secondary'}, 'Limpiar')
+      el('button',{type:'button',class:'btn-secondary'}, 'Limpiar cache')
     );
     const clearBtn = actions.querySelector('button');
     clearBtn.addEventListener('click', handleClear);
