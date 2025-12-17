@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -17,6 +18,7 @@ SMOKE_SCRIPT = ROOT / "scripts" / "smoke_rulebook.php"
 FRACTION_SMOKE_SCRIPT = ROOT / "scripts" / "fraction_smoke.php"
 CLI_SCRIPT = ROOT / "scripts" / "calc_cli.php"
 VERIFY_LINEAR_SYSTEM_SCRIPT = ROOT / "scripts" / "verify_linear_system.py"
+FUZZ_SCRIPT = ROOT / "scripts" / "fuzz_api_calc.py"
 CLI_FIXTURE_DIR = ROOT / "tests" / "fixtures"
 ELIGIBILITY_CASES_FILE = ROOT / "tests" / "fixtures" / "eligibility_cases.json"
 ELIGIBILITY_CLI_SCRIPT = ROOT / "scripts" / "eligibility_cli.php"
@@ -67,6 +69,13 @@ def run_rulebook_smoke() -> None:
     result = run_process(command)
     if result.returncode != 0:
         raise RuntimeError("Rulebook smoke test failed.")
+
+
+def run_fuzz_api() -> None:
+    command = [sys.executable, str(FUZZ_SCRIPT), "--cases", "200"]
+    result = run_process(command)
+    if result.returncode != 0:
+        raise RuntimeError("HTTP API fuzz test failed.")
 
 
 def load_fraction_cases() -> List[Dict[str, Any]]:
@@ -1181,7 +1190,17 @@ def run_eligibility_cases(cases: List[Dict[str, Any]]) -> None:
         print(f"Eligibility cases: {passed}/{total} passed")
 
 
-def main() -> int:
+def parse_args(argv: List[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run repository smoke tests")
+    parser.add_argument(
+        "--include-fuzz",
+        action="store_true",
+        help="run HTTP API fuzzing (starts embedded PHP server)",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: List[str]) -> int:
     try:
         run_rulebook_smoke()
         cases = load_fraction_cases()
@@ -1189,6 +1208,9 @@ def main() -> int:
         run_cli_validation(discover_cli_fixtures())
         eligibility_cases = load_eligibility_cases(ELIGIBILITY_CASES_FILE)
         run_eligibility_cases(eligibility_cases)
+        args = parse_args(argv)
+        if args.include_fuzz:
+            run_fuzz_api()
     except RuntimeError as exc:
         sys.stderr.write(f"{exc}\n")
         return 1
@@ -1197,4 +1219,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
