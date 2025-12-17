@@ -150,6 +150,13 @@ def run_js_syntax_check() -> None:
             raise RuntimeError(f"JS syntax check failed for {rel_path}.")
 
 
+def run_js_graph_validate_smoke() -> None:
+    script = ROOT / "tests" / "js_graph_validate_smoke.js"
+    result = run_process(["node", str(script)])
+    if result.returncode != 0:
+        raise RuntimeError("Genealogy graph validation smoke test failed.")
+
+
 def load_fraction_cases() -> List[Dict[str, Any]]:
     try:
         raw = FRACTION_FIXTURE.read_text(encoding="utf-8")
@@ -1286,6 +1293,7 @@ def main(argv: List[str]) -> int:
     try:
         args = parse_args(argv)
         run_js_syntax_check()
+        run_js_graph_validate_smoke()
         run_rulebook_smoke()
         cases = load_fraction_cases()
         run_fraction_validation(cases)

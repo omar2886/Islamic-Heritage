@@ -50,6 +50,7 @@
     'results' => 'js/boot-results.js',
     'home'    => 'js/boot-home.js',
     'genealogy' => 'js/boot-genealogy.js',
+    'genealogy2' => 'js/boot-genealogy2.js',
   ];
   $bootPath = $bootMap[$page] ?? $bootMap['home'];
 
@@ -58,6 +59,7 @@
     'builder' => 'Herencia Islámica – Constructor',
     'results' => 'Herencia Islámica – Resultados',
     'genealogy' => 'Herencia Islámica – Genealogía',
+    'genealogy2' => 'Herencia Islámica – Genealogía V2',
   ];
   $pageTitle = $titleMap[$page] ?? 'Herencia Islámica';
 
