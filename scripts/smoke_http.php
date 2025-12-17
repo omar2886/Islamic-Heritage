@@ -137,6 +137,13 @@ try {
         exit(1);
     }
 
+    $largeDecoded = json_decode($largeResponse, true);
+    $largeError = $largeDecoded['error'] ?? '';
+    if ($largeError !== 'Payload demasiado grande') {
+        fwrite(STDERR, sprintf('[FAIL] error inesperado para payload grande: %s\n', is_string($largeError) ? $largeError : '(sin error)'));
+        exit(1);
+    }
+
     echo "[OK] API calc rechaza payload grande con 413\n";
 
     $invalidUiMetaContext = stream_context_create([
@@ -196,7 +203,7 @@ try {
 
     $unknownDecoded = json_decode($unknownResponse, true);
     $unknownError = $unknownDecoded['error'] ?? '';
-    if ($unknownError !== 'Rol de heredero inválido en posición 0') {
+    if ($unknownError !== 'Rol desconocido en posición 0') {
         fwrite(STDERR, sprintf('[FAIL] error inesperado para rol unknown: %s\n', is_string($unknownError) ? $unknownError : '(sin error)'));
         exit(1);
     }
