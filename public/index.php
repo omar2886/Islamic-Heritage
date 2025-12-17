@@ -1,6 +1,6 @@
 <?php declare(strict_types=1);
 $PAGE = $_GET['page'] ?? 'home';
-$valid = ['home','builder','results','genealogy','genealogy2'];
+$valid = ['home','builder','builder2','results','results2','genealogy','genealogy2'];
 if (!in_array($PAGE, $valid, true)) $PAGE = 'notfound';
 
 require __DIR__.'/partials/head.php';

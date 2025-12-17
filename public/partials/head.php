@@ -47,7 +47,9 @@
   $page = $_GET['page'] ?? 'home';
   $bootMap = [
     'builder' => 'js/boot-builder.js',
+    'builder2' => 'js/boot-builder2.js',
     'results' => 'js/boot-results.js',
+    'results2' => 'js/boot-results.js',
     'home'    => 'js/boot-home.js',
     'genealogy' => 'js/boot-genealogy.js',
     'genealogy2' => 'js/boot-genealogy2.js',
@@ -57,7 +59,9 @@
   $titleMap = [
     'home' => 'Herencia Islámica – Inicio',
     'builder' => 'Herencia Islámica – Constructor',
+    'builder2' => 'Herencia Islámica – Constructor V2',
     'results' => 'Herencia Islámica – Resultados',
+    'results2' => 'Herencia Islámica – Resultados V2',
     'genealogy' => 'Herencia Islámica – Genealogía',
     'genealogy2' => 'Herencia Islámica – Genealogía V2',
   ];
