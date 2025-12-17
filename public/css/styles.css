@@ -40,3 +40,44 @@ table.compact th, table.compact td { padding: .35rem .45rem; font-size: .95rem; 
 details.explain { border: 1px solid #e2e8f0; border-radius: .75rem; padding: .5rem .75rem; background: #fff; }
 details.explain summary { font-weight: 700; cursor: pointer; padding: .25rem 0; }
 details.explain section { margin-top: .5rem; }
+
+/* Genealogía V2 */
+.layout-2col { display: grid; grid-template-columns: minmax(320px, 360px) 1fr; gap: 1rem; align-items: start; }
+@media (max-width: 900px) { .layout-2col { grid-template-columns: 1fr; } }
+
+.panel { border: 1px solid #e2e8f0; border-radius: .85rem; background: #fff; box-shadow: 0 3px 10px rgba(0,0,0,0.04); }
+.panel-head { display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid #e2e8f0; gap: .75rem; }
+.panel-body { padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
+.inline-actions { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: flex-end; }
+.page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.page-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+.btn { display: inline-flex; align-items: center; gap: .35rem; border-radius: .65rem; padding: .45rem .8rem; border: 1px solid #cbd5e1; background: #f8fafc; cursor: pointer; }
+.btn-primary { background: #0f766e; color: #fff; border-color: #0f766e; }
+.btn-ghost { background: transparent; border: 1px dashed #94a3b8; color: #0f172a; }
+.btn-danger { background: #b91c1c; color: #fff; border-color: #b91c1c; }
+.btn:disabled { opacity: .6; cursor: not-allowed; }
+
+.banner { padding: .75rem .9rem; border-radius: .65rem; border: 1px solid transparent; white-space: pre-line; }
+.banner-error { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
+.banner-warn { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+
+.list { display: flex; flex-direction: column; gap: .6rem; }
+.card { border: 1px solid #e2e8f0; border-radius: .75rem; padding: .75rem .9rem; background: #fff; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.card:hover { border-color: #cbd5e1; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.card.active { border-color: #0f766e; box-shadow: 0 0 0 2px rgba(15,118,110,0.2); }
+.card-title { font-weight: 700; margin-bottom: .25rem; }
+.card-meta { color: #475569; font-size: .9rem; }
+
+.chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+.chip { display: inline-flex; align-items: center; gap: .4rem; padding: .35rem .5rem; border-radius: 999px; background: #f1f5f9; border: 1px solid #e2e8f0; }
+.chip-close { border: none; background: transparent; cursor: pointer; font-size: 1rem; line-height: 1; }
+.chip-close:hover { color: #b91c1c; }
+
+.field span { display: block; margin-bottom: .15rem; font-weight: 600; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .75rem; }
+.hr { border-top: 1px solid #e2e8f0; margin: .75rem 0; }
+.spacer { height: .5rem; }
+.stats { color: #475569; font-size: .95rem; }
+.empty { color: #94a3b8; padding: .5rem 0; }
+.footer-actions { display: flex; gap: .5rem; justify-content: flex-end; flex-wrap: wrap; }
