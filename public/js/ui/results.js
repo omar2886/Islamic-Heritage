@@ -12,9 +12,12 @@ function appBase(){
   return cleanBase(window.__APP_BASE__ || '');
 }
 
+let preferredBuilder = null;
+
 function builderHref(){
   const base = appBase();
-  const path = 'index.php?page=builder';
+  const page = preferredBuilder || (document?.body?.dataset?.page === 'results2' ? 'builder2' : 'builder');
+  const path = `index.php?page=${page}`;
   return base ? `${base}/${path}` : path;
 }
 
@@ -209,6 +212,9 @@ export async function mount(){
   root.append(renderActions(handleClear), content);
 
   const { source, payload } = loadStoredPayloads();
+  if (payload?.ui_meta?.source === 'builder2') {
+    preferredBuilder = 'builder2';
+  }
 
   if (!payload || !payload.heirs){
     const warn = banner('warn','Sin payload','No se encontró ningún payload en sessionStorage (heritage_payload) ni en localStorage (heritage_last_payload). Vuelve al Constructor.');
