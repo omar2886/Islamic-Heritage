@@ -97,19 +97,39 @@ def run_fuzz_api() -> None:
         raise RuntimeError("HTTP API fuzz test failed.")
 
 
-def run_e2e_tests() -> None:
-    from dev_subpath_server import start_subpath_server
-
-    install = run_process(["npx", "playwright", "install", "chromium"])
-    if install.returncode != 0:
-        raise RuntimeError("Failed to install Playwright browsers.")
-
-    with start_subpath_server() as server:
+def run_e2e_tests(base_url: str | None) -> None:
+    def execute_tests(resolved_base_url: str) -> None:
         env = os.environ.copy()
-        env["HERITAGE_BASE_URL"] = server.base_url
+        env["HERITAGE_BASE_URL"] = resolved_base_url
         result = run_process(["npx", "playwright", "test"], env=env)
         if result.returncode != 0:
+            combined_output = f"{result.stdout}{result.stderr}".lower()
+            if (
+                "browser executable doesn't exist" in combined_output
+                or "executable doesn't exist" in combined_output
+            ):
+                raise RuntimeError(
+                    "Playwright browser executable not found. Install browsers with: "
+                    "npx playwright install chromium\n"
+                    "Or re-run with HERITAGE_E2E_INSTALL=1 python3 scripts/run_tests.py "
+                    "--include-e2e"
+                )
+
             raise RuntimeError("E2E UI audit failed.")
+
+    if os.environ.get("HERITAGE_E2E_INSTALL") == "1":
+        install = run_process(["npx", "playwright", "install", "chromium"])
+        if install.returncode != 0:
+            raise RuntimeError("Failed to install Playwright browsers.")
+
+    if base_url is not None:
+        execute_tests(base_url)
+        return
+
+    from dev_subpath_server import start_subpath_server
+
+    with start_subpath_server() as server:
+        execute_tests(server.base_url)
 
 
 def run_js_syntax_check() -> None:
@@ -1252,6 +1272,11 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         action="store_true",
         help="run Playwright UI audit against subpath harness",
     )
+    parser.add_argument(
+        "--e2e-base-url",
+        type=str,
+        help="use an existing Heritage base URL instead of starting the local subpath server",
+    )
     return parser.parse_args(argv)
 
 
@@ -1268,7 +1293,7 @@ def main(argv: List[str]) -> int:
         if args.include_fuzz:
             run_fuzz_api()
         if args.include_e2e:
-            run_e2e_tests()
+            run_e2e_tests(args.e2e_base_url)
     except RuntimeError as exc:
         sys.stderr.write(f"{exc}\n")
         return 1
