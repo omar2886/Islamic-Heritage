@@ -118,6 +118,60 @@ try {
 
     echo "[OK] API roles expone catálogo sin 'unknown'\n";
 
+    $largeBody = str_repeat('a', 210000);
+    $largeContext = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => "Content-Type: application/json\r\n",
+            'content' => $largeBody,
+            'ignore_errors' => true,
+            'timeout' => 5,
+        ],
+    ]);
+
+    $largeResponse = @file_get_contents("http://127.0.0.1:{$port}/api/calc.php", false, $largeContext);
+    $largeStatus = $http_response_header[0] ?? '';
+
+    if (strpos($largeStatus, ' 413 ') === false) {
+        fwrite(STDERR, sprintf('[FAIL] HTTP inesperado para payload grande: %s\n', $largeStatus));
+        exit(1);
+    }
+
+    echo "[OK] API calc rechaza payload grande con 413\n";
+
+    $invalidUiMetaContext = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => "Content-Type: application/json\r\n",
+            'content' => json_encode([
+                'heirs' => [
+                    ['role' => 'husband', 'count' => 1],
+                ],
+                'ui_meta' => 'x',
+            ], JSON_UNESCAPED_SLASHES),
+            'ignore_errors' => true,
+            'timeout' => 5,
+        ],
+    ]);
+
+    $invalidUiMetaResponse = @file_get_contents("http://127.0.0.1:{$port}/api/calc.php", false, $invalidUiMetaContext);
+    $invalidUiMetaStatus = $http_response_header[0] ?? '';
+
+    if (strpos($invalidUiMetaStatus, ' 400 ') === false) {
+        fwrite(STDERR, sprintf('[FAIL] HTTP inesperado para ui_meta inválido: %s\n', $invalidUiMetaStatus));
+        exit(1);
+    }
+
+    $invalidUiMetaDecoded = json_decode($invalidUiMetaResponse, true);
+    $invalidUiMetaError = $invalidUiMetaDecoded['error'] ?? '';
+
+    if ($invalidUiMetaError !== 'ui_meta inválido') {
+        fwrite(STDERR, sprintf('[FAIL] error inesperado para ui_meta inválido: %s\n', is_string($invalidUiMetaError) ? $invalidUiMetaError : '(sin error)'));
+        exit(1);
+    }
+
+    echo "[OK] API calc valida ui_meta y rechaza tipos inválidos con 400\n";
+
     $unknownContext = stream_context_create([
         'http' => [
             'method' => 'POST',
@@ -148,6 +202,37 @@ try {
     }
 
     echo "[OK] API calc rechaza rol 'unknown' con 400 específico\n";
+
+    $duplicateContext = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => "Content-Type: application/json\r\n",
+            'content' => json_encode([
+                'heirs' => [
+                    ['role' => 'wife', 'count' => 1],
+                    ['role' => 'wife', 'count' => 2],
+                ],
+            ], JSON_UNESCAPED_SLASHES),
+            'ignore_errors' => true,
+            'timeout' => 5,
+        ],
+    ]);
+
+    $duplicateResponse = @file_get_contents("http://127.0.0.1:{$port}/api/calc.php", false, $duplicateContext);
+    $duplicateStatus = $http_response_header[0] ?? '';
+
+    if (strpos($duplicateStatus, ' 200 ') === false) {
+        fwrite(STDERR, sprintf('[FAIL] HTTP inesperado para herederos duplicados: %s\n', $duplicateStatus));
+        exit(1);
+    }
+
+    $duplicateDecoded = json_decode($duplicateResponse, true);
+    if (!is_array($duplicateDecoded) || ($duplicateDecoded['ok'] ?? false) !== true) {
+        fwrite(STDERR, '[FAIL] respuesta inesperada para herederos duplicados normalizados\n');
+        exit(1);
+    }
+
+    echo "[OK] API calc normaliza herederos duplicados y responde 200\n";
 } finally {
     if (is_resource($server)) {
         proc_terminate($server);
