@@ -34,89 +34,82 @@ if (!is_array($data)) {
 
 $clean = [];
 
-  $clean['heirs'] = $data['heirs'] ?? null;
-  if (!is_array($clean['heirs']) || count($clean['heirs']) === 0) {
+$heirs = $data['heirs'] ?? null;
+if (!is_array($heirs) || $heirs === []) {
+  http_response_code(400);
+  echo json_encode(['ok' => false, 'error' => 'Lista de herederos requerida']);
+  exit;
+}
+
+$allowedRoles = RolesCatalog::heirRoles();
+$validatedHeirs = [];
+foreach ($heirs as $i => $heir) {
+  if (!is_array($heir)) {
     http_response_code(400);
-    echo json_encode(['ok' => false, 'error' => 'Lista de herederos requerida']);
+    echo json_encode(['ok' => false, 'error' => "Heredero inválido en posición {$i}"]);
     exit;
   }
 
-  $validatedHeirs = [];
-  $allowedRoles = RolesCatalog::heirRoles();
+  $role = $heir['role'] ?? null;
+  $count = $heir['count'] ?? null;
 
-  foreach ($clean['heirs'] as $i => $h) {
-    if (!is_array($h)) {
-      http_response_code(400);
-      echo json_encode(['ok' => false, 'error' => "Heredero inválido en posición {$i}"]);
-      exit;
-    }
-
-    $role = $h['role'] ?? null;
-    $count = $h['count'] ?? null;
-
-    $role = is_string($role) ? trim($role) : '';
-    if ($role === '' || strlen($role) > 64) {
-      http_response_code(400);
-      echo json_encode(['ok' => false, 'error' => "Rol de heredero inválido en posición {$i}"]);
-      exit;
-    }
-
-    if ($role === 'unknown') {
-      http_response_code(400);
-      echo json_encode(['ok' => false, 'error' => "Rol de heredero inválido en posición {$i}"]);
-      exit;
-    }
-
-    if (!in_array($role, $allowedRoles, true)) {
-      http_response_code(400);
-      echo json_encode(['ok' => false, 'error' => "Rol desconocido en posición {$i}"]);
-      exit;
-    }
-
-    if (is_int($count)) {
-      $countInt = $count;
-    } elseif (is_string($count) && ctype_digit($count)) {
-      $countInt = (int) $count;
-    } else {
-      http_response_code(400);
-      echo json_encode(['ok' => false, 'error' => "Cantidad inválida en posición {$i}"]);
-      exit;
-    }
-
-    if ($countInt < 1 || $countInt > 100) {
-      http_response_code(400);
-      echo json_encode(['ok' => false, 'error' => "Cantidad fuera de rango en posición {$i}"]);
-      exit;
-    }
-
-    $validatedHeirs[] = [
-      'role' => $role,
-      'count' => $countInt,
-    ];
-  }
-  $normalizedHeirs = [];
-  $roleIndex = [];
-
-  foreach ($validatedHeirs as $heir) {
-    $role = $heir['role'];
-
-    if (isset($roleIndex[$role])) {
-      $normalizedHeirs[$roleIndex[$role]]['count'] += $heir['count'];
-    } else {
-      $roleIndex[$role] = count($normalizedHeirs);
-      $normalizedHeirs[] = $heir;
-    }
+  $role = is_string($role) ? trim($role) : '';
+  if ($role === '' || strlen($role) > 64) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => "Rol de heredero inválido en posición {$i}"]);
+    exit;
   }
 
-  foreach ($normalizedHeirs as $i => $heir) {
-    if ($heir['count'] > 100) {
-      http_response_code(400);
-      echo json_encode(['ok' => false, 'error' => "Cantidad fuera de rango en posición {$i}"]);
-      exit;
-    }
+  if (!in_array($role, $allowedRoles, true)) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => "Rol desconocido en posición {$i}"]);
+    exit;
   }
 
-  $clean['heirs'] = $normalizedHeirs;
+  if (is_int($count)) {
+    $countInt = $count;
+  } elseif (is_string($count) && ctype_digit($count)) {
+    $countInt = (int) $count;
+  } else {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => "Cantidad inválida en posición {$i}"]);
+    exit;
+  }
+
+  if ($countInt < 1 || $countInt > 100) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => "Cantidad fuera de rango en posición {$i}"]);
+    exit;
+  }
+
+  $validatedHeirs[] = [
+    'role' => $role,
+    'count' => $countInt,
+  ];
+}
+
+$normalizedHeirs = [];
+$roleIndex = [];
+foreach ($validatedHeirs as $heir) {
+  $role = $heir['role'];
+
+  if (isset($roleIndex[$role])) {
+    $normalizedHeirs[$roleIndex[$role]]['count'] += $heir['count'];
+  } else {
+    $roleIndex[$role] = count($normalizedHeirs);
+    $normalizedHeirs[] = $heir;
+  }
+}
+
+foreach ($normalizedHeirs as $i => $heir) {
+  if ($heir['count'] > 100) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => "Cantidad fuera de rango en posición {$i}"]);
+    exit;
+  }
+}
+
+$clean['heirs'] = $normalizedHeirs;
 
 if (array_key_exists('estate_value', $data)) {
   $estateValue = $data['estate_value'];
@@ -256,7 +249,9 @@ if (array_key_exists('ui_meta', $data)) {
     $filteredUiMeta['source'] = $source;
   }
 
-  $clean['ui_meta'] = $filteredUiMeta;
+  if (!empty($filteredUiMeta)) {
+    $clean['ui_meta'] = $filteredUiMeta;
+  }
 }
 
 $allowedFlags = ['--explain', '--audit'];
@@ -279,7 +274,6 @@ try {
     'ok' => true,
     'output' => $out,
   ], JSON_UNESCAPED_UNICODE);
-
 } catch (Throwable $e) {
   http_response_code(500);
   $error = [
@@ -288,7 +282,7 @@ try {
   ];
 
   if (getenv('HERITAGE_DEBUG') === '1') {
-    $error['error_detail'] = $e->getMessage();
+    $error['debug'] = mb_substr($e->getMessage(), 0, 500);
   }
 
   echo json_encode($error);
