@@ -1,4 +1,96 @@
 (function(){
+  const params = new URLSearchParams(window.location.search);
+  const DIAG = params.get('diag') === '1';
+
+  if (!DIAG){
+    function renderFallback(root, titleText, diagHref){
+      if (!root) return;
+      root.innerHTML = '';
+
+      const container = document.createElement('div');
+      container.style.padding = '1rem';
+      container.style.border = '1px solid #ccc';
+      container.style.background = '#fff';
+      container.style.color = '#000';
+      container.style.fontFamily = 'system-ui, sans-serif';
+      container.style.maxWidth = '460px';
+      container.style.margin = '1rem auto';
+
+      const title = document.createElement('h2');
+      title.textContent = titleText;
+      title.style.fontSize = '18px';
+      title.style.margin = '0 0 0.5rem 0';
+      container.appendChild(title);
+
+      const message = document.createElement('p');
+      message.textContent = 'Error cargando la interfaz. Recarga / abre con ?diag=1';
+      message.style.margin = '0 0 0.75rem 0';
+      container.appendChild(message);
+
+      const actions = document.createElement('div');
+      actions.style.display = 'flex';
+      actions.style.gap = '0.5rem';
+      actions.style.flexWrap = 'wrap';
+
+      const reloadBtn = document.createElement('button');
+      reloadBtn.type = 'button';
+      reloadBtn.textContent = 'Recargar';
+      reloadBtn.addEventListener('click', () => window.location.reload());
+      actions.appendChild(reloadBtn);
+
+      const diagLink = document.createElement('a');
+      diagLink.href = diagHref;
+      diagLink.textContent = 'Activar diagnóstico (?diag=1)';
+      diagLink.rel = 'noreferrer';
+      actions.appendChild(diagLink);
+
+      container.appendChild(actions);
+      root.appendChild(container);
+    }
+
+    function needsFallback(root, mountedFlag){
+      if (!root) return false;
+      const text = (root.textContent || '').trim().toLowerCase();
+      const hasLoading = text.includes('cargando');
+      const hasChildren = root.children && root.children.length > 0;
+      if (mountedFlag === true && hasChildren && !hasLoading){
+        return false;
+      }
+      return hasLoading || !hasChildren || mountedFlag !== true;
+    }
+
+    function scheduleFallbackCheck(){
+      const diagUrl = new URL(window.location.href);
+      diagUrl.searchParams.set('diag', '1');
+      const diagHref = diagUrl.toString();
+
+      const check = () => {
+        const bodyPage = document.body?.dataset?.page;
+        if (bodyPage === 'builder'){
+          const builderRoot = document.getElementById('builder-root');
+          if (needsFallback(builderRoot, window.__BUILDER_MOUNTED__)){
+            renderFallback(builderRoot, 'No se pudo cargar el constructor', diagHref);
+          }
+        }
+
+        const resultsRoot = document.getElementById('results-root');
+        if (resultsRoot && needsFallback(resultsRoot, window.__RESULTS_MOUNTED__)){
+          renderFallback(resultsRoot, 'No se pudieron cargar los resultados', diagHref);
+        }
+      };
+
+      window.setTimeout(check, 1700);
+    }
+
+    if (document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', scheduleFallbackCheck, { once: true });
+    } else {
+      scheduleFallbackCheck();
+    }
+
+    return;
+  }
+
   const pb = window.__PUBLIC_BASE__ || '';
   const ab = window.__APP_BASE__ || '';
   const join = function(base, path){

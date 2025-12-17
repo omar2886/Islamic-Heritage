@@ -10,6 +10,13 @@ El flag `--include-e2e` arranca automáticamente el servidor PHP de subruta en `
 
 Instala los browsers de Playwright una sola vez con `npx playwright install chromium` (o delega en el runner con `HERITAGE_E2E_INSTALL=1 python3 scripts/run_tests.py --include-e2e`).
 
+### Diagnóstico manual de arranque
+
+La app ya no muestra el banner de diagnóstico en navegación normal. Si la interfaz no consigue montarse, el root mostrará un mensaje breve con enlaces para recargar o abrir en modo diagnóstico.
+
+* Forzar el diagnóstico explícitamente añadiendo `?diag=1` a la URL (ej.: `/index.php?page=builder&diag=1`).
+* En modo normal no se hacen probes ni aparece el banner; solo se mostrará un fallback mínimo si el UI no termina de cargar.
+
 Si quieres levantar el servidor de subruta manualmente:
 
 ```bash

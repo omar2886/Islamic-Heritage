@@ -1,9 +1,12 @@
-# Desactiva el listado de directorios
-Options -Indexes
+<IfModule mod_headers.c>
+  <FilesMatch "\.(js|css)$">
+    Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Header set Pragma "no-cache"
+    Header set Expires 0
+  </FilesMatch>
+</IfModule>
 
-# Bloquea acceso directo a carpetas internas si llegan a existir en el docroot
-<IfModule mod_rewrite.c>
-    RewriteEngine On
-    RewriteRule ^tools(/.*)?$ - [F,L]
-    RewriteRule ^_legacy(/.*)?$ - [F,L]
+<IfModule mod_mime.c>
+  AddType application/javascript .js
+  AddType text/css .css
 </IfModule>
