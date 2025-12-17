@@ -1,6 +1,9 @@
-RewriteEngine On
+# Desactiva el listado de directorios
+Options -Indexes
 
-# Si el archivo o directorio solicitado no existe, redirige a index.php
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^(.*)$ index.php?page=$1 [QSA,L]
+# Bloquea acceso directo a carpetas internas si llegan a existir en el docroot
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^tools(/.*)?$ - [F,L]
+    RewriteRule ^_legacy(/.*)?$ - [F,L]
+</IfModule>
