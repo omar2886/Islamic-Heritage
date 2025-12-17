@@ -6,7 +6,7 @@ import { toPayload } from '../serializer.js';
 import { deriveCountsFromPersons, applyHierarchyScreening, deriveCountsGraph } from '../derive.js';
 import { Persons } from '../persons.js';
 import { mountPersonsSection } from './persons.js';
-import { banner, filePicker, downloadJsonLink } from './components.js';
+import { banner, filePicker, downloadJsonLink, fillBannerList } from './components.js';
 import { loadTree as loadGenealogyTree, applyPersonsSnapshot, listTrees as listGenealogyTrees, deleteTree as deleteGenealogyTree } from './genealogy.js';
 import { makeCase, applyCase, validateCaseShape } from '../caseio.js';
 import { saveDraft, loadDraft, clearDraft, hasDraft, persistPayload } from '../storage.js';
@@ -16,15 +16,6 @@ const num=(v)=>Number.isFinite(+v)?+v:0;
 
 let autosaveTimer = null;
 const FALLBACK_WARNING = 'No se pudieron derivar counts desde Personas; se conservaron los valores manuales.';
-
-function fillBannerList(target, title, items){
-  if (!target) return;
-  const list = el('ul',{class:'clean'});
-  (Array.isArray(items) ? items : [items]).filter(Boolean).forEach(item=>{
-    list.append(el('li',{}, String(item)));
-  });
-  target.replaceChildren(el('strong',{}, title), list);
-}
 
 function personsSource(){
   if (typeof window !== 'undefined' && Array.isArray(window.__PersonsSnapshot)) return window.__PersonsSnapshot;

@@ -9,6 +9,15 @@ export function banner(kind, title, items){
   return div;
 }
 
+export function fillBannerList(containerEl, titleText, itemsArray){
+  if (!containerEl) return;
+  const list = el('ul',{class:'clean'});
+  (Array.isArray(itemsArray) ? itemsArray : [itemsArray]).filter(Boolean).forEach(item => {
+    list.append(el('li',{}, String(item)));
+  });
+  containerEl.replaceChildren(el('strong',{}, titleText), list);
+}
+
 export function tableKV(title, mapLike, {k='Rol', v='Valor'}={}){
   if (!mapLike || (typeof mapLike!=='object') || Object.keys(mapLike).length===0) return null;
   const sect = el('section',{}, el('h3',{}, title));
