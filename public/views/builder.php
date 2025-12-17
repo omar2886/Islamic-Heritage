@@ -1,1 +1,1 @@
-<main id="builder-root" class="container"><p class="muted">Cargando constructor…</p></main>
+<main id="builder-root" class="container" data-testid="builder-root"><p class="muted">Cargando constructor…</p></main>
