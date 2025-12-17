@@ -1,9 +1,11 @@
 // storage.js — autosave simple en localStorage
-const KEY = 'heritage_case_autosave_v1';
+export const AUTOSAVE_KEY = 'heritage_case_autosave_v1';
+export const PAYLOAD_KEY = 'heritage_payload';
+export const LAST_PAYLOAD_KEY = 'heritage_last_payload';
 
 export function saveDraft(obj){
   try {
-    localStorage.setItem(KEY, JSON.stringify(obj));
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(obj));
     return true;
   } catch {
     return false;
@@ -12,7 +14,7 @@ export function saveDraft(obj){
 
 export function loadDraft(){
   try {
-    const t = localStorage.getItem(KEY);
+    const t = localStorage.getItem(AUTOSAVE_KEY);
     return t ? JSON.parse(t) : null;
   } catch {
     return null;
@@ -21,7 +23,7 @@ export function loadDraft(){
 
 export function clearDraft(){
   try {
-    localStorage.removeItem(KEY);
+    localStorage.removeItem(AUTOSAVE_KEY);
     return true;
   } catch {
     return false;
@@ -30,8 +32,46 @@ export function clearDraft(){
 
 export function hasDraft(){
   try {
-    return !!localStorage.getItem(KEY);
+    return !!localStorage.getItem(AUTOSAVE_KEY);
   } catch {
     return false;
   }
+}
+
+export function persistPayload(payload){
+  try {
+    sessionStorage.setItem(PAYLOAD_KEY, JSON.stringify(payload));
+  } catch {}
+  try {
+    localStorage.setItem(LAST_PAYLOAD_KEY, JSON.stringify(payload));
+  } catch {}
+}
+
+export function loadStoredPayloads(){
+  let source = null;
+  let payload = null;
+  try {
+    const sessionCopy = sessionStorage.getItem(PAYLOAD_KEY);
+    if (sessionCopy) {
+      payload = JSON.parse(sessionCopy);
+      source = 'session';
+    } else {
+      const localCopy = localStorage.getItem(LAST_PAYLOAD_KEY);
+      if (localCopy) {
+        payload = JSON.parse(localCopy);
+        source = 'local';
+      }
+    }
+  } catch {
+    source = null;
+    payload = null;
+  }
+  return { source, payload };
+}
+
+export function clearStoredPayloads(){
+  let ok = true;
+  try { sessionStorage.removeItem(PAYLOAD_KEY); } catch { ok = false; }
+  try { localStorage.removeItem(LAST_PAYLOAD_KEY); } catch { ok = false; }
+  return ok;
 }

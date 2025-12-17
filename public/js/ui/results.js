@@ -1,6 +1,7 @@
 // results.js — POST al backend y render con utilidades de copia
 import { postCalc } from '../api.js';
 import { el, banner, tableKV, downloadJsonLink } from './components.js';
+import { loadStoredPayloads, clearStoredPayloads, PAYLOAD_KEY } from '../storage.js';
 
 function cleanBase(base){
   return base ? String(base).replace(/\/+$, '') : '';
@@ -15,6 +16,22 @@ function builderHref(){
   const base = appBase();
   const path = 'index.php?page=builder';
   return base ? `${base}/${path}` : path;
+}
+
+function makeClearHandler(){
+  return ()=>{
+    clearStoredPayloads();
+    window.location.href = builderHref();
+  };
+}
+
+function renderActions(onClear){
+  const bar = el('div',{class:'actions results-actions'});
+  const back = el('a',{href:builderHref(), class:'btn'}, 'Volver al Constructor');
+  const clear = el('button',{type:'button',class:'btn-secondary'}, 'Limpiar payload');
+  clear.addEventListener('click', onClear);
+  bar.append(back, clear);
+  return bar;
 }
 
 function calcUrl(){
@@ -127,17 +144,17 @@ function renderError(message, payload){
   return el('div',{}, alert, tools);
 }
 
-async function run(payload, root){
+async function run(payload, target){
   const status = el('p',{class:'muted small',id:'results-status',role:'status','aria-live':'polite'}, 'Enviando cálculo…');
-  root.append(status);
+  target.append(status);
 
   let data;
   try{
     data = await postCalc(payload, { meta: true });
   }catch(e){
     status.textContent = 'Error en cálculo';
-    root.replaceChildren(status);
-    root.append(renderError(String(e.message || e), payload));
+    target.replaceChildren(status);
+    target.append(renderError(String(e.message || e), payload));
     return;
   }
 
@@ -145,33 +162,33 @@ async function run(payload, root){
   const hasJson = json && typeof json==='object';
   if (!httpOk || (hasJson && json.ok===false)){
     status.textContent = 'Error en cálculo';
-    root.replaceChildren(status);
+    target.replaceChildren(status);
     const message = hasJson ? (json.error || 'El cálculo devolvió un error.') : `HTTP ${httpStatus}`;
-    root.append(renderError(message, payload));
+    target.append(renderError(message, payload));
     return;
   }
   if (!hasJson){
     status.textContent = 'Error en cálculo';
-    root.replaceChildren(status);
-    root.append(renderError(`Respuesta inesperada (${httpStatus}): ${text}`, payload));
+    target.replaceChildren(status);
+    target.append(renderError(`Respuesta inesperada (${httpStatus}): ${text}`, payload));
     return;
   }
 
   const { out, warnings, errors, raw } = normalizeServer(json);
   status.textContent = 'Cálculo listo';
-  root.replaceChildren(status);
+  target.replaceChildren(status);
 
   const summary = renderSummary(out);
-  if (summary) root.append(summary);
+  if (summary) target.append(summary);
 
   const shares = renderSharesTables(out);
-  if (shares) root.append(shares);
+  if (shares) target.append(shares);
 
-  if (warnings?.length) root.append(banner('warn','Avisos', warnings));
-  if (errors?.length)   root.append(banner('error','Errores', errors));
+  if (warnings?.length) target.append(banner('warn','Avisos', warnings));
+  if (errors?.length)   target.append(banner('error','Errores', errors));
 
   const traces = renderTraces(out);
-  if (traces) root.append(traces);
+  if (traces) target.append(traces);
 
   const curlOk = makeCurl(payload);
   const tools = el('div',{class:'actions'},
@@ -181,22 +198,37 @@ async function run(payload, root){
     copyButton('Copiar resultado', ()=>JSON.stringify(raw,null,2))
   );
   tools.dataset.curl = curlOk;
-  root.append(tools);
+  target.append(tools);
 }
 
 export async function mount(){
   const root = document.getElementById('results-root');
   root.replaceChildren();
-  let payload = null;
-  try { payload = JSON.parse(sessionStorage.getItem('heritage_payload') || 'null'); } catch { payload = null; }
+  const handleClear = makeClearHandler();
+  const content = el('div',{class:'results-body'});
+  root.append(renderActions(handleClear), content);
+
+  const { source, payload } = loadStoredPayloads();
 
   if (!payload || !payload.heirs){
-    root.append(
-      banner('warn','Sin payload','No se encontró ningún payload en sessionStorage (heritage_payload). Vuelve al Constructor.'),
+    content.append(
+      banner('warn','Sin payload','No se encontró ningún payload en sessionStorage (heritage_payload) ni en localStorage (heritage_last_payload). Vuelve al Constructor.'),
       el('p',{}, el('a',{href:builderHref(), class:'btn'}, 'Ir al Constructor'))
     );
     return;
   }
-  await run(payload, root);
+
+  if (source === 'local'){
+    try { sessionStorage.setItem(PAYLOAD_KEY, JSON.stringify(payload)); } catch {}
+    const info = banner('info','Recuperado del último cálculo','Se cargó el último payload guardado en este navegador.');
+    const actions = el('div',{class:'actions'},
+      el('button',{type:'button',class:'btn-secondary'}, 'Limpiar')
+    );
+    const clearBtn = actions.querySelector('button');
+    clearBtn.addEventListener('click', handleClear);
+    info.append(actions);
+    content.append(info);
+  }
+  await run(payload, content);
   try{ root.focus(); }catch{}
 }

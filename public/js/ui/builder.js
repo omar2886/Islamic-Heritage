@@ -9,7 +9,7 @@ import { mountPersonsSection } from './persons.js';
 import { banner, filePicker, downloadJsonLink } from './components.js';
 import { loadTree as loadGenealogyTree, applyPersonsSnapshot, listTrees as listGenealogyTrees, deleteTree as deleteGenealogyTree } from './genealogy.js';
 import { makeCase, applyCase, validateCaseShape } from '../caseio.js';
-import { saveDraft, loadDraft, clearDraft, hasDraft } from '../storage.js';
+import { saveDraft, loadDraft, clearDraft, hasDraft, persistPayload } from '../storage.js';
 
 const el=(t,a={},...k)=>{const n=document.createElement(t);for(const [k1,v]of Object.entries(a)){if(k1==='class')n.className=v;else if(k1==='for')n.htmlFor=v;else n.setAttribute(k1,v)};k.flat().forEach(x=>n.append(x));return n;}
 const num=(v)=>Number.isFinite(+v)?+v:0;
@@ -313,7 +313,7 @@ function buildActions(root){
   btnCalc.addEventListener('click',()=>{
     const { errors, payload } = buildPayloadAndBanners();
     if (errors.length) return;
-    try { sessionStorage.setItem('heritage_payload', JSON.stringify(payload)); } catch {}
+    persistPayload(payload);
     const base = (typeof window !== 'undefined' && (window.__APP_BASE__ || '')) || '';
     const target = joinBase(base, 'index.php?page=results');
     window.location.href = target;
