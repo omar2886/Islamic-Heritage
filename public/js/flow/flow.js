@@ -12,6 +12,7 @@ import { loadRoles } from './roles.js';
 import { validateState } from './validate.js';
 import { buildPayload } from './payload.js';
 import { postCalc } from '../api.js';
+import { exportJson } from './export.js';
 
 const STEP_ORDER = ['decedent', 'heirs', 'review', 'results'];
 const LABELS = {
@@ -313,78 +314,203 @@ function renderResults() {
   const hasResult = Boolean(state.lastResult);
   const errorBlock = calcError ? `<p class="text-error">${escapeHtml(calcError)}</p>` : '';
   const waiting = !hasResult && state.lastPayload ? '<p class="muted">Recalculando con el último payload…</p>' : '';
+  const canExport = hasResult || state.lastPayload;
+
   return `
     <section class="card">
       <div class="section-head">
         <div>
           <p class="eyebrow">Paso 4</p>
           <h2>${LABELS.results}</h2>
-          <p class="muted">Consulta el resumen más reciente.</p>
+          <p class="muted">Consulta y comparte el resultado del cálculo.</p>
         </div>
         <div class="inline-actions">
+          <button type="button" class="btn" data-action="edit-case">Editar caso</button>
+          <button type="button" class="btn" data-action="export-json" ${canExport ? '' : 'disabled'}>Exportar JSON</button>
           <button type="button" class="btn" data-action="calc" ${isCalculating ? 'disabled' : ''}>Recalcular</button>
         </div>
       </div>
-      ${hasResult ? renderResultCard(state.lastResult) : `<p class="empty">Recalcula para obtener resultados actualizados.</p>${waiting}`}
+      ${hasResult ? renderResultLayout(state.lastResult) : `<p class="empty">Recalcula para obtener resultados actualizados.</p>${waiting}`}
       ${errorBlock}
     </section>
   `;
 }
 
-function renderResultCard(result) {
-  const meta = result?.meta || {};
-  const note = result?.note || meta?.note || 'Resultado de cálculo';
-  const updatedAt = result?.updatedAt || meta?.generated_at || meta?.generatedAt || new Date().toISOString();
-  const shares = renderShares(result);
-  const explanation = renderExplanation(result);
+function renderResultLayout(result) {
+  const summary = renderResultSummary(result);
+  const distribution = renderDistribution(result);
+  const justification = renderJustification(result);
 
   return `
-    <article class="card card--subtle">
-      <p class="eyebrow">Último cálculo</p>
-      <p><strong>${escapeHtml(note)}</strong></p>
-      <p class="muted">Actualizado: ${escapeHtml(updatedAt)}</p>
-      ${shares || '<p class="muted">Sin cuotas calculadas.</p>'}
-      ${explanation}
-    </article>
+    <div class="result-stack">
+      ${summary}
+      ${distribution}
+      ${justification}
+    </div>
   `;
 }
 
-function renderShares(result) {
-  const groupShares = result?.group_shares || result?.shares || {};
-  const individualShares = result?.individual_shares || result?.person_shares || {};
-  const blocks = [];
+function renderResultSummary(result) {
+  const meta = result?.meta || {};
+  const heirsCount = Array.isArray(state.heirs) ? state.heirs.reduce((acc, h) => acc + (h?.count || 0), 0) : 0;
+  const timestamp =
+    result?.updatedAt || meta?.generated_at || meta?.generatedAt || meta?.timestamp || new Date().toISOString();
+  const note = result?.note || meta?.note || 'Resultado de cálculo';
+  const amount = meta?.estate_value || meta?.amount || meta?.estateValue;
 
-  if (groupShares && Object.keys(groupShares).length > 0) {
-    blocks.push(renderTable('Cuotas por grupo', Object.entries(groupShares), ['Rol', 'Cuota']));
-  }
-  if (individualShares && Object.keys(individualShares).length > 0) {
-    blocks.push(renderTable('Cuotas por individuo', Object.entries(individualShares), ['Rol(i)', 'Cuota']));
-  }
-
-  return blocks.join('');
-}
-
-function renderExplanation(result) {
-  const explanation = result?.explanation || result?.explain || result?.notes;
-  if (!explanation) return '';
-  if (Array.isArray(explanation)) {
-    return `<div class="stack">${explanation.map((line) => `<p class="muted">${escapeHtml(line)}</p>`).join('')}</div>`;
-  }
-  if (typeof explanation === 'object') {
-    return `<pre class="code-block">${escapeHtml(JSON.stringify(explanation, null, 2))}</pre>`;
-  }
-  return `<p class="muted">${escapeHtml(String(explanation))}</p>`;
-}
-
-function renderTable(title, entries, headers) {
   return `
-    <div class="table-responsive">
-      <p class="eyebrow">${escapeHtml(title)}</p>
-      <table class="table">
-        <thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
-        <tbody>${entries.map((row) => `<tr><td>${escapeHtml(row[0])}</td><td>${escapeHtml(String(row[1]))}</td></tr>`).join('')}</tbody>
-      </table>
-    </div>
+    <section class="result-block">
+      <div class="result-block__head">
+        <h3>Resumen</h3>
+        <span class="badge">${escapeHtml(note)}</span>
+      </div>
+      <div class="summary-grid results-summary">
+        <div class="summary-item">
+          <p class="muted small">Causante</p>
+          <strong>${escapeHtml(state.deceased.name || 'Sin nombre')}</strong>
+          <p class="muted">${escapeHtml(state.deceased.madhhab || 'Sin madhhab')}</p>
+        </div>
+        <div class="summary-item">
+          <p class="muted small">Nº herederos</p>
+          <strong>${heirsCount}</strong>
+          <p class="muted">Registros activos</p>
+        </div>
+        <div class="summary-item">
+          <p class="muted small">Timestamp</p>
+          <strong>${escapeHtml(String(timestamp))}</strong>
+          <p class="muted">Última actualización</p>
+        </div>
+        <div class="summary-item">
+          <p class="muted small">Importe (si aplica)</p>
+          <strong>${amount !== undefined ? escapeHtml(String(amount)) : '—'}</strong>
+          <p class="muted">Valor declarado</p>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderDistribution(result) {
+  const personShares = result?.person_shares || result?.individual_shares || {};
+  const roleShares = result?.group_shares || result?.shares || {};
+  const personAmounts = result?.person_amounts || {};
+  const roleAmounts = result?.group_amounts || result?.amounts || {};
+
+  const rows = (state.heirs || []).map((heir, index) => {
+    const label = `${heir.name || 'Sin nombre'}${heir.role ? ` (${heir.role})` : ''}`;
+    const share = personShares[heir.name] ?? personShares[heir.role] ?? roleShares[heir.role] ?? '';
+    const amount = personAmounts[heir.name] ?? personAmounts[heir.role] ?? roleAmounts[heir.role] ?? '';
+    return { key: heir.id || `heir-${index}`, label, share, amount };
+  });
+
+  const extraEntries = Object.entries(personShares).filter(([label]) => !rows.find((row) => row.label === label));
+
+  const tableRows = [
+    ...rows,
+    ...extraEntries.map(([label, share], idx) => ({
+      key: `extra-${idx}`,
+      label,
+      share,
+      amount: personAmounts[label] ?? roleAmounts[label] ?? '',
+    })),
+  ].filter((row) => row.share || row.amount || row.label);
+
+  const body = tableRows.length
+    ? tableRows
+        .map(
+          (row) => `
+            <tr>
+              <td>${escapeHtml(row.label)}</td>
+              <td>${row.share !== '' ? escapeHtml(String(row.share)) : '<span class="muted">—</span>'}</td>
+              <td>${row.amount !== '' ? escapeHtml(String(row.amount)) : '<span class="muted">—</span>'}</td>
+            </tr>
+          `,
+        )
+        .join('')
+    : `<tr><td colspan="3"><p class="empty">Sin reparto disponible.</p></td></tr>`;
+
+  return `
+    <section class="result-block">
+      <div class="result-block__head">
+        <h3>Reparto</h3>
+        <p class="muted">Fracciones y montos calculados para cada heredero.</p>
+      </div>
+      <div class="table-responsive">
+        <table class="table result-table">
+          <thead>
+            <tr><th>Heredero</th><th>Fracción / %</th><th>Importe</th></tr>
+          </thead>
+          <tbody>
+            ${body}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function normalizeExplanationEntries(result) {
+  const entries = [];
+  const traces = Array.isArray(result?.traces) ? result.traces : [];
+  const explainArr = Array.isArray(result?.explain) ? result.explain : result?.explain ? [result.explain] : [];
+  const explanationArr = Array.isArray(result?.explanation)
+    ? result.explanation
+    : result?.explanation
+    ? [result.explanation]
+    : [];
+  const notesArr = Array.isArray(result?.notes) ? result.notes : result?.notes ? [result.notes] : [];
+
+  [...traces, ...explainArr, ...explanationArr, ...notesArr].forEach((item) => {
+    if (!item) return;
+    if (typeof item === 'string') {
+      entries.push({ title: 'Regla aplicada', detail: item });
+      return;
+    }
+    if (typeof item === 'object') {
+      const title = item.rule_id || item.rule || item.phase || item.stage || 'Regla aplicada';
+      const detail = item.reason || item.message || item.explanation || item.delta || JSON.stringify(item);
+      entries.push({ title, detail: String(detail) });
+    }
+  });
+
+  return entries;
+}
+
+function renderJustification(result) {
+  const entries = normalizeExplanationEntries(result);
+
+  if (!entries.length) {
+    return `
+      <section class="result-block">
+        <div class="result-block__head">
+          <h3>Justificación</h3>
+        </div>
+        <p class="empty">Sin explicaciones registradas.</p>
+      </section>
+    `;
+  }
+
+  const items = entries
+    .map(
+      (entry, index) => `
+        <details class="explain" ${index === 0 ? 'open' : ''}>
+          <summary>${escapeHtml(entry.title)}</summary>
+          <div class="prose">
+            <p>${escapeHtml(entry.detail)}</p>
+          </div>
+        </details>
+      `,
+    )
+    .join('');
+
+  return `
+    <section class="result-block">
+      <div class="result-block__head">
+        <h3>Justificación</h3>
+        <p class="muted">Revisa las reglas aplicadas durante el cálculo.</p>
+      </div>
+      <div class="stack">${items}</div>
+    </section>
   `;
 }
 
@@ -513,6 +639,14 @@ function handleRootClick(event) {
   }
   if (target.dataset.action === 'calc') {
     triggerCalc();
+  }
+  if (target.dataset.action === 'edit-case') {
+    goToStep('heirs');
+  }
+  if (target.dataset.action === 'export-json') {
+    const payload = state.lastPayload || buildPayload(state);
+    const data = { state, payload, result: state.lastResult };
+    exportJson('heritage_result.json', data);
   }
   if (target.dataset.removeHeir) {
     handleHeirRemoval(event);
