@@ -1,7 +1,7 @@
 <?php declare(strict_types=1);
 $PAGE = $_GET['page'] ?? 'home';
 $legacyMode = ($_GET['legacy'] ?? '') === '1';
-$valid = ['home','builder3','results3','genealogy3'];
+$valid = ['home','builder3','results3','genealogy3','flow'];
 if ($legacyMode) {
   $valid = array_merge($valid, ['builder', 'builder2', 'results', 'results2', 'genealogy', 'genealogy2']);
 }
