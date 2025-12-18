@@ -3,8 +3,12 @@ import { postCalc } from '../api.js';
 import { el, banner, tableKV, downloadJsonLink } from './components.js';
 import { loadStoredPayloads, clearStoredPayloads } from '../storage.js';
 
-const cleanBase = (v) => String(v || '').trim().replace(/\/+$/, '');
-const cleanPath = (v) => String(v || '').trim().replace(/^\/+/, '');
+const cleanBase = (v) => String(v || '')
+  .trim()
+  .replace(/\/+$/, '');
+const cleanPath = (v) => String(v || '')
+  .trim()
+  .replace(/^\/+/, '');
 
 function appBase(){
   if (typeof window === 'undefined') return '';
