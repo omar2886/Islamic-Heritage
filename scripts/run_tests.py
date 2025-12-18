@@ -27,6 +27,7 @@ CANONICAL_CASE_NUMBERS = list(range(1, 19)) + [21, 22, 23, 24]
 CANONICAL_CASE_PREFIXES = tuple(f"C{index:02d}" for index in CANONICAL_CASE_NUMBERS)
 ADDITIONAL_CASE_PREFIXES = ("C04b", "Z02")
 JS_ROOT = ROOT / "public" / "js"
+V3_JS_ROOT = JS_ROOT / "v3"
 
 ASABA_MIXED_PAIRS: Tuple[Tuple[str, str], ...] = (
     ("son", "daughter"),
@@ -85,6 +86,12 @@ def run_process(
     return result
 
 
+def ensure_node_available() -> None:
+    version_check = run_process(["node", "--version"], stream_output=False)
+    if version_check.returncode != 0:
+        raise RuntimeError("JS syntax check requires Node.js (node --version failed).")
+
+
 def run_rulebook_smoke() -> None:
     command = ["php", str(SMOKE_SCRIPT)]
     result = run_process(command)
@@ -135,9 +142,7 @@ def run_e2e_tests(base_url: str | None) -> None:
 
 
 def run_js_syntax_check() -> None:
-    version_check = run_process(["node", "--version"])
-    if version_check.returncode != 0:
-        raise RuntimeError("JS syntax check requires Node.js (node --version failed).")
+    ensure_node_available()
 
     required_targets = [
         ROOT / "public" / "js" / "bootstrap.js",
@@ -169,6 +174,68 @@ def run_js_syntax_check() -> None:
         result = run_process(["node", "--check", str(target)])
         if result.returncode != 0:
             raise RuntimeError(f"JS syntax check failed for {rel_path}.")
+
+
+def run_v3_ui_syntax_check() -> None:
+    ensure_node_available()
+
+    if not V3_JS_ROOT.exists():
+        raise RuntimeError(f"Required JS directory missing for syntax check: {V3_JS_ROOT.relative_to(ROOT)}")
+
+    explicit_targets = [
+        ROOT / "public" / "js" / "api.js",
+        ROOT / "public" / "js" / "derive.js",
+    ]
+    missing = [target for target in explicit_targets if not target.exists()]
+    if missing:
+        missing_list = ", ".join(str(path.relative_to(ROOT)) for path in missing)
+        raise RuntimeError(f"Required JS files missing for syntax check: {missing_list}")
+
+    v3_targets = sorted(V3_JS_ROOT.rglob("*.js"))
+    if not v3_targets:
+        raise RuntimeError(f"No JS files discovered under {V3_JS_ROOT.relative_to(ROOT)} for syntax check.")
+
+    seen = set()
+    combined_targets = list(explicit_targets)
+    combined_targets.extend(v3_targets)
+
+    for target in combined_targets:
+        resolved = target.resolve()
+        if resolved in seen:
+            continue
+
+        seen.add(resolved)
+        rel_path = target.relative_to(ROOT)
+        result = run_process(["node", "--check", str(target)])
+        if result.returncode != 0:
+            raise RuntimeError(f"JS syntax check failed for {rel_path}.")
+
+
+def run_php_syntax_check() -> None:
+    php_paths = [
+        ROOT / "public" / "index.php",
+    ]
+
+    partials_dir = ROOT / "public" / "partials"
+    views_dir = ROOT / "public" / "views"
+    api_dir = ROOT / "public" / "api"
+
+    for directory in [partials_dir, views_dir, api_dir]:
+        if not directory.exists():
+            raise RuntimeError(f"PHP syntax check directory missing: {directory.relative_to(ROOT)}")
+
+    php_paths.extend(sorted(partials_dir.glob("*.php")))
+    php_paths.extend(sorted(views_dir.glob("*.php")))
+    php_paths.extend(sorted(api_dir.glob("*.php")))
+
+    if not php_paths:
+        raise RuntimeError("No PHP files found for syntax check.")
+
+    for target in php_paths:
+        rel_path = target.relative_to(ROOT)
+        result = run_process(["php", "-l", str(target)])
+        if result.returncode != 0:
+            raise RuntimeError(f"PHP syntax check failed for {rel_path}.")
 
 
 def run_js_graph_validate_smoke() -> None:
@@ -1313,6 +1380,8 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
 def main(argv: List[str]) -> int:
     try:
         args = parse_args(argv)
+        run_php_syntax_check()
+        run_v3_ui_syntax_check()
         run_js_syntax_check()
         run_js_graph_validate_smoke()
         run_rulebook_smoke()

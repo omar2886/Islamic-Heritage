@@ -240,6 +240,42 @@ try {
     }
 
     echo "[OK] API calc normaliza herederos duplicados y responde 200\n";
+
+    $pageChecks = [
+        ['slug' => 'home', 'marker' => 'id="home-root"'],
+        ['slug' => 'genealogy3', 'marker' => 'id="genealogy3-root"'],
+        ['slug' => 'builder3', 'marker' => 'id="builder3-root"'],
+        ['slug' => 'results3', 'marker' => 'id="results3-root"'],
+    ];
+
+    foreach ($pageChecks as $pageCheck) {
+        $slug = $pageCheck['slug'];
+        $marker = $pageCheck['marker'];
+        $pageUrl = sprintf('http://127.0.0.1:%d/index.php?page=%s', $port, $slug);
+
+        $pageContext = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'timeout' => 5,
+                'ignore_errors' => true,
+            ],
+        ]);
+
+        $pageBody = @file_get_contents($pageUrl, false, $pageContext);
+        $pageStatus = $http_response_header[0] ?? '';
+
+        if (strpos($pageStatus, ' 200 ') === false) {
+            fwrite(STDERR, sprintf('[FAIL] HTTP inesperado para %s: %s\n', $slug, $pageStatus));
+            exit(1);
+        }
+
+        if (!is_string($pageBody) || strpos($pageBody, $marker) === false) {
+            fwrite(STDERR, sprintf('[FAIL] marcador %s no encontrado en %s\n', $marker, $slug));
+            exit(1);
+        }
+
+        echo sprintf("[OK] %s responde 200 e incluye %s\n", $slug, $marker);
+    }
 } finally {
     if (is_resource($server)) {
         proc_terminate($server);
