@@ -1,4 +1,4 @@
-const VERSION = 2;
+const VERSION = 3;
 
 const DEFAULT_HEIRS = [
   'wife',
@@ -37,7 +37,14 @@ function createInitialHeirsCounts() {
 function createInitialState() {
   return {
     version: VERSION,
-    step: 'decedent',
+    step: 'screening',
+    screening: {
+      spouse: false,
+      descendants: false,
+      ascendants: false,
+      siblings: false,
+      collaterals: false,
+    },
     deceased: { name: '', sex: 'M', madhhab: '', notes: '' },
     estate: { value: '', currency: 'MAD' },
     heirsCounts: createInitialHeirsCounts(),
@@ -62,6 +69,13 @@ function setStep(state, step) {
   return withVersion({
     ...state,
     step,
+  });
+}
+
+function setScreening(state, payload) {
+  return withVersion({
+    ...state,
+    screening: { ...state.screening, ...payload },
   });
 }
 
@@ -111,6 +125,7 @@ export {
   createInitialHeirsCounts,
   setDeceased,
   setStep,
+  setScreening,
   setEstateValue,
   setLastResult,
   setLastResultRaw,
