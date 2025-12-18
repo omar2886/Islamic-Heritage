@@ -85,18 +85,12 @@ function applyUrl(step) {
   history.replaceState({}, '', url.toString());
 }
 
-function persist(next, options = {}) {
-  const { skipRender = false } = options;
+function persist(next, opts = {}) {
   state = next;
   saveState(state);
-  if (skipRender) {
-    validation = validateState(state, roles);
-    renderNav();
+  validation = validateState(state, roles);
+  if (opts.render === false) {
     renderFooter();
-    if (state.step === 'heirs') {
-      syncHeirsUIFromState();
-      renderHeirsValidation();
-    }
     return;
   }
   render();
@@ -955,7 +949,11 @@ function handleDecedentInput(event) {
     const value = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
       ? target.value
       : '';
-    persist(setEstateValue(state, value));
+    if (event.type === 'input') {
+      persist(setEstateValue(state, value), { render: false });
+    } else {
+      persist(setEstateValue(state, value));
+    }
     return;
   }
   const field = target.dataset.deceasedField;
@@ -965,7 +963,13 @@ function handleDecedentInput(event) {
       ? target.checked
       : target.value
     : '';
-  persist(setDeceased(state, { [field]: value }));
+  const isTypingTarget =
+    (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && target.type !== 'checkbox';
+  if (event.type === 'input' && isTypingTarget) {
+    persist(setDeceased(state, { [field]: value }), { render: false });
+  } else {
+    persist(setDeceased(state, { [field]: value }));
+  }
 }
 
 function handleHeirCountInput(event) {
@@ -978,7 +982,7 @@ function handleHeirCountInput(event) {
     target.value = String(value);
   }
   const next = setHeirCount(state, role, value);
-  persist(next, { skipRender: true });
+  persist(next, { render: false });
 }
 
 function handleRootClick(event) {
