@@ -1,6 +1,38 @@
-const VERSION = 1;
+const VERSION = 2;
 
-const defaultHeir = () => ({ id: '', name: '', sex: 'M', role: '', alive: true, count: 1 });
+const DEFAULT_HEIRS = [
+  'wife',
+  'husband',
+  'son',
+  'daughter',
+  'sons_son',
+  'sons_daughter',
+  'father',
+  'mother',
+  'paternal_grandfather',
+  'paternal_grandmother',
+  'maternal_grandmother',
+  'paternal_great_grandmother',
+  'maternal_great_grandmother',
+  'full_brother',
+  'full_sister',
+  'consanguine_brother',
+  'consanguine_sister',
+  'uterine_brother',
+  'uterine_sister',
+  'paternal_uncle',
+  'paternal_uncles_daughter',
+  'paternal_uncle_son',
+  'paternal_uncle_sons_daughter',
+  'consanguine_paternal_uncle',
+  'consanguine_paternal_uncles_daughter',
+  'consanguine_paternal_uncle_son',
+  'consanguine_paternal_uncle_sons_daughter',
+];
+
+function createInitialHeirsCounts() {
+  return DEFAULT_HEIRS.reduce((acc, role) => ({ ...acc, [role]: 0 }), {});
+}
 
 function createInitialState() {
   return {
@@ -8,7 +40,7 @@ function createInitialState() {
     step: 'decedent',
     deceased: { name: '', sex: 'M', madhhab: '', notes: '' },
     estate: { value: '', currency: 'MAD' },
-    heirs: [],
+    heirsCounts: createInitialHeirsCounts(),
     lastResult: null,
     lastResultRaw: null,
     lastPayload: null,
@@ -65,41 +97,24 @@ function setLastPayload(state, payload) {
   });
 }
 
-function addHeir(state, heir) {
-  const base = defaultHeir();
-  const id = heir.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `heir-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-  const cleanHeir = { ...base, ...heir, id };
+function setHeirCount(state, role, count) {
+  const safeCount = Number.isFinite(count) && count >= 0 ? count : 0;
   return withVersion({
     ...state,
-    heirs: [...state.heirs, cleanHeir],
-  });
-}
-
-function updateHeir(state, heirId, payload) {
-  return withVersion({
-    ...state,
-    heirs: state.heirs.map((item) => (item.id === heirId ? { ...item, ...payload } : item)),
-  });
-}
-
-function removeHeir(state, heirId) {
-  return withVersion({
-    ...state,
-    heirs: state.heirs.filter((item) => item.id !== heirId),
+    heirsCounts: { ...state.heirsCounts, [role]: safeCount },
   });
 }
 
 export {
   VERSION,
   createInitialState,
+  createInitialHeirsCounts,
   setDeceased,
   setStep,
   setEstateValue,
   setLastResult,
   setLastResultRaw,
   setLastPayload,
-  addHeir,
-  updateHeir,
-  removeHeir,
-  defaultHeir,
+  setHeirCount,
+  DEFAULT_HEIRS,
 };

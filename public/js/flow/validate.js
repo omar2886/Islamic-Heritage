@@ -1,87 +1,86 @@
-import { humanize } from './roles.js';
+import { ROLE_LABELS } from './roles_meta.js';
 
-const ROLE_SEX = {
-  wife: 'F',
-  husband: 'M',
-  daughter: 'F',
-  mother: 'F',
-  maternal_grandmother: 'F',
-  maternal_great_grandmother: 'F',
-  paternal_grandmother: 'F',
-  paternal_great_grandmother: 'F',
-  sons_daughter: 'F',
-  full_sister: 'F',
-  consanguine_sister: 'F',
-  uterine_sister: 'F',
-  son: 'M',
-  father: 'M',
-  paternal_grandfather: 'M',
-  sons_son: 'M',
-  full_brother: 'M',
-  consanguine_brother: 'M',
-  uterine_brother: 'M',
-  paternal_uncle: 'M',
-  paternal_uncle_son: 'M',
-  consanguine_paternal_uncle: 'M',
-  consanguine_paternal_uncle_son: 'M',
+const ROLE_LIMITS = {
+  father: 1,
+  mother: 1,
+  paternal_grandfather: 1,
+  paternal_grandmother: 1,
+  maternal_grandmother: 1,
+  paternal_great_grandmother: 1,
+  maternal_great_grandmother: 1,
+  husband: 1,
+  wife: 4,
 };
 
-function validateState(state, roles = []) {
+function normalizeSex(value) {
+  const sex = String(value || '').toUpperCase();
+  return sex === 'F' ? 'F' : sex === 'M' ? 'M' : '';
+}
+
+function pushIssue(collection, sectionBag, key, message) {
+  collection.push(message);
+  if (!sectionBag[key]) {
+    sectionBag[key] = { errors: [], warnings: [] };
+  }
+  sectionBag[key].errors.push(message);
+}
+
+function validateState(state) {
+  const catalog = new Set(Object.keys(ROLE_LABELS));
   const errors = [];
   const warnings = [];
-  const catalog = new Set(Array.isArray(roles) ? roles.map((role) => role.code) : []);
+  const bySection = { decedent: { errors: [], warnings: [] }, heirs: { errors: [], warnings: [] }, review: { errors: [], warnings: [] } };
 
   const estateValueRaw = (state?.estate?.value || '').toString().trim();
   const estateValue = Number.parseFloat(estateValueRaw);
 
   if (!estateValueRaw) {
-    errors.push('El montante de la herencia es obligatorio.');
+    pushIssue(errors, bySection, 'decedent', 'El montante de la herencia es obligatorio.');
   } else if (Number.isNaN(estateValue) || estateValue <= 0) {
-    errors.push('El montante de la herencia debe ser un número mayor que cero.');
+    pushIssue(errors, bySection, 'decedent', 'El montante de la herencia debe ser un número mayor que cero.');
   }
 
-  if (!state?.deceased?.sex) {
-    errors.push('El sexo del causante es obligatorio.');
+  const deceasedSex = normalizeSex(state?.deceased?.sex);
+  if (!deceasedSex) {
+    pushIssue(errors, bySection, 'decedent', 'El sexo del causante es obligatorio.');
+    pushIssue(errors, bySection, 'heirs', 'Define sexo del causante primero.');
   }
 
-  const seen = new Set();
-
-  state?.heirs?.forEach((heir, index) => {
-    const row = index + 1;
-    const name = (heir.name || '').trim();
-    const role = (heir.role || '').trim();
-    const sex = (heir.sex || '').toString().trim().toUpperCase();
-    const count = Number.parseInt(heir.count, 10);
-
-    if (!name) {
-      errors.push(`Heredero #${row}: el nombre es obligatorio.`);
+  const counts = state?.heirsCounts || {};
+  Object.entries(counts).forEach(([role, raw]) => {
+    if (!catalog.has(role)) return;
+    const count = Number.parseInt(raw, 10);
+    if (!Number.isInteger(count) || count < 0) {
+      pushIssue(errors, bySection, 'heirs', `"${ROLE_LABELS[role] || role}" debe ser un entero mayor o igual que 0.`);
+      return;
     }
 
-    if (!Number.isInteger(count) || count < 1 || count > 20) {
-      errors.push(`Heredero #${row}: la cantidad debe ser un entero entre 1 y 20.`);
-    }
-
-    if (!role) {
-      errors.push(`Heredero #${row}: el rol es obligatorio.`);
-    } else if (catalog.size > 0 && !catalog.has(role)) {
-      errors.push(`Heredero #${row}: el rol "${humanize(role)}" no existe en el catálogo.`);
-    }
-
-    const expectedSex = ROLE_SEX[role];
-    if (expectedSex && sex && expectedSex !== sex) {
-      errors.push(`Heredero #${row}: el rol "${humanize(role)}" requiere sexo ${expectedSex}.`);
-    }
-
-    if (role && sex && name) {
-      const key = `${role.toLowerCase()}|${sex}|${name.toLowerCase()}`;
-      if (seen.has(key)) {
-        warnings.push(`Heredero duplicado detectado: ${humanize(role)} (${sex}) · ${name}.`);
-      }
-      seen.add(key);
+    const max = ROLE_LIMITS[role];
+    if (Number.isInteger(max) && count > max) {
+      pushIssue(errors, bySection, 'heirs', `"${ROLE_LABELS[role] || role}" no puede superar ${max}.`);
     }
   });
 
-  return { errors, warnings };
+  if (deceasedSex === 'M' && (counts.husband || 0) > 0) {
+    pushIssue(errors, bySection, 'heirs', 'Para causante varón, no se admite esposo.');
+  }
+
+  if (deceasedSex === 'F') {
+    if ((counts.husband || 0) > 1) {
+      pushIssue(errors, bySection, 'heirs', 'Solo se admite un esposo.');
+    }
+    if ((counts.wife || 0) > 0) {
+      pushIssue(errors, bySection, 'heirs', 'Para causante mujer, no se admiten esposas.');
+    }
+  } else if (deceasedSex === 'M' && (counts.wife || 0) > 4) {
+    pushIssue(errors, bySection, 'heirs', 'Máximo 4 esposas.');
+  }
+
+  return {
+    errors,
+    warnings,
+    bySection,
+  };
 }
 
 export { validateState };

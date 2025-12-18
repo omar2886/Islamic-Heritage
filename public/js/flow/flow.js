@@ -1,19 +1,10 @@
-import {
-  setDeceased,
-  setStep,
-  setLastResult,
-  setLastResultRaw,
-  addHeir,
-  updateHeir,
-  removeHeir,
-  setLastPayload,
-  setEstateValue,
-} from './state.js';
+import { setDeceased, setStep, setLastResult, setLastResultRaw, setLastPayload, setEstateValue, setHeirCount } from './state.js';
 import { loadState, saveState } from './storage.js';
 import { loadRoles } from './roles.js';
 import { validateState } from './validate.js';
 import { buildPayload } from './payload.js';
 import { exportJson } from './export.js';
+import { ROLE_GROUPS, ROLE_LABELS } from './roles_meta.js';
 
 const STEP_ORDER = ['decedent', 'heirs', 'review', 'results'];
 const LABELS = {
@@ -25,7 +16,7 @@ const LABELS = {
 
 let state = syncWithUrl(loadState());
 let roles = [];
-let validation = { errors: [], warnings: [] };
+let validation = { errors: [], warnings: [], bySection: {} };
 let isLoadingRoles = false;
 let rolesError = null;
 let isCalculating = false;
@@ -35,6 +26,25 @@ const DEFAULT_CALC_URL = 'api/calc.php';
 const root = document.getElementById('flow-root');
 const nav = document.querySelector('.flow__steps');
 const footerActions = document.querySelector('.flow__footer-actions');
+
+const ROLE_LIMITS = {
+  father: 1,
+  mother: 1,
+  paternal_grandfather: 1,
+  paternal_grandmother: 1,
+  maternal_grandmother: 1,
+  paternal_great_grandmother: 1,
+  maternal_great_grandmother: 1,
+  husband: 1,
+  wife: 4,
+};
+
+const heirsUI = {
+  container: null,
+  host: null,
+  inputs: new Map(),
+  validationSlot: null,
+};
 
 if (!root) {
   throw new Error('flow-root missing');
@@ -59,9 +69,20 @@ function applyUrl(step) {
   history.replaceState({}, '', url.toString());
 }
 
-function persist(next) {
+function persist(next, options = {}) {
+  const { skipRender = false } = options;
   state = next;
   saveState(state);
+  if (skipRender) {
+    validation = validateState(state, roles);
+    renderNav();
+    renderFooter();
+    if (state.step === 'heirs') {
+      syncHeirsUIFromState();
+      renderHeirsValidation();
+    }
+    return;
+  }
   render();
 }
 
@@ -193,14 +214,11 @@ function renderDecedent() {
 }
 
 function renderHeirs() {
-  const hasRoles = roles.length > 0;
   const roleStatus = rolesError
     ? `<p class="text-error">${escapeHtml(rolesError)}</p>`
     : isLoadingRoles
     ? '<p class="muted">Cargando catálogo de roles…</p>'
-    : hasRoles
-    ? ''
-    : '<p class="muted">Catálogo de roles vacío.</p>';
+    : '';
 
   return `
     <section class="card">
@@ -208,90 +226,128 @@ function renderHeirs() {
         <div>
           <p class="eyebrow">Paso 2</p>
           <h2>${LABELS.heirs}</h2>
-          <p class="muted">Agrega herederos uno a uno y manténlos sincronizados con el caso.</p>
+          <p class="muted">Declara cantidades por rol familiar.</p>
         </div>
         <div class="inline-actions">
-          <button type="button" class="btn btn-primary" data-action="add-heir" ${isLoadingRoles ? 'disabled' : ''}>Añadir heredero</button>
           <button type="button" class="btn btn-ghost" data-action="reload-roles" ${isLoadingRoles ? 'disabled' : ''}>Recargar roles</button>
         </div>
       </div>
       ${roleStatus}
-      ${renderHeirTable()}
-      ${renderValidationMessages(['heirs'])}
+      <div id="heirs-matrix-host" class="stack"></div>
     </section>
   `;
 }
 
-function renderHeirTable() {
-  if (!state.heirs.length) {
-    return '<p class="empty">Aún no hay herederos añadidos.</p>';
+function clampCount(role, raw) {
+  const parsed = Number.parseInt(raw, 10);
+  const safe = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  const max = ROLE_LIMITS[role];
+  if (Number.isInteger(max)) {
+    return Math.min(safe, max);
   }
-
-  return `
-    <div class="table-responsive">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Nombre</th>
-            <th>Sexo</th>
-            <th>Rol</th>
-            <th>Vivo</th>
-            <th>Count</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${state.heirs.map(renderHeirRow).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
+  return safe;
 }
 
-function renderHeirRow(heir) {
-  return `
-    <tr data-heir-id="${escapeHtml(heir.id)}">
-      <td>
-        <input type="text" class="input" data-heir-field="name" data-heir-id="${escapeHtml(heir.id)}" value="${escapeHtml(heir.name)}" placeholder="Ej: Fatima" />
-      </td>
-      <td>
-        <select data-heir-field="sex" data-heir-id="${escapeHtml(heir.id)}">
-          ${renderOptions(
-            [
-              { value: 'M', label: 'Masculino' },
-              { value: 'F', label: 'Femenino' },
-            ],
-            heir.sex,
-          )}
-        </select>
-      </td>
-      <td>
-        ${renderRoleSelect(heir)}
-      </td>
-      <td class="text-center">
-        <label class="field field--inline">
-          <input type="checkbox" data-heir-field="alive" data-heir-id="${escapeHtml(heir.id)}" ${heir.alive ? 'checked' : ''} />
-          <span>Vivo</span>
-        </label>
-      </td>
-      <td>
-        <input type="number" min="1" max="20" step="1" data-heir-field="count" data-heir-id="${escapeHtml(heir.id)}" value="${escapeHtml(String(heir.count))}" />
-      </td>
-      <td>
-        <button type="button" class="btn btn-ghost" data-remove-heir="${escapeHtml(heir.id)}">Eliminar</button>
-      </td>
-    </tr>
-  `;
+function createRoleInput(role) {
+  const label = ROLE_LABELS[role] || escapeHtml(role);
+  const field = document.createElement('label');
+  field.className = 'field';
+  const span = document.createElement('span');
+  span.textContent = label;
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.min = '0';
+  input.step = '1';
+  input.inputMode = 'numeric';
+  input.dataset.heirCount = role;
+  const max = ROLE_LIMITS[role];
+  if (Number.isInteger(max)) {
+    input.max = String(max);
+  }
+  input.addEventListener('input', handleHeirCountInput);
+  field.appendChild(span);
+  field.appendChild(input);
+  heirsUI.inputs.set(role, input);
+  return field;
 }
 
-function renderRoleSelect(heir) {
-  if (!roles.length) {
-    return `<input type="text" data-heir-field="role" data-heir-id="${escapeHtml(heir.id)}" value="${escapeHtml(heir.role)}" placeholder="Rol" />`;
-  }
-  const opts = roles
-    .map((role) => `<option value="${escapeHtml(role.code)}" ${role.code === heir.role ? 'selected' : ''}>${escapeHtml(role.label)}</option>`)
-    .join('');
-  return `<select data-heir-field="role" data-heir-id="${escapeHtml(heir.id)}">${opts}</select>`;
+function createGroupSection(group) {
+  const section = document.createElement('section');
+  section.className = 'card card--subtle';
+
+  const head = document.createElement('div');
+  head.className = 'section-head section-head--compact';
+  const title = document.createElement('h3');
+  title.textContent = group.title;
+  head.appendChild(title);
+  section.appendChild(head);
+
+  const grid = document.createElement('div');
+  grid.className = 'form-grid form-grid--two';
+  group.roles.forEach((role) => {
+    const input = createRoleInput(role);
+    grid.appendChild(input);
+  });
+  section.appendChild(grid);
+
+  return section;
+}
+
+function createHeirsUIOnce() {
+  if (heirsUI.container) return heirsUI.container;
+  const container = document.createElement('div');
+  container.className = 'stack';
+
+  ROLE_GROUPS.forEach((group) => {
+    if (group.group === 'coll') {
+      const details = document.createElement('details');
+      details.open = false;
+      const summary = document.createElement('summary');
+      summary.textContent = 'Avanzado';
+      details.appendChild(summary);
+      details.appendChild(createGroupSection(group));
+      container.appendChild(details);
+    } else {
+      container.appendChild(createGroupSection(group));
+    }
+  });
+
+  heirsUI.validationSlot = document.createElement('div');
+  heirsUI.validationSlot.className = 'stack';
+  container.appendChild(heirsUI.validationSlot);
+
+  heirsUI.container = container;
+  return container;
+}
+
+function syncHeirsUIFromState() {
+  const counts = state?.heirsCounts || {};
+  const deceasedSex = String(state?.deceased?.sex || '').toUpperCase();
+  heirsUI.inputs.forEach((input, role) => {
+    const value = counts[role] ?? 0;
+    const clamped = clampCount(role, value);
+    if (String(input.value) !== String(clamped)) {
+      input.value = String(clamped);
+    }
+
+    const disableInputs = !deceasedSex;
+    input.disabled = disableInputs;
+
+    const shouldHideHusband = deceasedSex === 'M' || !deceasedSex;
+    const shouldHideWife = deceasedSex === 'F' || !deceasedSex;
+
+    if (role === 'husband') {
+      input.closest('.field')?.classList.toggle('is-hidden', shouldHideHusband);
+    }
+    if (role === 'wife') {
+      input.closest('.field')?.classList.toggle('is-hidden', shouldHideWife);
+    }
+  });
+}
+
+function renderHeirsValidation() {
+  if (!heirsUI.validationSlot) return;
+  heirsUI.validationSlot.innerHTML = renderValidationMessages(['heirs']);
 }
 
 function renderReview() {
@@ -302,7 +358,8 @@ function renderReview() {
     previewPayload = { error: error instanceof Error ? error.message : 'Payload inválido', estate_value: state?.estate?.value || '' };
   }
   const pretty = JSON.stringify(previewPayload, null, 2);
-  const heirsCount = Array.isArray(state.heirs) ? state.heirs.reduce((acc, heir) => acc + (Number(heir.count) || 0), 0) : 0;
+  const heirsCount = Object.values(state.heirsCounts || {}).reduce((acc, value) => acc + (Number(value) || 0), 0);
+  const heirsRoles = Object.values(state.heirsCounts || {}).filter((value) => Number(value) > 0).length;
   return `
     <section class="card">
       <div class="section-head">
@@ -324,7 +381,7 @@ function renderReview() {
         <div class="summary-item">
           <p class="eyebrow">Herederos</p>
           <p><strong>${heirsCount}</strong> persona(s) declarada(s)</p>
-          <p class="muted">${state.heirs.length} registro(s)</p>
+          <p class="muted">${heirsRoles} rol(es) activo(s)</p>
         </div>
         <div class="summary-item">
           <p class="eyebrow">Montante</p>
@@ -389,12 +446,14 @@ function normalizeDistribution(output) {
     const personAmounts = output?.person_amounts || {};
     const roleAmounts = output?.group_amounts || output?.amounts || {};
 
-    const rowsFromHeirs = (state.heirs || []).map((heir, index) => {
-      const label = `${heir.name || 'Sin nombre'}${heir.role ? ` (${heir.role})` : ''}`;
-      const share = personShares[heir.name] ?? personShares[heir.role] ?? roleShares[heir.role] ?? '';
-      const amount = personAmounts[heir.name] ?? personAmounts[heir.role] ?? roleAmounts[heir.role] ?? '';
-      return { key: heir.id || `heir-${index}`, label, share, amount };
-    });
+    const rowsFromHeirs = Object.entries(state.heirsCounts || {})
+      .filter(([, value]) => Number(value) > 0)
+      .map(([role, count], index) => {
+        const labelBase = ROLE_LABELS[role] || role;
+        const share = roleShares[role] ?? '';
+        const amount = roleAmounts[role] ?? '';
+        return { key: `heir-${role}-${index}`, label: `${labelBase} (${count})`, share, amount };
+      });
 
     const extraEntries = Object.entries(personShares).filter(([label]) => !rowsFromHeirs.find((row) => row.label === label));
 
@@ -459,7 +518,7 @@ function renderResultLayout(result, distributionInfo) {
 
 function renderResultSummary(result) {
   const meta = result?.meta || {};
-  const heirsCount = Array.isArray(state.heirs) ? state.heirs.reduce((acc, h) => acc + (h?.count || 0), 0) : 0;
+  const heirsCount = Object.values(state.heirsCounts || {}).reduce((acc, h) => acc + (Number(h) || 0), 0);
   const timestamp =
     result?.updatedAt || meta?.generated_at || meta?.generatedAt || meta?.timestamp || new Date().toISOString();
   const note = result?.note || meta?.note || 'Resultado de cálculo';
@@ -664,9 +723,17 @@ function renderJustification(result) {
   `;
 }
 
-function renderValidationMessages() {
-  const { errors, warnings } = validation;
+function renderValidationMessages(sections = []) {
+  const bag = Array.isArray(sections) && sections.length ? sections : null;
+  const fromSections = (type) => {
+    if (!bag) return validation?.[type] || [];
+    return bag.flatMap((key) => validation?.bySection?.[key]?.[type] || []);
+  };
+
+  const errors = fromSections('errors');
+  const warnings = fromSections('warnings');
   if (!errors.length && !warnings.length) return '';
+
   const errorList = errors.length
     ? `<div class="alert alert-error"><p><strong>Errores</strong></p><ul>${errors.map((msg) => `<li>${escapeHtml(msg)}</li>`).join('')}</ul></div>`
     : '';
@@ -687,6 +754,17 @@ function render() {
     results: renderResults(),
   };
   root.innerHTML = fragments[state.step] || '';
+
+  const heirsHost = root.querySelector('#heirs-matrix-host');
+  if (heirsHost) {
+    heirsUI.host = heirsHost;
+    const matrix = createHeirsUIOnce();
+    if (matrix.parentElement !== heirsHost) {
+      heirsHost.replaceChildren(matrix);
+    }
+    syncHeirsUIFromState();
+    renderHeirsValidation();
+  }
   renderNav();
   renderFooter();
 }
@@ -762,36 +840,22 @@ function handleDecedentInput(event) {
   persist(setDeceased(state, { [field]: value }));
 }
 
-function parseHeirValue(target) {
-  if (target.type === 'checkbox') return target.checked;
-  if (target.type === 'number') return parseInt(target.value, 10) || 1;
-  return target.value;
-}
-
-function handleHeirChange(event) {
+function handleHeirCountInput(event) {
   const target = event.target;
-  if (!(target instanceof HTMLElement)) return;
-  const heirId = target.dataset.heirId;
-  const field = target.dataset.heirField;
-  if (!heirId || !field) return;
-  const value = target instanceof HTMLInputElement || target instanceof HTMLSelectElement ? parseHeirValue(target) : target.textContent;
-  persist(updateHeir(state, heirId, { [field]: value }));
-}
-
-function handleHeirRemoval(event) {
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) return;
-  const heirId = target.dataset.removeHeir;
-  if (!heirId) return;
-  persist(removeHeir(state, heirId));
+  if (!(target instanceof HTMLInputElement)) return;
+  const role = target.dataset.heirCount;
+  if (!role) return;
+  const value = clampCount(role, target.value);
+  if (String(target.value) !== String(value)) {
+    target.value = String(value);
+  }
+  const next = setHeirCount(state, role, value);
+  persist(next, { skipRender: true });
 }
 
 function handleRootClick(event) {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
-  if (target.dataset.action === 'add-heir') {
-    persist(addHeir(state, {}));
-  }
   if (target.dataset.action === 'reload-roles') {
     ensureRoles(true);
   }
@@ -817,9 +881,6 @@ function handleRootClick(event) {
     if (state.lastResultRaw) {
       exportJson('calc_raw_response.json', state.lastResultRaw);
     }
-  }
-  if (target.dataset.removeHeir) {
-    handleHeirRemoval(event);
   }
 }
 
@@ -899,8 +960,6 @@ function bindEvents() {
   footerActions?.addEventListener('click', handleFooterClick);
   root?.addEventListener('input', handleDecedentInput);
   root?.addEventListener('change', handleDecedentInput);
-  root?.addEventListener('input', handleHeirChange);
-  root?.addEventListener('change', handleHeirChange);
   root?.addEventListener('click', handleRootClick);
 }
 
