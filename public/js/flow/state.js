@@ -1,4 +1,4 @@
-const VERSION = 3;
+const VERSION = 4;
 
 const DEFAULT_HEIRS = [
   'wife',
@@ -38,6 +38,9 @@ function createInitialState() {
   return {
     version: VERSION,
     step: 'screening',
+    estateValue: '',
+    lastResponse: null,
+    lastError: '',
     screening: {
       spouse: false,
       descendants: false,
@@ -83,10 +86,25 @@ function setEstateValue(state, value) {
   const nextValue = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
   return withVersion({
     ...state,
+    estateValue: nextValue,
     estate: {
       ...state.estate,
       value: nextValue,
     },
+  });
+}
+
+function setLastResponse(state, payload) {
+  return withVersion({
+    ...state,
+    lastResponse: payload,
+  });
+}
+
+function setLastError(state, message) {
+  return withVersion({
+    ...state,
+    lastError: message,
   });
 }
 
@@ -130,6 +148,8 @@ export {
   setLastResult,
   setLastResultRaw,
   setLastPayload,
+  setLastResponse,
+  setLastError,
   setHeirCount,
   DEFAULT_HEIRS,
 };

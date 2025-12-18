@@ -7,13 +7,15 @@ import {
   setEstateValue,
   setHeirCount,
   setScreening,
+  setLastResponse,
+  setLastError,
 } from './state.js';
 import { loadState, saveState, resetCase } from './storage.js';
-import { loadRoles } from './roles.js';
 import { validateState } from './validate.js';
 import { buildPayload } from './payload.js';
 import { exportJson } from './export.js';
 import { ROLE_GROUPS, ROLE_LABELS } from './roles_meta.js';
+import { postCalc, loadRoles } from './api.js';
 
 const STEP_ORDER = ['screening', 'decedent', 'heirs', 'review', 'results'];
 const LABELS = {
@@ -31,8 +33,10 @@ let validation = { errors: [], warnings: [], bySection: {} };
 let isLoadingRoles = false;
 let rolesError = null;
 let isCalculating = false;
-let calcError = null;
-const DEFAULT_CALC_URL = 'api/calc.php';
+function apiUrl(relPath) {
+  const base = (window.__APP_BASE__ || '').replace(/\/+$/, '');
+  return new URL(base + '/' + relPath.replace(/^\/+/, ''), window.location.origin);
+}
 
 const root = document.getElementById('flow-root');
 const page = document.querySelector('.flow');
@@ -96,19 +100,6 @@ function persist(next, opts = {}) {
   render();
 }
 
-function joinUrl(base, path) {
-  const cleanBase = base ? String(base).replace(/\/+$/, '') : '';
-  const cleanPath = String(path || '').replace(/^\/+/, '');
-  return cleanBase ? `${cleanBase}/${cleanPath}` : cleanPath;
-}
-
-function getCalcUrl() {
-  const fromConfig = window.__URLS__?.calc;
-  const publicBase = window.__PUBLIC_BASE__ || '';
-  if (fromConfig) return fromConfig;
-  return joinUrl(publicBase, DEFAULT_CALC_URL);
-}
-
 function stepFromIndex(index) {
   return STEP_ORDER[Math.min(Math.max(index, 0), STEP_ORDER.length - 1)];
 }
@@ -135,7 +126,7 @@ async function ensureRoles(force = false) {
   rolesError = null;
   render();
   try {
-    roles = await loadRoles();
+    roles = await loadRoles(apiUrl);
   } catch (error) {
     rolesError = error instanceof Error ? error.message : 'No se pudieron cargar los roles.';
   } finally {
@@ -156,7 +147,7 @@ function renderNav() {
   nav.querySelectorAll('button[data-step]').forEach((btn) => {
     const isActive = btn.dataset.step === state.step;
     btn.classList.toggle('is-active', isActive);
-    btn.disabled = btn.dataset.step === 'results' && !state.lastResult;
+    btn.disabled = btn.dataset.step === 'results' && !state.lastResponse && !state.lastError;
   });
 }
 
@@ -171,7 +162,11 @@ function renderFooter() {
   }
 
   if (next) {
-    next.textContent = state.step === 'review' ? 'Calcular' : state.step === 'results' ? 'Finalizado' : 'Siguiente';
+    next.textContent = state.step === 'review' && isCalculating ? 'Calculando…' : state.step === 'review'
+      ? 'Calcular'
+      : state.step === 'results'
+      ? 'Finalizado'
+      : 'Siguiente';
     next.disabled =
       state.step === 'results' ||
       isCalculating ||
@@ -180,7 +175,7 @@ function renderFooter() {
 
   if (recalc) {
     recalc.classList.toggle('is-hidden', state.step !== 'results');
-    recalc.disabled = isCalculating || (!state.lastResult && !state.lastPayload);
+    recalc.disabled = isCalculating || (!state.lastResponse && !state.lastPayload && !state.lastError);
   }
 }
 
@@ -249,12 +244,18 @@ function renderDecedent() {
             )}
           </select>
         </label>
-        <label class="field">
-          <span>Montante de la herencia</span>
-          <input type="number" step="0.01" min="0" inputmode="decimal" name="estate-value" data-estate-field="value" value="${escapeHtml(
-            estate?.value || '',
-          )}" placeholder="Ej: 100000" />
-        </label>
+        <div class="field">
+          <label for="estateValue">Montante de la herencia</label>
+          <input id="estateValue"
+                 type="number"
+                 step="0.01"
+                 min="0"
+                 inputmode="decimal"
+                 data-estate-field="value"
+                 value="${escapeHtml(state.estateValue || estate?.value || '')}"
+                 placeholder="Ej: 10000" />
+          <div class="hint">Introduce el monto total (misma moneda para todo).</div>
+        </div>
         <label class="field field--full">
           <span>Notas</span>
           <textarea name="deceased-notes" data-deceased-field="notes" rows="3" placeholder="Circunstancias o notas adicionales">${escapeHtml(deceased.notes)}</textarea>
@@ -485,7 +486,9 @@ function renderReview() {
           <p class="muted">Repasa la información antes de calcular.</p>
         </div>
         <div class="inline-actions">
-          <button type="button" class="btn btn-primary" data-action="calc" ${validation.errors.length ? 'disabled' : ''}>Calcular</button>
+          <button type="button" class="btn btn-primary" data-action="calc" ${
+            validation.errors.length || isCalculating ? 'disabled' : ''
+          }>${isCalculating ? 'Calculando…' : 'Calcular'}</button>
         </div>
       </div>
       <div class="summary-grid">
@@ -500,7 +503,7 @@ function renderReview() {
         </div>
         <div class="summary-item">
           <p class="eyebrow">Montante</p>
-          <p><strong>${escapeHtml(state.estate?.value || '—')}</strong></p>
+          <p><strong>${escapeHtml(state.estateValue || state.estate?.value || '—')}</strong></p>
           <p class="muted">Moneda: ${escapeHtml(state.estate?.currency || 'N/A')}</p>
         </div>
         <div class="summary-item">
@@ -513,88 +516,83 @@ function renderReview() {
         <pre class="code-block">${escapeHtml(pretty)}</pre>
       </div>
       ${renderValidationMessages(['review'])}
-      ${calcError ? `<p class="text-error">${escapeHtml(calcError)}</p>` : ''}
+      ${state.lastError ? `<p class="text-error">${escapeHtml(state.lastError)}</p>` : ''}
     </section>
   `;
 }
 
-function getOutputData() {
-  const raw = state.lastResultRaw?.json;
-  if (raw && typeof raw === 'object') {
-    if (raw.output !== undefined) return raw.output;
-    if (raw.result !== undefined) return raw.result;
-    if (raw.results !== undefined) return raw.results;
+function extractRows(resp) {
+  const root = resp && typeof resp === 'object' ? resp : null;
+  if (!root) return null;
+
+  const candidates = [root.output, root.result, root.data, root].filter(Boolean);
+
+  for (const c of candidates) {
+    const arrays = ['shares', 'distribution', 'allocations', 'rows', 'heirs'];
+    for (const k of arrays) {
+      if (Array.isArray(c[k])) return c[k];
+    }
   }
-  return state.lastResult || raw || null;
+  return null;
 }
 
-function mapShareEntry(entry, index) {
-  const item = entry && typeof entry === 'object' ? entry : { value: entry };
-  const label = item.name || item.role || item.heir || item.label || `Entrada ${index + 1}`;
-  const share = item.fraction ?? item.share ?? item.percent ?? item.percentage ?? item.part ?? item.value ?? '';
-  const amount = item.amount ?? item.total ?? item.quantity ?? item.value_amount ?? item.amount_value ?? item.money ?? item.value;
-  return { label, share, amount };
+function renderResultTable(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return '';
+  const body = rows
+    .map((entry) => {
+      const label = entry?.role || entry?.code || entry?.label || '(?)';
+      const fraction = entry?.fraction || entry?.ratio || entry?.share || entry?.portion || '';
+      const amount = entry?.amount || entry?.value || entry?.share_amount || '';
+      return `
+        <tr>
+          <td>${escapeHtml(String(label))}</td>
+          <td>${fraction !== '' && fraction !== undefined ? escapeHtml(String(fraction)) : '<span class="muted">—</span>'}</td>
+          <td>${amount !== '' && amount !== undefined ? escapeHtml(String(amount)) : '<span class="muted">—</span>'}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  return `
+    <section class="result-block">
+      <div class="result-block__head">
+        <h3>Reparto</h3>
+      </div>
+      <div class="table-responsive">
+        <table class="table result-table">
+          <thead>
+            <tr><th>Heir/Role</th><th>Fraction</th><th>Amount</th></tr>
+          </thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
 }
 
-function normalizeDistribution(output) {
-  if (!output || typeof output !== 'object') return { rows: [], mapped: false };
-
-  let rows = [];
-  let mapped = false;
-
-  if (Array.isArray(output.shares)) {
-    rows = output.shares.map(mapShareEntry);
-    mapped = true;
-  } else if (Array.isArray(output.distribution)) {
-    rows = output.distribution.map(mapShareEntry);
-    mapped = true;
-  } else if (output.result && typeof output.result === 'object' && !Array.isArray(output.result)) {
-    rows = Object.entries(output.result).map(([label, value]) => {
-      const share = value && typeof value === 'object' ? value.share ?? value.fraction ?? value.part ?? value.percent ?? value : value;
-      const amount = value && typeof value === 'object' ? value.amount ?? value.value ?? value.total : undefined;
-      return { label, share, amount };
-    });
-    mapped = true;
-  } else {
-    const personShares = output?.person_shares || output?.individual_shares || {};
-    const roleShares = output?.group_shares || output?.shares || {};
-    const personAmounts = output?.person_amounts || {};
-    const roleAmounts = output?.group_amounts || output?.amounts || {};
-
-    const rowsFromHeirs = Object.entries(state.heirsCounts || {})
-      .filter(([, value]) => Number(value) > 0)
-      .map(([role, count], index) => {
-        const labelBase = ROLE_LABELS[role] || role;
-        const share = roleShares[role] ?? '';
-        const amount = roleAmounts[role] ?? '';
-        return { key: `heir-${role}-${index}`, label: `${labelBase} (${count})`, share, amount };
-      });
-
-    const extraEntries = Object.entries(personShares).filter(([label]) => !rowsFromHeirs.find((row) => row.label === label));
-
-    rows = [
-      ...rowsFromHeirs,
-      ...extraEntries.map(([label, share], idx) => ({
-        key: `extra-${idx}`,
-        label,
-        share,
-        amount: personAmounts[label] ?? roleAmounts[label] ?? '',
-      })),
-    ].filter((row) => row.share || row.amount || row.label);
-
-    mapped = rows.length > 0 || Object.keys(personShares).length > 0 || Object.keys(roleShares).length > 0;
-  }
-
-  return { rows, mapped };
+function renderRawSection() {
+  return `
+    <details class="raw">
+      <summary>Respuesta cruda (RAW JSON)</summary>
+      <pre id="rawJson"></pre>
+    </details>
+  `;
 }
 
 function renderResults() {
-  const hasResult = Boolean(state.lastResult || state.lastResultRaw);
-  const output = getOutputData();
-  const distributionInfo = normalizeDistribution(output);
-  const hasStructured = distributionInfo.mapped;
-  const waiting = !hasResult && state.lastPayload ? '<p class="muted">Recalculando con el último payload…</p>' : '';
-  const canExport = hasResult || state.lastPayload;
+  const rows = extractRows(state.lastResponse);
+  const hasRows = Array.isArray(rows) && rows.length > 0;
+  const canExport = Boolean(state.lastResponse || state.lastPayload);
+
+  const errorBanner = state.lastError
+    ? `<div class="alert alert-error"><p>${escapeHtml(state.lastError)}</p></div>`
+    : '';
+  const noResults = !state.lastResponse && !state.lastError;
+
+  const mappedTable = hasRows ? renderResultTable(rows) : '';
+  const mappingFallback = !hasRows && state.lastResponse
+    ? '<p class="muted">No se pudo mapear el resultado a una tabla. Revisa el JSON crudo.</p>'
+    : '';
 
   return `
     <section class="card">
@@ -607,232 +605,16 @@ function renderResults() {
         <div class="inline-actions">
           <button type="button" class="btn" data-action="edit-case">Editar caso</button>
           <button type="button" class="btn" data-action="export-json" ${canExport ? '' : 'disabled'}>Exportar JSON</button>
-          <button type="button" class="btn" data-action="calc" ${isCalculating ? 'disabled' : ''}>Recalcular</button>
+          <button type="button" class="btn" data-action="calc" ${isCalculating ? 'disabled' : ''}>${
+            isCalculating ? 'Calculando…' : 'Recalcular'
+          }</button>
         </div>
       </div>
-      ${hasResult ? renderResultLayout(output, distributionInfo) : `<p class="empty">Recalcula para obtener resultados actualizados.</p>${waiting}`}
-      ${renderResultMessages(output)}
-      ${!hasStructured ? renderRawResult(state.lastResultRaw) : ''}
-    </section>
-  `;
-}
-
-function renderResultLayout(result, distributionInfo) {
-  const summary = renderResultSummary(result);
-  const distribution = renderDistribution(distributionInfo);
-  const justification = renderJustification(result);
-
-  return `
-    <div class="result-stack">
-      ${summary}
-      ${distribution}
-      ${justification}
-    </div>
-  `;
-}
-
-function renderResultSummary(result) {
-  const meta = result?.meta || {};
-  const heirsCount = Object.values(state.heirsCounts || {}).reduce((acc, h) => acc + (Number(h) || 0), 0);
-  const timestamp =
-    result?.updatedAt || meta?.generated_at || meta?.generatedAt || meta?.timestamp || new Date().toISOString();
-  const note = result?.note || meta?.note || 'Resultado de cálculo';
-  const amount =
-    result?.estate_value ||
-    meta?.estate_value ||
-    meta?.amount ||
-    meta?.estateValue ||
-    state?.estate?.value ||
-    undefined;
-
-  return `
-    <section class="result-block">
-      <div class="result-block__head">
-        <h3>Resumen</h3>
-        <span class="badge">${escapeHtml(note)}</span>
-      </div>
-      <div class="summary-grid results-summary">
-        <div class="summary-item">
-          <p class="muted small">Causante</p>
-          <strong>${escapeHtml(state.deceased.name || 'Sin nombre')}</strong>
-        </div>
-        <div class="summary-item">
-          <p class="muted small">Nº herederos</p>
-          <strong>${heirsCount}</strong>
-          <p class="muted">Registros activos</p>
-        </div>
-        <div class="summary-item">
-          <p class="muted small">Timestamp</p>
-          <strong>${escapeHtml(String(timestamp))}</strong>
-          <p class="muted">Última actualización</p>
-        </div>
-        <div class="summary-item">
-          <p class="muted small">Importe (si aplica)</p>
-          <strong>${amount !== undefined ? escapeHtml(String(amount)) : '—'}</strong>
-          <p class="muted">Valor declarado</p>
-        </div>
-      </div>
-    </section>
-  `;
-}
-
-function renderDistribution(distributionInfo) {
-  const rows = distributionInfo?.rows || [];
-
-  const body = rows.length
-    ? rows
-        .map(
-          (row, idx) => `
-            <tr>
-              <td>${escapeHtml(row.label || `Entrada ${idx + 1}`)}</td>
-              <td>${row.share !== '' && row.share !== undefined ? escapeHtml(String(row.share)) : '<span class="muted">—</span>'}</td>
-              <td>${row.amount !== '' && row.amount !== undefined ? escapeHtml(String(row.amount)) : '<span class="muted">—</span>'}</td>
-            </tr>
-          `,
-        )
-        .join('')
-    : `<tr><td colspan="3"><p class="empty">Sin reparto disponible.</p></td></tr>`;
-
-  return `
-    <section class="result-block">
-      <div class="result-block__head">
-        <h3>Reparto</h3>
-        <p class="muted">Fracciones y montos calculados para cada heredero.</p>
-      </div>
-      <div class="table-responsive">
-        <table class="table result-table">
-          <thead>
-            <tr><th>Heredero</th><th>Fracción / %</th><th>Importe</th></tr>
-          </thead>
-          <tbody>
-            ${body}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  `;
-}
-
-function renderResultMessages(result) {
-  const errors = [];
-  const warnings = [];
-
-  if (calcError) errors.push(calcError);
-  if (result?.error) errors.push(String(result.error));
-  if (Array.isArray(result?.errors)) {
-    result.errors.forEach((err) => errors.push(String(err)));
-  }
-  if (result?.warning) warnings.push(String(result.warning));
-  if (Array.isArray(result?.warnings)) {
-    result.warnings.forEach((warn) => warnings.push(String(warn)));
-  }
-
-  const hasMessages = errors.length || warnings.length;
-  const errorList = errors.length
-    ? `<div class="alert alert-error"><ul>${errors.map((msg) => `<li>${escapeHtml(msg)}</li>`).join('')}</ul></div>`
-    : '';
-  const warningList = warnings.length
-    ? `<div class="alert alert-warning"><ul>${warnings.map((msg) => `<li>${escapeHtml(msg)}</li>`).join('')}</ul></div>`
-    : '';
-
-  return `
-    <section class="result-block">
-      <div class="result-block__head">
-        <h3>Errores/avisos</h3>
-      </div>
-      ${
-        hasMessages
-          ? `<div class="stack">${errorList}${warningList}</div>`
-          : '<p class="muted">Sin errores o avisos reportados.</p>'
-      }
-    </section>
-  `;
-}
-
-function renderRawResult(raw) {
-  if (!raw) return '';
-  const pretty = raw.json ? JSON.stringify(raw.json, null, 2) : raw.text;
-  const snippet = raw.text && raw.text.length > 0 ? raw.text.slice(0, 200) : '';
-
-  return `
-    <section class="result-block">
-      <div class="result-block__head">
-        <h3>Resultado crudo</h3>
-      </div>
-      <p class="muted">No se pudo mapear el resultado. Adjuntamos la respuesta para depurar.</p>
-      ${snippet ? `<p class="small">HTTP ${escapeHtml(String(raw.status || ''))}: ${escapeHtml(snippet)}</p>` : ''}
-      <details class="prose" open>
-        <summary>Ver respuesta</summary>
-        <pre class="code-block">${escapeHtml(pretty || 'Respuesta vacía')}</pre>
-      </details>
-      <div class="inline-actions">
-        <button type="button" class="btn" data-action="download-raw">Descargar respuesta</button>
-      </div>
-    </section>
-  `;
-}
-
-function normalizeExplanationEntries(result) {
-  const entries = [];
-  const traces = Array.isArray(result?.traces) ? result.traces : [];
-  const explainArr = Array.isArray(result?.explain) ? result.explain : result?.explain ? [result.explain] : [];
-  const explanationArr = Array.isArray(result?.explanation)
-    ? result.explanation
-    : result?.explanation
-    ? [result.explanation]
-    : [];
-  const notesArr = Array.isArray(result?.notes) ? result.notes : result?.notes ? [result.notes] : [];
-
-  [...traces, ...explainArr, ...explanationArr, ...notesArr].forEach((item) => {
-    if (!item) return;
-    if (typeof item === 'string') {
-      entries.push({ title: 'Regla aplicada', detail: item });
-      return;
-    }
-    if (typeof item === 'object') {
-      const title = item.rule_id || item.rule || item.phase || item.stage || 'Regla aplicada';
-      const detail = item.reason || item.message || item.explanation || item.delta || JSON.stringify(item);
-      entries.push({ title, detail: String(detail) });
-    }
-  });
-
-  return entries;
-}
-
-function renderJustification(result) {
-  const entries = normalizeExplanationEntries(result);
-
-  if (!entries.length) {
-    return `
-      <section class="result-block">
-        <div class="result-block__head">
-          <h3>Justificación</h3>
-        </div>
-        <p class="empty">Sin explicaciones registradas.</p>
-      </section>
-    `;
-  }
-
-  const items = entries
-    .map(
-      (entry, index) => `
-        <details class="explain" ${index === 0 ? 'open' : ''}>
-          <summary>${escapeHtml(entry.title)}</summary>
-          <div class="prose">
-            <p>${escapeHtml(entry.detail)}</p>
-          </div>
-        </details>
-      `,
-    )
-    .join('');
-
-  return `
-    <section class="result-block">
-      <div class="result-block__head">
-        <h3>Justificación</h3>
-        <p class="muted">Revisa las reglas aplicadas durante el cálculo.</p>
-      </div>
-      <div class="stack">${items}</div>
+      ${errorBanner}
+      ${mappedTable || ''}
+      ${mappingFallback}
+      ${noResults ? '<p class="empty">No hay resultados aún.</p>' : ''}
+      ${renderRawSection()}
     </section>
   `;
 }
@@ -869,6 +651,16 @@ function render() {
     results: renderResults(),
   };
   root.innerHTML = fragments[state.step] || '';
+
+  if (state.step === 'results') {
+    const rawPre = root.querySelector('#rawJson');
+    if (rawPre) {
+      const rawText = state.lastResponse !== null && state.lastResponse !== undefined
+        ? JSON.stringify(state.lastResponse, null, 2)
+        : 'null';
+      rawPre.textContent = rawText;
+    }
+  }
 
   const heirsHost = root.querySelector('#heirs-matrix-host');
   if (heirsHost) {
@@ -921,7 +713,7 @@ function handleFooterClick(event) {
   }
   if (target.dataset.action === 'next') {
     if (state.step === 'review') {
-      triggerCalc();
+      runCalc();
       return;
     }
     if (validation.errors.length && (state.step === 'heirs' || state.step === 'decedent')) {
@@ -931,7 +723,7 @@ function handleFooterClick(event) {
     goToStep(nextStep(1));
   }
   if (target.dataset.action === 'recalc') {
-    triggerCalc(state.lastPayload || null);
+    runCalc();
   }
 }
 
@@ -945,15 +737,13 @@ function handleDecedentInput(event) {
     return;
   }
   const estateField = target.dataset.estateField;
-  if (estateField) {
-    const value = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
+  if (estateField === 'value') {
+    const raw = String(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
       ? target.value
-      : '';
-    if (event.type === 'input') {
-      persist(setEstateValue(state, value), { render: false });
-    } else {
-      persist(setEstateValue(state, value));
-    }
+      : '');
+    const normalized = raw.replace(',', '.');
+    const next = setEstateValue(state, normalized);
+    persist(next, { render: event.type !== 'input' });
     return;
   }
   const field = target.dataset.deceasedField;
@@ -992,7 +782,7 @@ function handleRootClick(event) {
     ensureRoles(true);
   }
   if (target.dataset.action === 'calc') {
-    triggerCalc();
+    runCalc();
   }
   if (target.dataset.action === 'edit-case') {
     goToStep('heirs');
@@ -1002,17 +792,16 @@ function handleRootClick(event) {
     try {
       payload = state.lastPayload || buildPayload(state);
     } catch (error) {
-      calcError = error instanceof Error ? error.message : 'No se pudo construir el payload para exportar.';
-      render();
+      const message = error instanceof Error ? error.message : 'No se pudo construir el payload para exportar.';
+      const next = setLastError(state, message);
+      persist(next, { render: true });
       return;
     }
-    const data = { state, payload, result: state.lastResult, raw: state.lastResultRaw };
+    const data = { state, payload, response: state.lastResponse, error: state.lastError };
     exportJson('heritage_result.json', data);
   }
   if (target.dataset.action === 'download-raw') {
-    if (state.lastResultRaw) {
-      exportJson('calc_raw_response.json', state.lastResultRaw);
-    }
+    exportJson('calc_raw_response.json', { response: state.lastResponse, error: state.lastError });
   }
 }
 
@@ -1022,82 +811,67 @@ function handlePageClick(event) {
   if (target.dataset.action === 'reset-case') {
     const fresh = setStep(resetCase(), STEP_ORDER[0]);
     rolesError = null;
-    calcError = null;
+    fresh.lastError = '';
     isCalculating = false;
     applyUrl(fresh.step);
     persist(fresh);
   }
 }
 
-async function runCalc(payload) {
-  const url = getCalcUrl();
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+function setCalcBusy(flag) {
+  isCalculating = flag;
+  renderFooter();
+  const calcButtons = root ? root.querySelectorAll('[data-action="calc"]') : [];
+  calcButtons.forEach((btn) => {
+    btn.disabled = flag || validation.errors.length > 0;
+    btn.textContent = flag ? 'Calculando…' : 'Calcular';
   });
-  const text = await response.text();
-  let json = null;
-  try {
-    json = JSON.parse(text);
-  } catch (error) {
-    // se maneja más abajo
+  const footerCalc = footerActions?.querySelector('[data-action="next"]');
+  if (footerCalc && state.step === 'review') {
+    footerCalc.textContent = flag ? 'Calculando…' : 'Calcular';
+    footerCalc.disabled = flag || validation.errors.length > 0;
   }
-  return { status: response.status, ok: response.ok, json, text };
+  const recalcButton = footerActions?.querySelector('[data-action="recalc"]');
+  if (recalcButton) {
+    recalcButton.disabled = flag;
+  }
 }
 
-async function triggerCalc(payloadOverride = null) {
-  validation = validateState(state, roles);
-  if (validation.errors.length) {
-    render();
+async function runCalc() {
+  state.lastError = '';
+  const payload = buildPayload(state);
+
+  const v = validateState(state, roles);
+  if (v.errors.length) {
+    const next = setLastError(state, v.errors.join('\n'));
+    persist({ ...next }, { render: true });
     return;
   }
-  isCalculating = true;
-  calcError = null;
-  let payload = null;
-  try {
-    payload = payloadOverride || buildPayload(state);
-  } catch (error) {
-    calcError = error instanceof Error ? error.message : 'No se pudo construir el payload.';
-    isCalculating = false;
-    render();
-    return;
-  }
-  persist(setLastPayload(state, payload));
-  try {
-    const response = await runCalc(payload);
-    persist(setLastResultRaw(state, response));
-    if (!response.json) {
-      calcError = `Respuesta no-JSON (${response.status}). ${response.text.slice(0, 200)}`;
-      persist(setStep(setLastPayload(state, payload), 'results'));
-      return;
-    }
 
-    if (response.json.ok !== true && response.json.output === undefined) {
-      const msg = response.json.error || response.text || 'Cálculo fallido.';
-      calcError = `${msg} (${response.status})`;
-      persist(setStep(setLastPayload(state, payload), 'results'));
-      return;
-    }
+  setCalcBusy(true);
 
-    const output = response.json.output ?? response.json.result ?? response.json.results ?? response.json;
-    const withResult = setLastResult(state, output);
-    const withRaw = setLastResultRaw(withResult, response);
-    const withPayload = setLastPayload(withRaw, payload);
-    persist(setStep(withPayload, 'results'));
-  } catch (error) {
-    calcError = error instanceof Error ? error.message : 'No se pudo calcular.';
-    persist(setLastPayload(state, payload));
+  try {
+    const json = await postCalc(apiUrl, payload);
+    const withPayload = setLastPayload(state, payload);
+    const next = setLastError(setLastResponse(withPayload, json), '');
+    persist(next, { render: true });
+    goToStep('results');
+  } catch (e) {
+    const message = String(e && e.message ? e.message : e);
+    const withPayload = setLastPayload(state, payload);
+    const next = setLastResponse(setLastError(withPayload, message), null);
+    persist(next, { render: true });
+    goToStep('results');
   } finally {
-    isCalculating = false;
-    render();
+    setCalcBusy(false);
   }
 }
 
 function maybeAutoRecalc() {
   if (state.step !== 'results') return;
-  if (state.lastResult || !state.lastPayload || isCalculating || calcError) return;
-  triggerCalc(state.lastPayload);
+  if (isCalculating || state.lastError) return;
+  if (state.lastResponse || !state.lastPayload) return;
+  runCalc();
 }
 
 function bindEvents() {

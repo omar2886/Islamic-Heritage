@@ -31,13 +31,11 @@ function validateState(state) {
   const warnings = [];
   const bySection = { decedent: { errors: [], warnings: [] }, heirs: { errors: [], warnings: [] }, review: { errors: [], warnings: [] } };
 
-  const estateValueRaw = (state?.estate?.value || '').toString().trim();
-  const estateValue = Number.parseFloat(estateValueRaw);
-
-  if (!estateValueRaw) {
-    pushIssue(errors, bySection, 'decedent', 'El montante de la herencia es obligatorio.');
-  } else if (Number.isNaN(estateValue) || estateValue <= 0) {
-    pushIssue(errors, bySection, 'decedent', 'El montante de la herencia debe ser un número mayor que cero.');
+  const estateRaw = String(state?.estateValue ?? state?.estate?.value ?? '').trim();
+  const estateValue = Number(String(estateRaw || '').replace(',', '.'));
+  if (!Number.isFinite(estateValue) || estateValue <= 0) {
+    pushIssue(errors, bySection, 'decedent', 'Introduce un montante de herencia válido (> 0).');
+    pushIssue(errors, bySection, 'review', 'Introduce un montante de herencia válido (> 0).');
   }
 
   const deceasedSex = normalizeSex(state?.deceased?.sex);
