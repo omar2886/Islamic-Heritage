@@ -1,16 +1,27 @@
-import { VERSION, createInitialState, defaultHeir } from './state.js';
+import { VERSION, createInitialHeirsCounts, createInitialState } from './state.js';
 
-const STORAGE_KEY = 'heritage_flow_v1';
+const STORAGE_KEY = 'heritage_flow_v2';
 
-function normalizeHeir(entry) {
-  const base = defaultHeir();
-  if (!entry || typeof entry !== 'object') return base;
-  return {
-    ...base,
-    ...entry,
-    alive: entry.alive !== false,
-    count: Number.isFinite(Number(entry.count)) ? Math.max(1, Number(entry.count)) : base.count,
-  };
+function normalizeHeirsCounts(input = {}) {
+  const base = createInitialHeirsCounts();
+  return Object.entries(base).reduce((acc, [role, defaultValue]) => {
+    const raw = input[role];
+    const parsed = Number.parseInt(raw, 10);
+    const safe = Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultValue;
+    return { ...acc, [role]: safe };
+  }, {});
+}
+
+function fromLegacyList(list) {
+  if (!Array.isArray(list)) return list || {};
+  return list.reduce((acc, entry) => {
+    if (!entry || typeof entry !== 'object') return acc;
+    const role = entry.role;
+    const count = Number.parseInt(entry.count, 10) || 0;
+    if (!role) return acc;
+    const prev = acc[role] || 0;
+    return { ...acc, [role]: prev + count };
+  }, {});
 }
 
 function loadState() {
@@ -20,6 +31,7 @@ function loadState() {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return createInitialState();
     if (parsed.version !== VERSION) return createInitialState();
+
     const base = createInitialState();
     return {
       ...base,
@@ -27,7 +39,7 @@ function loadState() {
       step: parsed.step && typeof parsed.step === 'string' ? parsed.step : base.step,
       deceased: { ...base.deceased, ...(parsed.deceased || {}) },
       estate: { ...base.estate, ...(parsed.estate || {}) },
-      heirs: Array.isArray(parsed.heirs) ? parsed.heirs.map(normalizeHeir) : base.heirs,
+      heirsCounts: normalizeHeirsCounts(parsed.heirsCounts || fromLegacyList(parsed.heirs)),
       lastResult: parsed.lastResult ?? null,
       lastResultRaw: parsed.lastResultRaw ?? null,
       lastPayload: parsed.lastPayload ?? null,
@@ -51,7 +63,7 @@ function saveState(state) {
       }
     })();
 
-    const snapshot = JSON.stringify({ ...state, lastResult: safeResult });
+    const snapshot = JSON.stringify({ ...state, lastResult: safeResult, heirs: undefined });
     localStorage.setItem(STORAGE_KEY, snapshot);
   } catch (error) {
     console.warn('No se pudo persistir el estado del Flow Wizard', error);

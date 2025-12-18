@@ -3,25 +3,25 @@ function normalizeSex(value) {
   return sex === 'F' ? 'F' : 'M';
 }
 
-function normalizeHeir(heir) {
-  return {
-    role: String(heir.role || '').trim(),
-    sex: normalizeSex(heir.sex),
-    count: Number.parseInt(heir.count, 10) || 0,
-    alive: heir.alive !== false,
-    name: String(heir.name || '').trim(),
-  };
-}
-
 function buildPayload(state) {
   const deceasedSex = normalizeSex(state?.deceased?.sex || '');
-  const heirs = Array.isArray(state?.heirs) ? state.heirs.map(normalizeHeir) : [];
+  const counts = state?.heirsCounts || {};
   const ev = String(state?.estate?.value ?? '').trim();
   const evNumber = Number.parseFloat(ev);
 
   if (!ev || Number.isNaN(evNumber) || evNumber <= 0) {
     throw new Error('El montante de la herencia es obligatorio y debe ser mayor que cero.');
   }
+
+  const spouseKey = deceasedSex === 'F' ? 'husband' : 'wife';
+
+  const heirs = Object.entries(counts)
+    .filter(([role, n]) => {
+      if (role === 'husband' && spouseKey !== 'husband') return false;
+      if (role === 'wife' && spouseKey !== 'wife') return false;
+      return Number.parseInt(n, 10) > 0;
+    })
+    .map(([role, n]) => ({ role, count: Number.parseInt(n, 10) || 0 }));
 
   return {
     deceased: { sex: deceasedSex },
