@@ -56,6 +56,7 @@
     'genealogy' => 'js/boot-genealogy.js',
     'genealogy2' => 'js/boot-genealogy2.js',
     'genealogy3' => 'js/v3/boot-genealogy3.js',
+    'flow' => 'js/boot-flow.js',
   ];
   $bootPath = $bootMap[$page] ?? $bootMap['home'];
 
@@ -70,6 +71,7 @@
     'genealogy' => 'Herencia Islámica – Genealogía',
     'genealogy2' => 'Herencia Islámica – Genealogía V2',
     'genealogy3' => 'Herencia Islámica – Genealogía V3 (beta)',
+    'flow' => 'Herencia Islámica – Flow Wizard',
   ];
   $pageTitle = $titleMap[$page] ?? 'Herencia Islámica';
 
