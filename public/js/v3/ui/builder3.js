@@ -2,7 +2,7 @@ import { Persons, hydratePersons } from '../../persons.js';
 import { deriveCountsGraph, applyHierarchyScreening } from '../../derive.js';
 import { validate } from '../../validation.js';
 import { toPayload } from '../../serializer.js';
-import { postCalc } from '../../api.js';
+import { postCalc } from '../api.js';
 import { loadCase, saveLastPayload, saveLastOutput } from '../storage_v3.js';
 import { validateWholeGraph } from '../guardrails.js';
 import { el, clear } from '../dom.js';
@@ -43,8 +43,9 @@ function renderCountsList(container, counts) {
 }
 
 function renderBanner(container, kind, title, items) {
-  clear(container);
-  if (!items || !items.length) {
+  const list = Array.isArray(items) ? items : (items ? [items] : []);
+  container.replaceChildren();
+  if (!list.length) {
     container.hidden = true;
     return;
   }
@@ -52,7 +53,7 @@ function renderBanner(container, kind, title, items) {
   container.className = `banner ${kind}`;
   container.append(el('strong', {}, title));
   const ul = el('ul');
-  items.forEach((msg) => ul.append(el('li', {}, msg)));
+  list.forEach((msg) => ul.append(el('li', {}, msg)));
   container.append(ul);
 }
 
@@ -147,8 +148,12 @@ export async function mount() {
     renderBanner(errorBanner, 'error', 'Errores', []);
 
     const { counts, warnings, errors, estateValue } = validate({ sex, counts: counts1, estateValue: estateInput.value });
-    if (warnings.length || screeningWarnings.length) {
-      renderBanner(validationBanner, 'warn', 'Avisos', [...screeningWarnings, ...warnings]);
+    const allWarnings = [
+      ...(Array.isArray(screeningWarnings) ? screeningWarnings : []),
+      ...(Array.isArray(warnings) ? warnings : []),
+    ];
+    if (allWarnings.length) {
+      renderBanner(validationBanner, 'warn', 'Avisos', allWarnings);
     }
     if (errors.length) {
       renderBanner(errorBanner, 'error', 'Errores', errors);
