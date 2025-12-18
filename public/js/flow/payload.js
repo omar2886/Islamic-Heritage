@@ -16,10 +16,18 @@ function normalizeHeir(heir) {
 function buildPayload(state) {
   const deceasedSex = normalizeSex(state?.deceased?.sex || '');
   const heirs = Array.isArray(state?.heirs) ? state.heirs.map(normalizeHeir) : [];
+  const ev = String(state?.estate?.value ?? '').trim();
+  const evNumber = Number.parseFloat(ev);
+
+  if (!ev || Number.isNaN(evNumber) || evNumber <= 0) {
+    throw new Error('El montante de la herencia es obligatorio y debe ser mayor que cero.');
+  }
 
   return {
     deceased: { sex: deceasedSex },
     heirs,
+    estate_value: ev,
+    amount: ev,
     meta: { ui: 'flow', version: 1 },
   };
 }

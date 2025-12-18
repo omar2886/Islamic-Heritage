@@ -2,16 +2,17 @@ import {
   setDeceased,
   setStep,
   setLastResult,
+  setLastResultRaw,
   addHeir,
   updateHeir,
   removeHeir,
   setLastPayload,
+  setEstateValue,
 } from './state.js';
 import { loadState, saveState } from './storage.js';
 import { loadRoles } from './roles.js';
 import { validateState } from './validate.js';
 import { buildPayload } from './payload.js';
-import { postCalc } from '../api.js';
 import { exportJson } from './export.js';
 
 const STEP_ORDER = ['decedent', 'heirs', 'review', 'results'];
@@ -29,6 +30,7 @@ let isLoadingRoles = false;
 let rolesError = null;
 let isCalculating = false;
 let calcError = null;
+const DEFAULT_CALC_URL = 'api/calc.php';
 
 const root = document.getElementById('flow-root');
 const nav = document.querySelector('.flow__steps');
@@ -61,6 +63,19 @@ function persist(next) {
   state = next;
   saveState(state);
   render();
+}
+
+function joinUrl(base, path) {
+  const cleanBase = base ? String(base).replace(/\/+$/, '') : '';
+  const cleanPath = String(path || '').replace(/^\/+/, '');
+  return cleanBase ? `${cleanBase}/${cleanPath}` : cleanPath;
+}
+
+function getCalcUrl() {
+  const fromConfig = window.__URLS__?.calc;
+  const publicBase = window.__PUBLIC_BASE__ || '';
+  if (fromConfig) return fromConfig;
+  return joinUrl(publicBase, DEFAULT_CALC_URL);
 }
 
 function stepFromIndex(index) {
@@ -130,7 +145,7 @@ function renderFooter() {
 }
 
 function renderDecedent() {
-  const { deceased } = state;
+  const { deceased, estate } = state;
   return `
     <section class="card">
       <div class="section-head">
@@ -160,6 +175,12 @@ function renderDecedent() {
         <label class="field">
           <span>Madhhab</span>
           <input type="text" name="deceased-madhhab" data-deceased-field="madhhab" value="${escapeHtml(deceased.madhhab)}" placeholder="Escuela fiqh" />
+        </label>
+        <label class="field">
+          <span>Montante de la herencia</span>
+          <input type="number" step="0.01" min="0" inputmode="decimal" name="estate-value" data-estate-field="value" value="${escapeHtml(
+            estate?.value || '',
+          )}" placeholder="Ej: 100000" />
         </label>
         <label class="field field--full">
           <span>Notas</span>
@@ -274,8 +295,14 @@ function renderRoleSelect(heir) {
 }
 
 function renderReview() {
-  const payload = buildPayload(state);
-  const pretty = JSON.stringify(payload, null, 2);
+  let previewPayload = {};
+  try {
+    previewPayload = buildPayload(state);
+  } catch (error) {
+    previewPayload = { error: error instanceof Error ? error.message : 'Payload inválido', estate_value: state?.estate?.value || '' };
+  }
+  const pretty = JSON.stringify(previewPayload, null, 2);
+  const heirsCount = Array.isArray(state.heirs) ? state.heirs.reduce((acc, heir) => acc + (Number(heir.count) || 0), 0) : 0;
   return `
     <section class="card">
       <div class="section-head">
@@ -296,8 +323,13 @@ function renderReview() {
         </div>
         <div class="summary-item">
           <p class="eyebrow">Herederos</p>
-          <p><strong>${state.heirs.length}</strong> registro(s)</p>
-          <p class="muted">Actualizar antes de calcular.</p>
+          <p><strong>${heirsCount}</strong> persona(s) declarada(s)</p>
+          <p class="muted">${state.heirs.length} registro(s)</p>
+        </div>
+        <div class="summary-item">
+          <p class="eyebrow">Montante</p>
+          <p><strong>${escapeHtml(state.estate?.value || '—')}</strong></p>
+          <p class="muted">Moneda: ${escapeHtml(state.estate?.currency || 'N/A')}</p>
         </div>
         <div class="summary-item">
           <p class="eyebrow">Notas</p>
@@ -314,9 +346,79 @@ function renderReview() {
   `;
 }
 
+function getOutputData() {
+  const raw = state.lastResultRaw?.json;
+  if (raw && typeof raw === 'object') {
+    if (raw.output !== undefined) return raw.output;
+    if (raw.result !== undefined) return raw.result;
+    if (raw.results !== undefined) return raw.results;
+  }
+  return state.lastResult || raw || null;
+}
+
+function mapShareEntry(entry, index) {
+  const item = entry && typeof entry === 'object' ? entry : { value: entry };
+  const label = item.name || item.role || item.heir || item.label || `Entrada ${index + 1}`;
+  const share = item.fraction ?? item.share ?? item.percent ?? item.percentage ?? item.part ?? item.value ?? '';
+  const amount = item.amount ?? item.total ?? item.quantity ?? item.value_amount ?? item.amount_value ?? item.money ?? item.value;
+  return { label, share, amount };
+}
+
+function normalizeDistribution(output) {
+  if (!output || typeof output !== 'object') return { rows: [], mapped: false };
+
+  let rows = [];
+  let mapped = false;
+
+  if (Array.isArray(output.shares)) {
+    rows = output.shares.map(mapShareEntry);
+    mapped = true;
+  } else if (Array.isArray(output.distribution)) {
+    rows = output.distribution.map(mapShareEntry);
+    mapped = true;
+  } else if (output.result && typeof output.result === 'object' && !Array.isArray(output.result)) {
+    rows = Object.entries(output.result).map(([label, value]) => {
+      const share = value && typeof value === 'object' ? value.share ?? value.fraction ?? value.part ?? value.percent ?? value : value;
+      const amount = value && typeof value === 'object' ? value.amount ?? value.value ?? value.total : undefined;
+      return { label, share, amount };
+    });
+    mapped = true;
+  } else {
+    const personShares = output?.person_shares || output?.individual_shares || {};
+    const roleShares = output?.group_shares || output?.shares || {};
+    const personAmounts = output?.person_amounts || {};
+    const roleAmounts = output?.group_amounts || output?.amounts || {};
+
+    const rowsFromHeirs = (state.heirs || []).map((heir, index) => {
+      const label = `${heir.name || 'Sin nombre'}${heir.role ? ` (${heir.role})` : ''}`;
+      const share = personShares[heir.name] ?? personShares[heir.role] ?? roleShares[heir.role] ?? '';
+      const amount = personAmounts[heir.name] ?? personAmounts[heir.role] ?? roleAmounts[heir.role] ?? '';
+      return { key: heir.id || `heir-${index}`, label, share, amount };
+    });
+
+    const extraEntries = Object.entries(personShares).filter(([label]) => !rowsFromHeirs.find((row) => row.label === label));
+
+    rows = [
+      ...rowsFromHeirs,
+      ...extraEntries.map(([label, share], idx) => ({
+        key: `extra-${idx}`,
+        label,
+        share,
+        amount: personAmounts[label] ?? roleAmounts[label] ?? '',
+      })),
+    ].filter((row) => row.share || row.amount || row.label);
+
+    mapped = rows.length > 0 || Object.keys(personShares).length > 0 || Object.keys(roleShares).length > 0;
+  }
+
+  return { rows, mapped };
+}
+
 function renderResults() {
-  const hasResult = Boolean(state.lastResult);
-  const errorBlock = calcError ? `<p class="text-error">${escapeHtml(calcError)}</p>` : '';
+  const hasResult = Boolean(state.lastResult || state.lastResultRaw);
+  const output = getOutputData();
+  const distributionInfo = normalizeDistribution(output);
+  const hasStructured = distributionInfo.mapped;
   const waiting = !hasResult && state.lastPayload ? '<p class="muted">Recalculando con el último payload…</p>' : '';
   const canExport = hasResult || state.lastPayload;
 
@@ -334,15 +436,16 @@ function renderResults() {
           <button type="button" class="btn" data-action="calc" ${isCalculating ? 'disabled' : ''}>Recalcular</button>
         </div>
       </div>
-      ${hasResult ? renderResultLayout(state.lastResult) : `<p class="empty">Recalcula para obtener resultados actualizados.</p>${waiting}`}
-      ${errorBlock}
+      ${hasResult ? renderResultLayout(output, distributionInfo) : `<p class="empty">Recalcula para obtener resultados actualizados.</p>${waiting}`}
+      ${renderResultMessages(output)}
+      ${!hasStructured ? renderRawResult(state.lastResultRaw) : ''}
     </section>
   `;
 }
 
-function renderResultLayout(result) {
+function renderResultLayout(result, distributionInfo) {
   const summary = renderResultSummary(result);
-  const distribution = renderDistribution(result);
+  const distribution = renderDistribution(distributionInfo);
   const justification = renderJustification(result);
 
   return `
@@ -360,7 +463,13 @@ function renderResultSummary(result) {
   const timestamp =
     result?.updatedAt || meta?.generated_at || meta?.generatedAt || meta?.timestamp || new Date().toISOString();
   const note = result?.note || meta?.note || 'Resultado de cálculo';
-  const amount = meta?.estate_value || meta?.amount || meta?.estateValue;
+  const amount =
+    result?.estate_value ||
+    meta?.estate_value ||
+    meta?.amount ||
+    meta?.estateValue ||
+    state?.estate?.value ||
+    undefined;
 
   return `
     <section class="result-block">
@@ -394,39 +503,17 @@ function renderResultSummary(result) {
   `;
 }
 
-function renderDistribution(result) {
-  const personShares = result?.person_shares || result?.individual_shares || {};
-  const roleShares = result?.group_shares || result?.shares || {};
-  const personAmounts = result?.person_amounts || {};
-  const roleAmounts = result?.group_amounts || result?.amounts || {};
+function renderDistribution(distributionInfo) {
+  const rows = distributionInfo?.rows || [];
 
-  const rows = (state.heirs || []).map((heir, index) => {
-    const label = `${heir.name || 'Sin nombre'}${heir.role ? ` (${heir.role})` : ''}`;
-    const share = personShares[heir.name] ?? personShares[heir.role] ?? roleShares[heir.role] ?? '';
-    const amount = personAmounts[heir.name] ?? personAmounts[heir.role] ?? roleAmounts[heir.role] ?? '';
-    return { key: heir.id || `heir-${index}`, label, share, amount };
-  });
-
-  const extraEntries = Object.entries(personShares).filter(([label]) => !rows.find((row) => row.label === label));
-
-  const tableRows = [
-    ...rows,
-    ...extraEntries.map(([label, share], idx) => ({
-      key: `extra-${idx}`,
-      label,
-      share,
-      amount: personAmounts[label] ?? roleAmounts[label] ?? '',
-    })),
-  ].filter((row) => row.share || row.amount || row.label);
-
-  const body = tableRows.length
-    ? tableRows
+  const body = rows.length
+    ? rows
         .map(
-          (row) => `
+          (row, idx) => `
             <tr>
-              <td>${escapeHtml(row.label)}</td>
-              <td>${row.share !== '' ? escapeHtml(String(row.share)) : '<span class="muted">—</span>'}</td>
-              <td>${row.amount !== '' ? escapeHtml(String(row.amount)) : '<span class="muted">—</span>'}</td>
+              <td>${escapeHtml(row.label || `Entrada ${idx + 1}`)}</td>
+              <td>${row.share !== '' && row.share !== undefined ? escapeHtml(String(row.share)) : '<span class="muted">—</span>'}</td>
+              <td>${row.amount !== '' && row.amount !== undefined ? escapeHtml(String(row.amount)) : '<span class="muted">—</span>'}</td>
             </tr>
           `,
         )
@@ -448,6 +535,65 @@ function renderDistribution(result) {
             ${body}
           </tbody>
         </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderResultMessages(result) {
+  const errors = [];
+  const warnings = [];
+
+  if (calcError) errors.push(calcError);
+  if (result?.error) errors.push(String(result.error));
+  if (Array.isArray(result?.errors)) {
+    result.errors.forEach((err) => errors.push(String(err)));
+  }
+  if (result?.warning) warnings.push(String(result.warning));
+  if (Array.isArray(result?.warnings)) {
+    result.warnings.forEach((warn) => warnings.push(String(warn)));
+  }
+
+  const hasMessages = errors.length || warnings.length;
+  const errorList = errors.length
+    ? `<div class="alert alert-error"><ul>${errors.map((msg) => `<li>${escapeHtml(msg)}</li>`).join('')}</ul></div>`
+    : '';
+  const warningList = warnings.length
+    ? `<div class="alert alert-warning"><ul>${warnings.map((msg) => `<li>${escapeHtml(msg)}</li>`).join('')}</ul></div>`
+    : '';
+
+  return `
+    <section class="result-block">
+      <div class="result-block__head">
+        <h3>Errores/avisos</h3>
+      </div>
+      ${
+        hasMessages
+          ? `<div class="stack">${errorList}${warningList}</div>`
+          : '<p class="muted">Sin errores o avisos reportados.</p>'
+      }
+    </section>
+  `;
+}
+
+function renderRawResult(raw) {
+  if (!raw) return '';
+  const pretty = raw.json ? JSON.stringify(raw.json, null, 2) : raw.text;
+  const snippet = raw.text && raw.text.length > 0 ? raw.text.slice(0, 200) : '';
+
+  return `
+    <section class="result-block">
+      <div class="result-block__head">
+        <h3>Resultado crudo</h3>
+      </div>
+      <p class="muted">No se pudo mapear el resultado. Adjuntamos la respuesta para depurar.</p>
+      ${snippet ? `<p class="small">HTTP ${escapeHtml(String(raw.status || ''))}: ${escapeHtml(snippet)}</p>` : ''}
+      <details class="prose" open>
+        <summary>Ver respuesta</summary>
+        <pre class="code-block">${escapeHtml(pretty || 'Respuesta vacía')}</pre>
+      </details>
+      <div class="inline-actions">
+        <button type="button" class="btn" data-action="download-raw">Descargar respuesta</button>
       </div>
     </section>
   `;
@@ -598,6 +744,14 @@ function handleFooterClick(event) {
 function handleDecedentInput(event) {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
+  const estateField = target.dataset.estateField;
+  if (estateField) {
+    const value = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
+      ? target.value
+      : '';
+    persist(setEstateValue(state, value));
+    return;
+  }
   const field = target.dataset.deceasedField;
   if (!field) return;
   const value = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
@@ -648,13 +802,42 @@ function handleRootClick(event) {
     goToStep('heirs');
   }
   if (target.dataset.action === 'export-json') {
-    const payload = state.lastPayload || buildPayload(state);
-    const data = { state, payload, result: state.lastResult };
+    let payload = null;
+    try {
+      payload = state.lastPayload || buildPayload(state);
+    } catch (error) {
+      calcError = error instanceof Error ? error.message : 'No se pudo construir el payload para exportar.';
+      render();
+      return;
+    }
+    const data = { state, payload, result: state.lastResult, raw: state.lastResultRaw };
     exportJson('heritage_result.json', data);
+  }
+  if (target.dataset.action === 'download-raw') {
+    if (state.lastResultRaw) {
+      exportJson('calc_raw_response.json', state.lastResultRaw);
+    }
   }
   if (target.dataset.removeHeir) {
     handleHeirRemoval(event);
   }
+}
+
+async function runCalc(payload) {
+  const url = getCalcUrl();
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const text = await response.text();
+  let json = null;
+  try {
+    json = JSON.parse(text);
+  } catch (error) {
+    // se maneja más abajo
+  }
+  return { status: response.status, ok: response.ok, json, text };
 }
 
 async function triggerCalc(payloadOverride = null) {
@@ -665,12 +848,36 @@ async function triggerCalc(payloadOverride = null) {
   }
   isCalculating = true;
   calcError = null;
-  const payload = payloadOverride || buildPayload(state);
+  let payload = null;
+  try {
+    payload = payloadOverride || buildPayload(state);
+  } catch (error) {
+    calcError = error instanceof Error ? error.message : 'No se pudo construir el payload.';
+    isCalculating = false;
+    render();
+    return;
+  }
   persist(setLastPayload(state, payload));
   try {
-    const result = await postCalc(payload);
-    const withResult = setLastResult(state, result);
-    const withPayload = setLastPayload(withResult, payload);
+    const response = await runCalc(payload);
+    persist(setLastResultRaw(state, response));
+    if (!response.json) {
+      calcError = `Respuesta no-JSON (${response.status}). ${response.text.slice(0, 200)}`;
+      persist(setStep(setLastPayload(state, payload), 'results'));
+      return;
+    }
+
+    if (response.json.ok !== true && response.json.output === undefined) {
+      const msg = response.json.error || response.text || 'Cálculo fallido.';
+      calcError = `${msg} (${response.status})`;
+      persist(setStep(setLastPayload(state, payload), 'results'));
+      return;
+    }
+
+    const output = response.json.output ?? response.json.result ?? response.json.results ?? response.json;
+    const withResult = setLastResult(state, output);
+    const withRaw = setLastResultRaw(withResult, response);
+    const withPayload = setLastPayload(withRaw, payload);
     persist(setStep(withPayload, 'results'));
   } catch (error) {
     calcError = error instanceof Error ? error.message : 'No se pudo calcular.';
