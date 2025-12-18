@@ -99,6 +99,8 @@
     };
   </script>
 
+  <script src="<?= htmlspecialchars($joinPath($PUBLIC_BASE, 'js/error_overlay.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+
   <script src="<?= htmlspecialchars($bootstrapSrc, ENT_QUOTES, 'UTF-8') ?>" crossorigin="anonymous"></script>
 
   <script type="module" src="<?= htmlspecialchars($bootSrc, ENT_QUOTES, 'UTF-8') ?>"></script>
