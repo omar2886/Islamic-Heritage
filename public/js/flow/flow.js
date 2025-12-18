@@ -34,6 +34,10 @@ const root = document.getElementById('flow-root');
 const nav = document.querySelector('.flow__steps');
 const footerActions = document.querySelector('.flow__footer-actions');
 
+if (!root) {
+  throw new Error('flow-root missing');
+}
+
 function syncWithUrl(current) {
   const url = new URL(window.location.href);
   const requested = url.searchParams.get('step');

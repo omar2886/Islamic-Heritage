@@ -10,6 +10,7 @@
     'genealogy' => 'genealogy-root',
     'genealogy2' => 'g2-app',
     'genealogy3' => 'genealogy3-root',
+    'flow' => 'flow-root',
   ];
   $targetId = $targetMap[$page] ?? 'home-root';
 

@@ -1,4 +1,5 @@
 window.__BOOT_FLOW_STARTED__ = true;
+window.__BOOT_FLOW_MOUNTED__ = false;
 
 async function init() {
   const moduleUrl = new URL('./flow/flow.js', import.meta.url);
