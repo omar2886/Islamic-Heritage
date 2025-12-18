@@ -84,3 +84,26 @@ details.explain section { margin-top: .5rem; }
 .stats { color: #475569; font-size: .95rem; }
 .empty { color: #94a3b8; padding: .5rem 0; }
 .footer-actions { display: flex; gap: .5rem; justify-content: flex-end; flex-wrap: wrap; }
+
+/* Genealogía V3 */
+.v3-layout { display: grid; grid-template-columns: 280px 1fr; gap: 1rem; align-items: start; }
+@media (max-width: 860px) { .v3-layout { grid-template-columns: 1fr; } }
+
+.toolbar { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: .75rem; }
+.toolbar input[type="search"] { flex: 1 1 160px; padding: .45rem .6rem; border: 1px solid #e2e8f0; border-radius: .6rem; }
+
+.card { border: 1px solid #e2e8f0; border-radius: .75rem; padding: .75rem .9rem; background: #fff; box-shadow: 0 3px 10px rgba(0,0,0,0.04); }
+.field { display: flex; flex-direction: column; gap: .35rem; margin-bottom: .65rem; }
+.field label { font-weight: 600; color: #1f2937; }
+.field input[type="text"], .field select { padding: .45rem .55rem; border-radius: .55rem; border: 1px solid #e2e8f0; }
+.field input[type="checkbox"], .field input[type="radio"] { width: 1rem; height: 1rem; }
+
+.list { display: flex; flex-direction: column; gap: .55rem; }
+.list-item { cursor: pointer; }
+.list-item.active { border-color: #0f766e; box-shadow: 0 0 0 2px rgba(15,118,110,0.2); }
+
+.pill { display: inline-flex; gap: .4rem; align-items: center; padding: .35rem .55rem; border-radius: 999px; background: #f1f5f9; border: 1px solid #e2e8f0; }
+
+.banner { padding: .75rem .9rem; border-radius: .65rem; border: 1px solid transparent; white-space: pre-line; }
+.banner-ok { background: #ecfeff; border-color: #a5f3fc; color: #0f172a; }
+
