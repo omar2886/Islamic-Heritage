@@ -9,6 +9,7 @@ function createInitialState() {
     deceased: { name: '', sex: 'M', madhhab: '', notes: '' },
     heirs: [],
     lastResult: null,
+    lastPayload: null,
   };
 }
 
@@ -34,6 +35,13 @@ function setLastResult(state, payload) {
   return withVersion({
     ...state,
     lastResult: payload,
+  });
+}
+
+function setLastPayload(state, payload) {
+  return withVersion({
+    ...state,
+    lastPayload: payload,
   });
 }
 
@@ -67,6 +75,7 @@ export {
   setDeceased,
   setStep,
   setLastResult,
+  setLastPayload,
   addHeir,
   updateHeir,
   removeHeir,

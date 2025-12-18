@@ -28,6 +28,7 @@ function loadState() {
       deceased: { ...base.deceased, ...(parsed.deceased || {}) },
       heirs: Array.isArray(parsed.heirs) ? parsed.heirs.map(normalizeHeir) : base.heirs,
       lastResult: parsed.lastResult ?? null,
+      lastPayload: parsed.lastPayload ?? null,
     };
   } catch (error) {
     console.warn('No se pudo cargar el estado del Flow Wizard', error);
@@ -37,7 +38,18 @@ function loadState() {
 
 function saveState(state) {
   try {
-    const snapshot = JSON.stringify(state);
+    const safeResult = (() => {
+      if (!state.lastResult) return null;
+      try {
+        const serialized = JSON.stringify(state.lastResult);
+        return serialized && serialized.length > 50000 ? null : state.lastResult;
+      } catch (error) {
+        console.warn('No se pudo serializar lastResult', error);
+        return null;
+      }
+    })();
+
+    const snapshot = JSON.stringify({ ...state, lastResult: safeResult });
     localStorage.setItem(STORAGE_KEY, snapshot);
   } catch (error) {
     console.warn('No se pudo persistir el estado del Flow Wizard', error);

@@ -1,5 +1,17 @@
-import { setDeceased, setStep, setLastResult, addHeir, updateHeir, removeHeir } from './state.js';
+import {
+  setDeceased,
+  setStep,
+  setLastResult,
+  addHeir,
+  updateHeir,
+  removeHeir,
+  setLastPayload,
+} from './state.js';
 import { loadState, saveState } from './storage.js';
+import { loadRoles } from './roles.js';
+import { validateState } from './validate.js';
+import { buildPayload } from './payload.js';
+import { postCalc } from '../api.js';
 
 const STEP_ORDER = ['decedent', 'heirs', 'review', 'results'];
 const LABELS = {
@@ -10,6 +22,13 @@ const LABELS = {
 };
 
 let state = syncWithUrl(loadState());
+let roles = [];
+let validation = { errors: [], warnings: [] };
+let isLoadingRoles = false;
+let rolesError = null;
+let isCalculating = false;
+let calcError = null;
+
 const root = document.getElementById('flow-root');
 const nav = document.querySelector('.flow__steps');
 const footerActions = document.querySelector('.flow__footer-actions');
@@ -39,12 +58,6 @@ function persist(next) {
   render();
 }
 
-function goToStep(step) {
-  if (!STEP_ORDER.includes(step)) return;
-  persist(setStep(state, step));
-  applyUrl(step);
-}
-
 function stepFromIndex(index) {
   return STEP_ORDER[Math.min(Math.max(index, 0), STEP_ORDER.length - 1)];
 }
@@ -55,12 +68,35 @@ function nextStep(direction) {
   return stepFromIndex(targetIdx);
 }
 
+async function ensureRoles(force = false) {
+  if (isLoadingRoles) return;
+  if (!force && roles.length) return;
+  isLoadingRoles = true;
+  rolesError = null;
+  render();
+  try {
+    roles = await loadRoles();
+  } catch (error) {
+    rolesError = error instanceof Error ? error.message : 'No se pudieron cargar los roles.';
+  } finally {
+    isLoadingRoles = false;
+    render();
+  }
+}
+
+function goToStep(step) {
+  if (!STEP_ORDER.includes(step)) return;
+  persist(setStep(state, step));
+  applyUrl(step);
+  maybeAutoRecalc();
+}
+
 function renderNav() {
   if (!nav) return;
   nav.querySelectorAll('button[data-step]').forEach((btn) => {
     const isActive = btn.dataset.step === state.step;
     btn.classList.toggle('is-active', isActive);
-    btn.disabled = btn.dataset.step === 'results' && state.heirs.length === 0;
+    btn.disabled = btn.dataset.step === 'results' && !state.lastResult;
   });
 }
 
@@ -75,13 +111,16 @@ function renderFooter() {
   }
 
   if (next) {
-    next.textContent = state.step === 'results' ? 'Finalizado' : 'Siguiente';
-    next.disabled = state.step === 'results';
+    next.textContent = state.step === 'review' ? 'Calcular' : state.step === 'results' ? 'Finalizado' : 'Siguiente';
+    next.disabled =
+      state.step === 'results' ||
+      isCalculating ||
+      (validation.errors.length > 0 && (state.step === 'heirs' || state.step === 'review' || state.step === 'decedent'));
   }
 
   if (recalc) {
     recalc.classList.toggle('is-hidden', state.step !== 'results');
-    recalc.disabled = state.heirs.length === 0 && !state.deceased.name;
+    recalc.disabled = isCalculating || (!state.lastResult && !state.lastPayload);
   }
 }
 
@@ -104,10 +143,13 @@ function renderDecedent() {
         <label class="field">
           <span>Sexo</span>
           <select name="deceased-sex" data-deceased-field="sex" value="${escapeHtml(deceased.sex)}">
-            ${renderOptions([
-              { value: 'M', label: 'Masculino' },
-              { value: 'F', label: 'Femenino' },
-            ], deceased.sex)}
+            ${renderOptions(
+              [
+                { value: 'M', label: 'Masculino' },
+                { value: 'F', label: 'Femenino' },
+              ],
+              deceased.sex,
+            )}
           </select>
         </label>
         <label class="field">
@@ -119,60 +161,21 @@ function renderDecedent() {
           <textarea name="deceased-notes" data-deceased-field="notes" rows="3" placeholder="Circunstancias o notas adicionales">${escapeHtml(deceased.notes)}</textarea>
         </label>
       </div>
+      ${renderValidationMessages(['deceased'])}
     </section>
   `;
 }
 
-function renderHeirList() {
-  if (!state.heirs.length) {
-    return '<p class="empty">Aún no hay herederos añadidos.</p>';
-  }
-
-  return state.heirs
-    .map(
-      (heir) => `
-        <article class="card heir-card" data-heir-id="${heir.id}">
-          <div class="heir-card__title">
-            <div>
-              <p class="eyebrow">${LABELS.heirs}</p>
-              <h3>${escapeHtml(heir.name || 'Nuevo heredero')}</h3>
-            </div>
-            <button type="button" class="btn btn-ghost" data-remove-heir="${heir.id}">Eliminar</button>
-          </div>
-          <div class="form-grid">
-            <label class="field">
-              <span>Nombre</span>
-              <input type="text" data-heir-field="name" data-heir-id="${heir.id}" value="${escapeHtml(heir.name)}" placeholder="Ej: Fatima" />
-            </label>
-            <label class="field">
-              <span>Sexo</span>
-              <select data-heir-field="sex" data-heir-id="${heir.id}">
-                ${renderOptions([
-                  { value: 'M', label: 'Masculino' },
-                  { value: 'F', label: 'Femenino' },
-                ], heir.sex)}
-              </select>
-            </label>
-            <label class="field">
-              <span>Rol</span>
-              <input type="text" data-heir-field="role" data-heir-id="${heir.id}" value="${escapeHtml(heir.role)}" placeholder="Ej: Hijo, Esposa" />
-            </label>
-            <label class="field">
-              <span>Vivos</span>
-              <input type="number" min="1" step="1" data-heir-field="count" data-heir-id="${heir.id}" value="${escapeHtml(String(heir.count))}" />
-            </label>
-            <label class="field field--inline">
-              <input type="checkbox" data-heir-field="alive" data-heir-id="${heir.id}" ${heir.alive ? 'checked' : ''} />
-              <span>Está vivo</span>
-            </label>
-          </div>
-        </article>
-      `,
-    )
-    .join('');
-}
-
 function renderHeirs() {
+  const hasRoles = roles.length > 0;
+  const roleStatus = rolesError
+    ? `<p class="text-error">${escapeHtml(rolesError)}</p>`
+    : isLoadingRoles
+    ? '<p class="muted">Cargando catálogo de roles…</p>'
+    : hasRoles
+    ? ''
+    : '<p class="muted">Catálogo de roles vacío.</p>';
+
   return `
     <section class="card">
       <div class="section-head">
@@ -181,47 +184,93 @@ function renderHeirs() {
           <h2>${LABELS.heirs}</h2>
           <p class="muted">Agrega herederos uno a uno y manténlos sincronizados con el caso.</p>
         </div>
-      </div>
-      <form class="card card--subtle" data-form="add-heir">
-        <div class="form-grid">
-          <label class="field">
-            <span>Nombre</span>
-            <input type="text" name="heir-name" placeholder="Nombre del heredero" required />
-          </label>
-          <label class="field">
-            <span>Sexo</span>
-            <select name="heir-sex">
-              ${renderOptions([
-                { value: 'M', label: 'Masculino' },
-                { value: 'F', label: 'Femenino' },
-              ], 'M')}
-            </select>
-          </label>
-          <label class="field">
-            <span>Rol</span>
-            <input type="text" name="heir-role" placeholder="Rol o parentesco" />
-          </label>
-          <label class="field">
-            <span>Vivos</span>
-            <input type="number" name="heir-count" min="1" step="1" value="1" />
-          </label>
-          <label class="field field--inline">
-            <input type="checkbox" name="heir-alive" checked />
-            <span>Está vivo</span>
-          </label>
-        </div>
         <div class="inline-actions">
-          <button type="submit" class="btn btn-primary">Añadir heredero</button>
+          <button type="button" class="btn btn-primary" data-action="add-heir" ${isLoadingRoles ? 'disabled' : ''}>Añadir heredero</button>
+          <button type="button" class="btn btn-ghost" data-action="reload-roles" ${isLoadingRoles ? 'disabled' : ''}>Recargar roles</button>
         </div>
-      </form>
-      <div class="list list--spaced">
-        ${renderHeirList()}
       </div>
+      ${roleStatus}
+      ${renderHeirTable()}
+      ${renderValidationMessages(['heirs'])}
     </section>
   `;
 }
 
+function renderHeirTable() {
+  if (!state.heirs.length) {
+    return '<p class="empty">Aún no hay herederos añadidos.</p>';
+  }
+
+  return `
+    <div class="table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Sexo</th>
+            <th>Rol</th>
+            <th>Vivo</th>
+            <th>Count</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${state.heirs.map(renderHeirRow).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderHeirRow(heir) {
+  return `
+    <tr data-heir-id="${escapeHtml(heir.id)}">
+      <td>
+        <input type="text" class="input" data-heir-field="name" data-heir-id="${escapeHtml(heir.id)}" value="${escapeHtml(heir.name)}" placeholder="Ej: Fatima" />
+      </td>
+      <td>
+        <select data-heir-field="sex" data-heir-id="${escapeHtml(heir.id)}">
+          ${renderOptions(
+            [
+              { value: 'M', label: 'Masculino' },
+              { value: 'F', label: 'Femenino' },
+            ],
+            heir.sex,
+          )}
+        </select>
+      </td>
+      <td>
+        ${renderRoleSelect(heir)}
+      </td>
+      <td class="text-center">
+        <label class="field field--inline">
+          <input type="checkbox" data-heir-field="alive" data-heir-id="${escapeHtml(heir.id)}" ${heir.alive ? 'checked' : ''} />
+          <span>Vivo</span>
+        </label>
+      </td>
+      <td>
+        <input type="number" min="1" max="20" step="1" data-heir-field="count" data-heir-id="${escapeHtml(heir.id)}" value="${escapeHtml(String(heir.count))}" />
+      </td>
+      <td>
+        <button type="button" class="btn btn-ghost" data-remove-heir="${escapeHtml(heir.id)}">Eliminar</button>
+      </td>
+    </tr>
+  `;
+}
+
+function renderRoleSelect(heir) {
+  if (!roles.length) {
+    return `<input type="text" data-heir-field="role" data-heir-id="${escapeHtml(heir.id)}" value="${escapeHtml(heir.role)}" placeholder="Rol" />`;
+  }
+  const opts = roles
+    .map((role) => `<option value="${escapeHtml(role.code)}" ${role.code === heir.role ? 'selected' : ''}>${escapeHtml(role.label)}</option>`)
+    .join('');
+  return `<select data-heir-field="role" data-heir-id="${escapeHtml(heir.id)}">${opts}</select>`;
+}
+
 function renderReview() {
+  const payload = buildPayload(state);
+  const pretty = JSON.stringify(payload, null, 2);
   return `
     <section class="card">
       <div class="section-head">
@@ -229,6 +278,9 @@ function renderReview() {
           <p class="eyebrow">Paso 3</p>
           <h2>${LABELS.review}</h2>
           <p class="muted">Repasa la información antes de calcular.</p>
+        </div>
+        <div class="inline-actions">
+          <button type="button" class="btn btn-primary" data-action="calc" ${validation.errors.length ? 'disabled' : ''}>Calcular</button>
         </div>
       </div>
       <div class="summary-grid">
@@ -247,12 +299,20 @@ function renderReview() {
           <p>${escapeHtml(state.deceased.notes || 'Sin notas')}</p>
         </div>
       </div>
+      <div class="card card--subtle">
+        <p class="eyebrow">Preview JSON</p>
+        <pre class="code-block">${escapeHtml(pretty)}</pre>
+      </div>
+      ${renderValidationMessages(['review'])}
+      ${calcError ? `<p class="text-error">${escapeHtml(calcError)}</p>` : ''}
     </section>
   `;
 }
 
 function renderResults() {
   const hasResult = Boolean(state.lastResult);
+  const errorBlock = calcError ? `<p class="text-error">${escapeHtml(calcError)}</p>` : '';
+  const waiting = !hasResult && state.lastPayload ? '<p class="muted">Recalculando con el último payload…</p>' : '';
   return `
     <section class="card">
       <div class="section-head">
@@ -261,24 +321,89 @@ function renderResults() {
           <h2>${LABELS.results}</h2>
           <p class="muted">Consulta el resumen más reciente.</p>
         </div>
+        <div class="inline-actions">
+          <button type="button" class="btn" data-action="calc" ${isCalculating ? 'disabled' : ''}>Recalcular</button>
+        </div>
       </div>
-      ${hasResult ? renderResultCard(state.lastResult) : '<p class="empty">Recalcula para obtener resultados actualizados.</p>'}
+      ${hasResult ? renderResultCard(state.lastResult) : `<p class="empty">Recalcula para obtener resultados actualizados.</p>${waiting}`}
+      ${errorBlock}
     </section>
   `;
 }
 
 function renderResultCard(result) {
+  const meta = result?.meta || {};
+  const note = result?.note || meta?.note || 'Resultado de cálculo';
+  const updatedAt = result?.updatedAt || meta?.generated_at || meta?.generatedAt || new Date().toISOString();
+  const shares = renderShares(result);
+  const explanation = renderExplanation(result);
+
   return `
     <article class="card card--subtle">
       <p class="eyebrow">Último cálculo</p>
-      <p><strong>${escapeHtml(result.note || 'Cálculo manual')}</strong></p>
-      <p class="muted">Actualizado: ${escapeHtml(result.updatedAt || new Date().toISOString())}</p>
+      <p><strong>${escapeHtml(note)}</strong></p>
+      <p class="muted">Actualizado: ${escapeHtml(updatedAt)}</p>
+      ${shares || '<p class="muted">Sin cuotas calculadas.</p>'}
+      ${explanation}
     </article>
   `;
 }
 
+function renderShares(result) {
+  const groupShares = result?.group_shares || result?.shares || {};
+  const individualShares = result?.individual_shares || result?.person_shares || {};
+  const blocks = [];
+
+  if (groupShares && Object.keys(groupShares).length > 0) {
+    blocks.push(renderTable('Cuotas por grupo', Object.entries(groupShares), ['Rol', 'Cuota']));
+  }
+  if (individualShares && Object.keys(individualShares).length > 0) {
+    blocks.push(renderTable('Cuotas por individuo', Object.entries(individualShares), ['Rol(i)', 'Cuota']));
+  }
+
+  return blocks.join('');
+}
+
+function renderExplanation(result) {
+  const explanation = result?.explanation || result?.explain || result?.notes;
+  if (!explanation) return '';
+  if (Array.isArray(explanation)) {
+    return `<div class="stack">${explanation.map((line) => `<p class="muted">${escapeHtml(line)}</p>`).join('')}</div>`;
+  }
+  if (typeof explanation === 'object') {
+    return `<pre class="code-block">${escapeHtml(JSON.stringify(explanation, null, 2))}</pre>`;
+  }
+  return `<p class="muted">${escapeHtml(String(explanation))}</p>`;
+}
+
+function renderTable(title, entries, headers) {
+  return `
+    <div class="table-responsive">
+      <p class="eyebrow">${escapeHtml(title)}</p>
+      <table class="table">
+        <thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
+        <tbody>${entries.map((row) => `<tr><td>${escapeHtml(row[0])}</td><td>${escapeHtml(String(row[1]))}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderValidationMessages() {
+  const { errors, warnings } = validation;
+  if (!errors.length && !warnings.length) return '';
+  const errorList = errors.length
+    ? `<div class="alert alert-error"><p><strong>Errores</strong></p><ul>${errors.map((msg) => `<li>${escapeHtml(msg)}</li>`).join('')}</ul></div>`
+    : '';
+  const warningList = warnings.length
+    ? `<div class="alert alert-warning"><p><strong>Avisos</strong></p><ul>${warnings.map((msg) => `<li>${escapeHtml(msg)}</li>`).join('')}</ul></div>`
+    : '';
+  return `<div class="stack">${errorList}${warningList}</div>`;
+}
+
 function render() {
   if (!root) return;
+  validation = validateState(state, roles);
+
   const fragments = {
     decedent: renderDecedent(),
     heirs: renderHeirs(),
@@ -309,9 +434,12 @@ function renderOptions(options, selected) {
 function handleNavClick(event) {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
-  if (target.dataset.step) {
-    goToStep(target.dataset.step);
+  if (!target.dataset.step) return;
+  if (validation.errors.length && (target.dataset.step === 'review' || target.dataset.step === 'results')) {
+    render();
+    return;
   }
+  goToStep(target.dataset.step);
 }
 
 function handleFooterClick(event) {
@@ -322,14 +450,18 @@ function handleFooterClick(event) {
     goToStep(nextStep(-1));
   }
   if (target.dataset.action === 'next') {
+    if (state.step === 'review') {
+      triggerCalc();
+      return;
+    }
+    if (validation.errors.length && (state.step === 'heirs' || state.step === 'decedent')) {
+      render();
+      return;
+    }
     goToStep(nextStep(1));
   }
   if (target.dataset.action === 'recalc') {
-    const next = setLastResult(state, {
-      note: 'Resultados pendientes de cálculo core',
-      updatedAt: new Date().toISOString(),
-    });
-    persist(next);
+    triggerCalc(state.lastPayload || null);
   }
 }
 
@@ -358,9 +490,7 @@ function handleHeirChange(event) {
   const heirId = target.dataset.heirId;
   const field = target.dataset.heirField;
   if (!heirId || !field) return;
-  const value = target instanceof HTMLInputElement || target instanceof HTMLSelectElement
-    ? parseHeirValue(target)
-    : target.textContent;
+  const value = target instanceof HTMLInputElement || target instanceof HTMLSelectElement ? parseHeirValue(target) : target.textContent;
   persist(updateHeir(state, heirId, { [field]: value }));
 }
 
@@ -372,34 +502,51 @@ function handleHeirRemoval(event) {
   persist(removeHeir(state, heirId));
 }
 
-function handleAddHeir(event) {
-  const form = event.target;
-  if (!(form instanceof HTMLFormElement)) return;
-  if (form.dataset.form !== 'add-heir') return;
-  event.preventDefault();
-  const name = form.elements.namedItem('heir-name')?.value || '';
-  const role = form.elements.namedItem('heir-role')?.value || '';
-  const sex = form.elements.namedItem('heir-sex')?.value || 'M';
-  const count = parseInt(form.elements.namedItem('heir-count')?.value || '1', 10) || 1;
-  const alive = form.elements.namedItem('heir-alive') instanceof HTMLInputElement
-    ? form.elements.namedItem('heir-alive').checked
-    : true;
-  const trimmedName = name.toString().trim();
-  const payload = { name: trimmedName, role: role.trim(), sex, count, alive };
-  persist(addHeir(state, payload));
-  form.reset();
-  const defaultSex = form.querySelector('select[name="heir-sex"]');
-  if (defaultSex instanceof HTMLSelectElement) {
-    defaultSex.value = 'M';
+function handleRootClick(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (target.dataset.action === 'add-heir') {
+    persist(addHeir(state, {}));
   }
-  const defaultCount = form.querySelector('input[name="heir-count"]');
-  if (defaultCount instanceof HTMLInputElement) {
-    defaultCount.value = '1';
+  if (target.dataset.action === 'reload-roles') {
+    ensureRoles(true);
   }
-  const defaultAlive = form.querySelector('input[name="heir-alive"]');
-  if (defaultAlive instanceof HTMLInputElement) {
-    defaultAlive.checked = true;
+  if (target.dataset.action === 'calc') {
+    triggerCalc();
   }
+  if (target.dataset.removeHeir) {
+    handleHeirRemoval(event);
+  }
+}
+
+async function triggerCalc(payloadOverride = null) {
+  validation = validateState(state, roles);
+  if (validation.errors.length) {
+    render();
+    return;
+  }
+  isCalculating = true;
+  calcError = null;
+  const payload = payloadOverride || buildPayload(state);
+  persist(setLastPayload(state, payload));
+  try {
+    const result = await postCalc(payload);
+    const withResult = setLastResult(state, result);
+    const withPayload = setLastPayload(withResult, payload);
+    persist(setStep(withPayload, 'results'));
+  } catch (error) {
+    calcError = error instanceof Error ? error.message : 'No se pudo calcular.';
+    persist(setLastPayload(state, payload));
+  } finally {
+    isCalculating = false;
+    render();
+  }
+}
+
+function maybeAutoRecalc() {
+  if (state.step !== 'results') return;
+  if (state.lastResult || !state.lastPayload || isCalculating || calcError) return;
+  triggerCalc(state.lastPayload);
 }
 
 function bindEvents() {
@@ -409,14 +556,14 @@ function bindEvents() {
   root?.addEventListener('change', handleDecedentInput);
   root?.addEventListener('input', handleHeirChange);
   root?.addEventListener('change', handleHeirChange);
-  root?.addEventListener('click', handleHeirRemoval);
-  root?.addEventListener('submit', handleAddHeir);
+  root?.addEventListener('click', handleRootClick);
 }
 
 function mount() {
   if (!root) return null;
   if (!nav || !footerActions) return null;
   bindEvents();
+  ensureRoles();
   render();
   root.setAttribute('tabindex', '-1');
   root.focus({ preventScroll: false });
