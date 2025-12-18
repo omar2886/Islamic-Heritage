@@ -1,6 +1,7 @@
-import { mount as mountBuilder } from './ui/builder.js';
+window.__BOOT_BUILDER_STARTED__ = true;
 
-window.__BOOT_BUILDER_STARTED__ = Date.now();
+const baseUrl = new URL('.', import.meta.url);
+const loadModule = () => import(new URL('./ui/builder.js', baseUrl));
 
 function focusFirstRoot(){
   const ids = ['builder-root', 'results-root', 'home-root'];
@@ -20,7 +21,11 @@ function focusFirstRoot(){
 
 async function init(){
   try {
-    await mountBuilder();
+    const mod = await loadModule();
+    if (typeof mod.mount === 'function') {
+      await mod.mount();
+    }
+    window.__BOOT_BUILDER_MOUNTED__ = true;
   } catch (e) {
     console.error(e);
     window.__BOOT_BUILDER_ERROR__ = String(e?.stack || e);
