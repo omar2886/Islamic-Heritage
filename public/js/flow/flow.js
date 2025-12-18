@@ -1,8 +1,6 @@
 import {
   setDeceased,
   setStep,
-  setLastResult,
-  setLastResultRaw,
   setLastPayload,
   setEstateValue,
   setHeirCount,
@@ -178,6 +176,8 @@ function persist(next, opts = {}) {
   validation = validateState(state, roles);
   if (opts.render === false) {
     renderFooter();
+    renderHeirsValidation();
+    syncHeirsUIFromState();
     return;
   }
   render();
@@ -337,7 +337,7 @@ function renderDecedent() {
                  min="0"
                  inputmode="decimal"
                  data-estate-field="value"
-                 value="${escapeHtml(state.estateValue || estate?.value || '')}"
+                 value="${escapeHtml(estate?.value || '')}"
                  placeholder="Ej: 10000" />
           <div class="hint">Introduce el monto total (misma moneda para todo).</div>
         </div>
@@ -376,15 +376,6 @@ function renderHeirs() {
   `;
 }
 
-function updateCount(role, raw, { render } = {}) {
-  const value = clampRoleCount(role, raw, normalizeSex(state?.deceased?.sex));
-  const next = setHeirCount(state, role, value);
-  persist(next, { render });
-  if (render === false) {
-    syncHeirsUIFromState();
-  }
-}
-
 function createRoleInput(role) {
   const label = resolveRoleLabel(role);
   const field = document.createElement('label');
@@ -396,9 +387,7 @@ function createRoleInput(role) {
   input.min = '0';
   input.step = '1';
   input.inputMode = 'numeric';
-  input.dataset.heirCount = role;
-  input.addEventListener('input', (event) => updateCount(role, event.target.value, { render: false }));
-  input.addEventListener('change', (event) => updateCount(role, event.target.value, { render: true }));
+  input.dataset.heirRole = role;
   field.appendChild(span);
   field.appendChild(input);
   heirsUI.inputs.set(role, input);
@@ -587,7 +576,7 @@ function renderReview() {
         </div>
         <div class="summary-item">
           <p class="eyebrow">Montante</p>
-          <p><strong>${escapeHtml(state.estateValue || state.estate?.value || '—')}</strong></p>
+          <p><strong>${escapeHtml(state.estate?.value || '—')}</strong></p>
           <p class="muted">Moneda: ${escapeHtml(state.estate?.currency || 'N/A')}</p>
         </div>
         <div class="summary-item">
@@ -811,42 +800,91 @@ function handleFooterClick(event) {
   }
 }
 
-function handleDecedentInput(event) {
+function onRootInput(event) {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
-  const screeningField = target.dataset.screeningField;
-  if (screeningField) {
-    const value = target instanceof HTMLInputElement ? target.checked : false;
-    persist(setScreening(state, { [screeningField]: value }));
+
+  const decedentField = target.dataset.decedentField;
+  if (decedentField) {
+    const value = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
+      ? target.type === 'checkbox'
+        ? target.checked
+        : target.value
+      : '';
+    const next = setDeceased(state, { [decedentField]: value });
+    persist(next, { render: false });
     return;
   }
+
   const estateField = target.dataset.estateField;
-  if (estateField === 'value') {
-    const raw = String(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
+  if (estateField) {
+    const raw = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
       ? target.value
-      : '');
-    const normalized = raw.replace(',', '.');
-    const next = setEstateValue(state, normalized);
-    persist(next, { render: event.type !== 'input' });
+      : '';
+    const next = setEstateValue(state, raw);
+    persist(next, { render: false });
     return;
   }
-  const field = target.dataset.deceasedField;
-  if (!field) return;
-  const value = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
-    ? target.type === 'checkbox'
-      ? target.checked
-      : target.value
-    : '';
-  const isTypingTarget =
-    (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && target.type !== 'checkbox';
-  if (event.type === 'input' && isTypingTarget) {
-    persist(setDeceased(state, { [field]: value }), { render: false });
-  } else {
-    persist(setDeceased(state, { [field]: value }));
+
+  const heirRole = target.dataset.heirRole;
+  if (heirRole) {
+    const parsed = Number.parseInt(
+      target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
+        ? target.value
+        : '0',
+      10,
+    );
+    const safeCount = Number.isFinite(parsed) ? parsed : 0;
+    const next = setHeirCount(state, heirRole, safeCount);
+    persist(next, { render: false });
   }
 }
 
-function handleRootClick(event) {
+function onRootChange(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+
+  const screeningField = target.dataset.screeningField;
+  if (screeningField) {
+    const value = target instanceof HTMLInputElement ? target.checked : Boolean(target.value);
+    persist(setScreening(state, { [screeningField]: value }), { render: true });
+    return;
+  }
+
+  const decedentField = target.dataset.decedentField;
+  if (decedentField) {
+    const value = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
+      ? target.type === 'checkbox'
+        ? target.checked
+        : target.value
+      : '';
+    persist(setDeceased(state, { [decedentField]: value }), { render: true });
+    return;
+  }
+
+  const estateField = target.dataset.estateField;
+  if (estateField) {
+    const raw = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
+      ? target.value
+      : '';
+    persist(setEstateValue(state, raw), { render: true });
+    return;
+  }
+
+  const heirRole = target.dataset.heirRole;
+  if (heirRole) {
+    const parsed = Number.parseInt(
+      target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
+        ? target.value
+        : '0',
+      10,
+    );
+    const next = setHeirCount(state, heirRole, Number.isFinite(parsed) ? parsed : 0);
+    persist(next, { render: true });
+  }
+}
+
+function onRootClick(event) {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
   if (target.dataset.action === 'reload-roles') {
@@ -909,12 +947,19 @@ function setCalcBusy(flag) {
 }
 
 async function runCalc() {
-  state.lastError = '';
-  const payload = buildPayload(state);
-
   const v = validateState(state, roles);
   if (v.errors.length) {
     const next = setLastError(state, v.errors.join('\n'));
+    persist({ ...next }, { render: true });
+    return;
+  }
+
+  let payload;
+  try {
+    payload = buildPayload(state);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'No se pudo construir el payload.';
+    const next = setLastError(state, message);
     persist({ ...next }, { render: true });
     return;
   }
@@ -948,9 +993,9 @@ function maybeAutoRecalc() {
 function bindEvents() {
   nav?.addEventListener('click', handleNavClick);
   footerActions?.addEventListener('click', handleFooterClick);
-  root?.addEventListener('input', handleDecedentInput);
-  root?.addEventListener('change', handleDecedentInput);
-  root?.addEventListener('click', handleRootClick);
+  root?.addEventListener('input', onRootInput, true);
+  root?.addEventListener('change', onRootChange, true);
+  root?.addEventListener('click', onRootClick, true);
   page?.addEventListener('click', handlePageClick);
 }
 
