@@ -1,37 +1,7 @@
 const VERSION = 4;
 
-const DEFAULT_HEIRS = [
-  'wife',
-  'husband',
-  'son',
-  'daughter',
-  'sons_son',
-  'sons_daughter',
-  'father',
-  'mother',
-  'paternal_grandfather',
-  'paternal_grandmother',
-  'maternal_grandmother',
-  'paternal_great_grandmother',
-  'maternal_great_grandmother',
-  'full_brother',
-  'full_sister',
-  'consanguine_brother',
-  'consanguine_sister',
-  'uterine_brother',
-  'uterine_sister',
-  'paternal_uncle',
-  'paternal_uncles_daughter',
-  'paternal_uncle_son',
-  'paternal_uncle_sons_daughter',
-  'consanguine_paternal_uncle',
-  'consanguine_paternal_uncles_daughter',
-  'consanguine_paternal_uncle_son',
-  'consanguine_paternal_uncle_sons_daughter',
-];
-
 function createInitialHeirsCounts() {
-  return DEFAULT_HEIRS.reduce((acc, role) => ({ ...acc, [role]: 0 }), {});
+  return {};
 }
 
 function createInitialState() {
@@ -151,5 +121,4 @@ export {
   setLastResponse,
   setLastError,
   setHeirCount,
-  DEFAULT_HEIRS,
 };

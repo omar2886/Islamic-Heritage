@@ -14,7 +14,7 @@ import { loadState, saveState, resetCase } from './storage.js';
 import { validateState } from './validate.js';
 import { buildPayload } from './payload.js';
 import { exportJson } from './export.js';
-import { ROLE_GROUPS, ROLE_LABELS } from './roles_meta.js';
+import { GROUPS_ORDER, LABELS_FALLBACK } from './roles_meta.js';
 import { postCalc, loadRoles } from './api.js';
 
 const STEP_ORDER = ['screening', 'decedent', 'heirs', 'review', 'results'];
@@ -29,6 +29,8 @@ const TOTAL_STEPS = STEP_ORDER.length;
 
 let state = syncWithUrl(loadState());
 let roles = [];
+let availableRoles = new Map();
+let roleGroups = [];
 let validation = { errors: [], warnings: [], bySection: {} };
 let isLoadingRoles = false;
 let rolesError = null;
@@ -43,18 +45,6 @@ const page = document.querySelector('.flow');
 const nav = document.querySelector('.flow__steps');
 const footerActions = document.querySelector('.flow__footer-actions');
 
-const ROLE_LIMITS = {
-  father: 1,
-  mother: 1,
-  paternal_grandfather: 1,
-  paternal_grandmother: 1,
-  maternal_grandmother: 1,
-  paternal_great_grandmother: 1,
-  maternal_great_grandmother: 1,
-  husband: 1,
-  wife: 4,
-};
-
 const heirsUI = {
   container: null,
   host: null,
@@ -65,6 +55,99 @@ const heirsUI = {
   advancedBody: null,
   groups: new Map(),
 };
+
+function normalizeSex(value) {
+  const sex = String(value || '').toUpperCase();
+  return sex === 'F' ? 'F' : sex === 'M' ? 'M' : '';
+}
+
+function resolveRoleLabel(role) {
+  return availableRoles.get(role) || LABELS_FALLBACK[role] || role;
+}
+
+function getRoleMax(role, sex) {
+  if (role === 'wife') return sex === 'M' ? 4 : 0;
+  if (role === 'husband') return sex === 'F' ? 1 : 0;
+  if (role === 'father' || role === 'mother') return 1;
+  return Infinity;
+}
+
+function clampRoleCount(role, raw, sex) {
+  let n = Number.parseInt(String(raw ?? '0'), 10);
+  if (!Number.isFinite(n) || n < 0) n = 0;
+  const max = getRoleMax(role, sex);
+  if (Number.isFinite(max)) {
+    n = Math.min(n, max);
+  }
+  return n;
+}
+
+function enforceHeirsGuardrails(nextState) {
+  const sex = normalizeSex(nextState?.deceased?.sex);
+  const current = nextState?.heirsCounts || {};
+  let changed = false;
+  const sanitized = {};
+  Object.entries(current).forEach(([role, value]) => {
+    const clamped = clampRoleCount(role, value, sex);
+    sanitized[role] = clamped;
+    if (clamped !== (Number.parseInt(value, 10) || 0)) {
+      changed = true;
+    }
+  });
+  if (!changed) return nextState;
+  return { ...nextState, heirsCounts: sanitized };
+}
+
+function normalizeRoleEntry(role) {
+  if (!role) return null;
+  if (typeof role === 'string') {
+    return { code: role, label: role };
+  }
+  if (typeof role !== 'object') return null;
+  const code = role.code || role.id || role.role;
+  if (!code) return null;
+  const label = role.label || role.name || role.title || String(code);
+  return { code: String(code), label: String(label) };
+}
+
+function buildAvailableRoleMap(list = []) {
+  const map = new Map();
+  list.forEach((item) => {
+    const normalized = normalizeRoleEntry(item);
+    if (normalized) {
+      map.set(normalized.code, normalized.label);
+    }
+  });
+  return map;
+}
+
+function buildRoleGroups(catalog) {
+  const used = new Set();
+  const groups = GROUPS_ORDER.map((group) => {
+    const filtered = group.roles.filter((code) => catalog.has(code));
+    filtered.forEach((code) => used.add(code));
+    return { ...group, roles: filtered };
+  }).filter((group) => group.roles.length > 0);
+
+  const leftovers = [];
+  catalog.forEach((_, code) => {
+    if (!used.has(code)) leftovers.push(code);
+  });
+  if (leftovers.length) {
+    groups.push({ id: 'other', title: 'Otros (Avanzado)', roles: leftovers });
+  }
+  return groups;
+}
+
+function refreshRoleCatalog(list) {
+  availableRoles = buildAvailableRoleMap(list);
+  roleGroups = buildRoleGroups(availableRoles);
+  heirsUI.container = null;
+  heirsUI.inputs = new Map();
+  heirsUI.groups = new Map();
+}
+
+state = enforceHeirsGuardrails(state);
 
 if (!root) {
   throw new Error('flow-root missing');
@@ -90,7 +173,7 @@ function applyUrl(step) {
 }
 
 function persist(next, opts = {}) {
-  state = next;
+  state = enforceHeirsGuardrails(next);
   saveState(state);
   validation = validateState(state, roles);
   if (opts.render === false) {
@@ -127,6 +210,8 @@ async function ensureRoles(force = false) {
   render();
   try {
     roles = await loadRoles(apiUrl);
+    refreshRoleCatalog(roles);
+    state = enforceHeirsGuardrails(state);
   } catch (error) {
     rolesError = error instanceof Error ? error.message : 'No se pudieron cargar los roles.';
   } finally {
@@ -291,18 +376,17 @@ function renderHeirs() {
   `;
 }
 
-function clampCount(role, raw) {
-  const parsed = Number.parseInt(raw, 10);
-  const safe = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-  const max = ROLE_LIMITS[role];
-  if (Number.isInteger(max)) {
-    return Math.min(safe, max);
+function updateCount(role, raw, { render } = {}) {
+  const value = clampRoleCount(role, raw, normalizeSex(state?.deceased?.sex));
+  const next = setHeirCount(state, role, value);
+  persist(next, { render });
+  if (render === false) {
+    syncHeirsUIFromState();
   }
-  return safe;
 }
 
 function createRoleInput(role) {
-  const label = ROLE_LABELS[role] || escapeHtml(role);
+  const label = resolveRoleLabel(role);
   const field = document.createElement('label');
   field.className = 'field';
   const span = document.createElement('span');
@@ -313,11 +397,8 @@ function createRoleInput(role) {
   input.step = '1';
   input.inputMode = 'numeric';
   input.dataset.heirCount = role;
-  const max = ROLE_LIMITS[role];
-  if (Number.isInteger(max)) {
-    input.max = String(max);
-  }
-  input.addEventListener('input', handleHeirCountInput);
+  input.addEventListener('input', (event) => updateCount(role, event.target.value, { render: false }));
+  input.addEventListener('change', (event) => updateCount(role, event.target.value, { render: true }));
   field.appendChild(span);
   field.appendChild(input);
   heirsUI.inputs.set(role, input);
@@ -350,8 +431,9 @@ function createGroupWrapper(group) {
   const section = createGroupSection(group);
   let wrapper = section;
   let details = null;
+  const isAdvanced = group.id === 'coll' || group.id === 'other';
 
-  if (group.group === 'coll') {
+  if (isAdvanced) {
     details = document.createElement('details');
     const summary = document.createElement('summary');
     summary.textContent = group.title;
@@ -360,8 +442,8 @@ function createGroupWrapper(group) {
     wrapper = details;
   }
 
-  wrapper.dataset.groupKey = group.group;
-  heirsUI.groups.set(group.group, { wrapper, details });
+  wrapper.dataset.groupKey = group.id;
+  heirsUI.groups.set(group.id, { wrapper, details, isAdvanced });
   return wrapper;
 }
 
@@ -378,7 +460,7 @@ function createHeirsUIOnce() {
   advanced.className = 'card card--subtle';
   advanced.open = false;
   const advancedSummary = document.createElement('summary');
-  advancedSummary.textContent = 'Avanzado';
+  advancedSummary.textContent = 'Secciones avanzadas';
   advanced.appendChild(advancedSummary);
   const advancedBody = document.createElement('div');
   advancedBody.className = 'stack';
@@ -386,9 +468,10 @@ function createHeirsUIOnce() {
   heirsUI.advanced = advanced;
   heirsUI.advancedBody = advancedBody;
 
-  ROLE_GROUPS.forEach((group) => {
+  roleGroups.forEach((group) => {
     const wrapper = createGroupWrapper(group);
-    mainStack.appendChild(wrapper);
+    const target = group.id === 'coll' || group.id === 'other' ? heirsUI.advancedBody : heirsUI.mainStack;
+    target.appendChild(wrapper);
   });
 
   container.appendChild(mainStack);
@@ -399,33 +482,29 @@ function createHeirsUIOnce() {
   container.appendChild(heirsUI.validationSlot);
 
   heirsUI.container = container;
+  applyScreeningLayout();
   return container;
 }
 
 function applyScreeningLayout() {
   if (!heirsUI.mainStack || !heirsUI.advancedBody) return;
-  heirsUI.mainStack.innerHTML = '';
-  heirsUI.advancedBody.innerHTML = '';
-
   const prefs = state?.screening || {};
+  const prefForGroup = (groupId) => {
+    if (groupId === 'spouse') return prefs.spouse;
+    if (groupId === 'desc') return prefs.descendants;
+    if (groupId === 'asc') return prefs.ascendants;
+    if (groupId === 'sib') return prefs.siblings;
+    return prefs.collaterals;
+  };
 
-  ROLE_GROUPS.forEach((group) => {
-    const groupUI = heirsUI.groups.get(group.group);
-    if (!groupUI?.wrapper) return;
-    const key =
-      group.group === 'spouse'
-        ? 'spouse'
-        : group.group === 'desc'
-        ? 'descendants'
-        : group.group === 'asc'
-        ? 'ascendants'
-        : group.group === 'sib'
-        ? 'siblings'
-        : 'collaterals';
-    const target = group.group === 'coll' ? heirsUI.advancedBody : prefs[key] ? heirsUI.mainStack : heirsUI.advancedBody;
-    target.appendChild(groupUI.wrapper);
-    if (groupUI.details && group.group === 'coll') {
-      groupUI.details.open = Boolean(prefs.collaterals);
+  roleGroups.forEach((group) => {
+    const info = heirsUI.groups.get(group.id);
+    if (!info?.wrapper) return;
+    const pref = prefForGroup(group.id);
+    const target = info.isAdvanced || !pref ? heirsUI.advancedBody : heirsUI.mainStack;
+    target.appendChild(info.wrapper);
+    if (info.details && info.isAdvanced) {
+      info.details.open = Boolean(prefs.collaterals || !pref);
     }
   });
 
@@ -439,16 +518,21 @@ function applyScreeningLayout() {
 
 function syncHeirsUIFromState() {
   const counts = state?.heirsCounts || {};
-  const deceasedSex = String(state?.deceased?.sex || '').toUpperCase();
+  const deceasedSex = normalizeSex(state?.deceased?.sex);
   heirsUI.inputs.forEach((input, role) => {
-    const value = counts[role] ?? 0;
-    const clamped = clampCount(role, value);
+    const clamped = clampRoleCount(role, counts[role], deceasedSex);
     if (String(input.value) !== String(clamped)) {
       input.value = String(clamped);
     }
 
-    const disableInputs = !deceasedSex;
-    input.disabled = disableInputs;
+    const max = getRoleMax(role, deceasedSex);
+    if (Number.isFinite(max)) {
+      input.max = String(max);
+    } else {
+      input.removeAttribute('max');
+    }
+
+    input.disabled = !deceasedSex;
 
     const shouldHideHusband = deceasedSex === 'M' || !deceasedSex;
     const shouldHideWife = deceasedSex === 'F' || !deceasedSex;
@@ -760,19 +844,6 @@ function handleDecedentInput(event) {
   } else {
     persist(setDeceased(state, { [field]: value }));
   }
-}
-
-function handleHeirCountInput(event) {
-  const target = event.target;
-  if (!(target instanceof HTMLInputElement)) return;
-  const role = target.dataset.heirCount;
-  if (!role) return;
-  const value = clampCount(role, target.value);
-  if (String(target.value) !== String(value)) {
-    target.value = String(value);
-  }
-  const next = setHeirCount(state, role, value);
-  persist(next, { render: false });
 }
 
 function handleRootClick(event) {

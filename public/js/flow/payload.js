@@ -8,14 +8,7 @@ function buildPayload(state) {
   const counts = state?.heirsCounts || {};
   const ev = String(state?.estateValue ?? state?.estate?.value ?? '').trim().replace(',', '.');
 
-  const spouseKey = deceasedSex === 'F' ? 'husband' : 'wife';
-
   const heirs = Object.entries(counts)
-    .filter(([role, n]) => {
-      if (role === 'husband' && spouseKey !== 'husband') return false;
-      if (role === 'wife' && spouseKey !== 'wife') return false;
-      return Number.parseInt(n, 10) > 0;
-    })
     .map(([role, n]) => ({ role, count: Number.parseInt(n, 10) || 0 }))
     .filter((entry) => entry.count > 0);
 
