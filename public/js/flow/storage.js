@@ -1,6 +1,6 @@
 import { VERSION, createInitialState } from './state.js';
 
-const STORAGE_KEY = 'heritage_flow_v2';
+const STORAGE_KEY = 'heritage_flow_state_v4';
 
 function normalizeHeirsCounts(input = {}) {
   const result = {};
@@ -13,44 +13,48 @@ function normalizeHeirsCounts(input = {}) {
   return result;
 }
 
+function migrateHeirsArray(source, target) {
+  if (!Array.isArray(source)) return target;
+  const result = { ...target };
+  source.forEach((entry) => {
+    const role = entry?.role;
+    const count = Number.parseInt(entry?.count, 10);
+    if (!role || !Number.isFinite(count) || count <= 0) return;
+    result[role] = (result[role] || 0) + count;
+  });
+  return result;
+}
+
+function safeResponse(parsed) {
+  if (parsed && typeof parsed === 'object') return parsed;
+  return null;
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return createInitialState();
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return createInitialState();
-    if (parsed.version !== VERSION) return createInitialState();
 
     const base = createInitialState();
-    const merged = {
-      ...base,
-      ...parsed,
-      step: parsed.step && typeof parsed.step === 'string' ? parsed.step : base.step,
-      estateValue: parsed.estateValue ?? parsed.estate?.value ?? base.estateValue,
-      screening: { ...base.screening, ...(parsed.screening || {}) },
-      deceased: { ...base.deceased, ...(parsed.deceased || {}) },
-      estate: { ...base.estate, ...(parsed.estate || {}) },
-      heirsCounts: normalizeHeirsCounts(parsed.heirsCounts),
-      lastResult: parsed.lastResult ?? null,
-      lastResultRaw: parsed.lastResultRaw ?? null,
-      lastPayload: parsed.lastPayload ?? null,
-      lastResponse: parsed.lastResponse ?? null,
-      lastError: parsed.lastError ?? '',
-    };
+    const merged = { ...base };
 
-    if (!merged.heirsCounts) {
-      merged.heirsCounts = {};
-    }
-    if (Array.isArray(parsed.heirs)) {
-      for (const h of parsed.heirs) {
-        const role = h?.role;
-        const n = Number(h?.count || 0);
-        if (role && n > 0) {
-          merged.heirsCounts[role] = (merged.heirsCounts[role] || 0) + n;
-        }
-      }
-      delete merged.heirs;
-    }
+    merged.step = typeof parsed.step === 'string' ? parsed.step : base.step;
+    merged.screening = { ...base.screening, ...(parsed.screening || {}) };
+    merged.deceased = { ...base.deceased, ...(parsed.deceased || {}) };
+    const estateValue = parsed.estate?.value ?? parsed.estateValue ?? base.estate.value;
+    merged.estate = { ...base.estate, ...(parsed.estate || {}), value: typeof estateValue === 'string' ? estateValue : String(estateValue ?? '') };
+
+    const normalizedCounts = normalizeHeirsCounts(parsed.heirsCounts);
+    merged.heirsCounts = migrateHeirsArray(parsed.heirs, normalizedCounts);
+
+    const maybeResponse = parsed.lastResponse ?? parsed.lastResult ?? parsed.lastResultRaw;
+    merged.lastResponse = safeResponse(maybeResponse);
+    merged.lastPayload = parsed.lastPayload && typeof parsed.lastPayload === 'object' ? parsed.lastPayload : null;
+    merged.lastError = typeof parsed.lastError === 'string' ? parsed.lastError : '';
+
+    merged.version = VERSION;
 
     return merged;
   } catch (error) {
@@ -61,18 +65,7 @@ function loadState() {
 
 function saveState(state) {
   try {
-    const safeResult = (() => {
-      if (!state.lastResult) return null;
-      try {
-        const serialized = JSON.stringify(state.lastResult);
-        return serialized && serialized.length > 50000 ? null : state.lastResult;
-      } catch (error) {
-        console.warn('No se pudo serializar lastResult', error);
-        return null;
-      }
-    })();
-
-    const snapshot = JSON.stringify({ ...state, lastResult: safeResult, heirs: undefined });
+    const snapshot = JSON.stringify({ ...state });
     localStorage.setItem(STORAGE_KEY, snapshot);
   } catch (error) {
     console.warn('No se pudo persistir el estado del Flow Wizard', error);

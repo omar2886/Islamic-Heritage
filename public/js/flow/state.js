@@ -8,9 +8,6 @@ function createInitialState() {
   return {
     version: VERSION,
     step: 'screening',
-    estateValue: '',
-    lastResponse: null,
-    lastError: '',
     screening: {
       spouse: false,
       descendants: false,
@@ -18,12 +15,12 @@ function createInitialState() {
       siblings: false,
       collaterals: false,
     },
-    deceased: { name: '', sex: 'M', madhhab: '', notes: '' },
+    deceased: { name: '', sex: '', notes: '' },
     estate: { value: '', currency: 'MAD' },
     heirsCounts: createInitialHeirsCounts(),
-    lastResult: null,
-    lastResultRaw: null,
     lastPayload: null,
+    lastResponse: null,
+    lastError: '',
   };
 }
 
@@ -31,94 +28,62 @@ function withVersion(state) {
   return { ...state, version: VERSION };
 }
 
-function setDeceased(state, payload) {
-  return withVersion({
-    ...state,
-    deceased: { ...state.deceased, ...payload },
-  });
-}
-
 function setStep(state, step) {
+  return withVersion({ ...state, step });
+}
+
+function setDeceased(state, partial) {
   return withVersion({
     ...state,
-    step,
+    deceased: { ...state.deceased, ...partial },
   });
 }
 
-function setScreening(state, payload) {
+function setEstateValue(state, valueString) {
+  const nextValue = typeof valueString === 'string' || typeof valueString === 'number' ? String(valueString) : '';
   return withVersion({
     ...state,
-    screening: { ...state.screening, ...payload },
+    estate: { ...state.estate, value: nextValue },
   });
 }
 
-function setEstateValue(state, value) {
-  const nextValue = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
-  return withVersion({
-    ...state,
-    estateValue: nextValue,
-    estate: {
-      ...state.estate,
-      value: nextValue,
-    },
-  });
-}
-
-function setLastResponse(state, payload) {
-  return withVersion({
-    ...state,
-    lastResponse: payload,
-  });
-}
-
-function setLastError(state, message) {
-  return withVersion({
-    ...state,
-    lastError: message,
-  });
-}
-
-function setLastResult(state, payload) {
-  return withVersion({
-    ...state,
-    lastResult: payload,
-  });
-}
-
-function setLastResultRaw(state, payload) {
-  return withVersion({
-    ...state,
-    lastResultRaw: payload,
-  });
-}
-
-function setLastPayload(state, payload) {
-  return withVersion({
-    ...state,
-    lastPayload: payload,
-  });
-}
-
-function setHeirCount(state, role, count) {
-  const safeCount = Number.isFinite(count) && count >= 0 ? count : 0;
+function setHeirCount(state, role, countInt) {
+  const safeCount = Number.isInteger(countInt) && countInt >= 0 ? countInt : 0;
   return withVersion({
     ...state,
     heirsCounts: { ...state.heirsCounts, [role]: safeCount },
   });
 }
 
+function setScreening(state, partial) {
+  return withVersion({
+    ...state,
+    screening: { ...state.screening, ...partial },
+  });
+}
+
+function setLastPayload(state, payloadObjOrNull) {
+  return withVersion({ ...state, lastPayload: payloadObjOrNull });
+}
+
+function setLastResponse(state, responseObjOrNull) {
+  return withVersion({ ...state, lastResponse: responseObjOrNull });
+}
+
+function setLastError(state, errorString) {
+  return withVersion({ ...state, lastError: errorString });
+}
+
 export {
   VERSION,
   createInitialState,
   createInitialHeirsCounts,
-  setDeceased,
   setStep,
-  setScreening,
+  setDeceased,
   setEstateValue,
-  setLastResult,
-  setLastResultRaw,
+  setHeirCount,
+  setScreening,
   setLastPayload,
   setLastResponse,
   setLastError,
-  setHeirCount,
 };

@@ -14,12 +14,17 @@ function resolveRoleLabel(role, catalog) {
   return catalog.get(role) || LABELS_FALLBACK[role] || role;
 }
 
-function pushIssue(collection, sectionBag, key, message) {
-  collection.push(message);
+function ensureSection(sectionBag, key) {
   if (!sectionBag[key]) {
     sectionBag[key] = { errors: [], warnings: [] };
   }
-  sectionBag[key].errors.push(message);
+  return sectionBag[key];
+}
+
+function pushIssue(collection, sectionBag, key, message, type = 'errors') {
+  collection.push(message);
+  const target = ensureSection(sectionBag, key);
+  target[type].push(message);
 }
 
 function validateState(state, roles = []) {
@@ -33,12 +38,18 @@ function validateState(state, roles = []) {
       }
     });
   }
+
   const errors = [];
   const warnings = [];
-  const bySection = { decedent: { errors: [], warnings: [] }, heirs: { errors: [], warnings: [] }, review: { errors: [], warnings: [] } };
+  const bySection = {
+    screening: { errors: [], warnings: [] },
+    decedent: { errors: [], warnings: [] },
+    heirs: { errors: [], warnings: [] },
+    review: { errors: [], warnings: [] },
+  };
 
-  const estateRaw = String(state?.estateValue ?? state?.estate?.value ?? '').trim();
-  const estateValue = Number(String(estateRaw || '').replace(',', '.'));
+  const estateRaw = String(state?.estate?.value ?? '').trim();
+  const estateValue = Number(estateRaw.replace(',', '.'));
   if (!Number.isFinite(estateValue) || estateValue <= 0) {
     pushIssue(errors, bySection, 'decedent', 'Introduce un montante de herencia válido (> 0).');
     pushIssue(errors, bySection, 'review', 'Introduce un montante de herencia válido (> 0).');
@@ -53,8 +64,13 @@ function validateState(state, roles = []) {
   const counts = state?.heirsCounts || {};
   Object.entries(counts).forEach(([role, raw]) => {
     const count = toInt(raw);
-    if (!Number.isInteger(count) || count < 0) {
-      pushIssue(errors, bySection, 'heirs', `"${resolveRoleLabel(role, roleCatalog)}" debe ser un entero mayor o igual que 0.`);
+    if (!Number.isInteger(count) || count < 0 || count > 20) {
+      pushIssue(errors, bySection, 'heirs', `"${resolveRoleLabel(role, roleCatalog)}" debe ser un entero entre 0 y 20.`);
+      return;
+    }
+
+    if (role && roleCatalog.size && !roleCatalog.has(role)) {
+      pushIssue(errors, bySection, 'heirs', `Rol desconocido: ${resolveRoleLabel(role, roleCatalog)}.`);
     }
   });
 
@@ -64,23 +80,19 @@ function validateState(state, roles = []) {
   if ((counts.mother || 0) > 1) {
     pushIssue(errors, bySection, 'heirs', 'Madre no puede superar 1.');
   }
-
-  if (deceasedSex === 'M') {
-    if ((counts.wife || 0) > 4) {
-      pushIssue(errors, bySection, 'heirs', 'Máximo 4 esposas.');
-    }
-    if ((counts.husband || 0) > 0) {
-      pushIssue(errors, bySection, 'heirs', 'Para causante varón, no se admite esposo.');
-    }
+  if ((counts.husband || 0) > 1) {
+    pushIssue(errors, bySection, 'heirs', 'Solo se admite un esposo.');
+  }
+  if ((counts.wife || 0) > 4) {
+    pushIssue(errors, bySection, 'heirs', 'Máximo 4 esposas.');
   }
 
-  if (deceasedSex === 'F') {
-    if ((counts.husband || 0) > 1) {
-      pushIssue(errors, bySection, 'heirs', 'Solo se admite un esposo.');
-    }
-    if ((counts.wife || 0) > 0) {
-      pushIssue(errors, bySection, 'heirs', 'Para causante mujer, no se admiten esposas.');
-    }
+  if (deceasedSex === 'M' && (counts.husband || 0) > 0) {
+    pushIssue(warnings, bySection, 'heirs', 'Para causante varón, se ignorará el rol esposo en el cálculo.', 'warnings');
+  }
+
+  if (deceasedSex === 'F' && (counts.wife || 0) > 0) {
+    pushIssue(warnings, bySection, 'heirs', 'Para causante mujer, se ignorará el rol esposa en el cálculo.', 'warnings');
   }
 
   return {
