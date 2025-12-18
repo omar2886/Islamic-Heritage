@@ -155,3 +155,42 @@ details.explain section { margin-top: .5rem; }
   .flow__footer { position: static; }
 }
 
+.flow { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: var(--fg,#111); }
+.flow .container { max-width: 980px; margin: 0 auto; padding: 16px; }
+.flow .card { background: #fff; border: 1px solid rgba(0,0,0,.08); border-radius: 12px; padding: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.flow .grid { display: grid; gap: 12px; }
+.flow .grid.two { grid-template-columns: 1fr; }
+@media (min-width: 900px){ .flow .grid.two { grid-template-columns: 1fr 1fr; } }
+
+.flow .field { display: grid; gap: 6px; margin-bottom: 12px; }
+.flow label { font-weight: 600; font-size: 14px; }
+.flow input[type="text"], .flow input[type="number"], .flow select, .flow textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,.18);
+  outline: none;
+  background: #fff;
+}
+.flow input:focus, .flow select:focus, .flow textarea:focus {
+  border-color: var(--primary,#0b57d0);
+  box-shadow: 0 0 0 3px rgba(11,87,208,.18);
+}
+
+.flow .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:10px 14px; border-radius: 10px; border:1px solid rgba(0,0,0,.18); background:#fff; cursor:pointer; }
+.flow .btn.primary { background: var(--primary,#0b57d0); color:#fff; border-color: transparent; }
+.flow .btn:disabled { opacity:.55; cursor:not-allowed; }
+
+.flow .stepper { display:flex; gap:8px; flex-wrap:wrap; margin: 10px 0 14px; }
+.flow .step { padding:8px 10px; border-radius: 999px; border:1px solid rgba(0,0,0,.14); font-size: 13px; background:#fff; }
+.flow .step.active { background: rgba(11,87,208,.10); border-color: rgba(11,87,208,.35); }
+
+.flow .banner { border-radius: 12px; padding: 10px 12px; border: 1px solid rgba(0,0,0,.12); margin: 10px 0; white-space: pre-line; }
+.flow .banner.error { background: rgba(220,38,38,.08); border-color: rgba(220,38,38,.30); }
+.flow .banner.warn { background: rgba(245,158,11,.10); border-color: rgba(245,158,11,.35); }
+
+.flow table { width:100%; border-collapse: collapse; }
+.flow th, .flow td { text-align:left; padding: 10px 8px; border-bottom: 1px solid rgba(0,0,0,.08); font-size: 14px; }
+.flow details.raw { margin-top: 12px; }
+.flow pre { background: rgba(0,0,0,.04); padding: 12px; border-radius: 12px; overflow:auto; }
+

@@ -42,7 +42,7 @@ function apiUrl(relPath) {
 
 const root = document.getElementById('flow-root');
 const page = document.querySelector('.flow');
-const nav = document.querySelector('.flow__steps');
+const nav = document.querySelector('.stepper');
 const footerActions = document.querySelector('.flow__footer-actions');
 
 const heirsUI = {
@@ -231,7 +231,7 @@ function renderNav() {
   if (!nav) return;
   nav.querySelectorAll('button[data-step]').forEach((btn) => {
     const isActive = btn.dataset.step === state.step;
-    btn.classList.toggle('is-active', isActive);
+    btn.classList.toggle('active', isActive);
     btn.disabled = btn.dataset.step === 'results' && !state.lastResponse && !state.lastError;
   });
 }
@@ -294,7 +294,7 @@ function renderScreening() {
           <p class="muted">Selecciona las ramas familiares relevantes para este caso. Tus elecciones solo afectan la visualización.</p>
         </div>
       </div>
-      <div class="form-grid form-grid--two">
+      <div class="grid two">
         ${fields}
       </div>
     </section>
@@ -312,7 +312,7 @@ function renderDecedent() {
           <p class="muted">Datos básicos del causante para contextualizar el caso.</p>
         </div>
       </div>
-      <div class="form-grid">
+      <div class="grid two">
         <label class="field">
           <span>Nombre</span>
           <input type="text" name="deceased-name" data-deceased-field="name" value="${escapeHtml(deceased.name)}" placeholder="Ej: Ahmad ibn Zayd" />
@@ -353,7 +353,7 @@ function renderDecedent() {
 
 function renderHeirs() {
   const roleStatus = rolesError
-    ? `<p class="text-error">${escapeHtml(rolesError)}</p>`
+    ? `<div class="banner error">${escapeHtml(rolesError)}</div>`
     : isLoadingRoles
     ? '<p class="muted">Cargando catálogo de roles…</p>'
     : '';
@@ -367,7 +367,7 @@ function renderHeirs() {
           <p class="muted">Declara cantidades por rol familiar.</p>
         </div>
         <div class="inline-actions">
-          <button type="button" class="btn btn-ghost" data-action="reload-roles" ${isLoadingRoles ? 'disabled' : ''}>Recargar roles</button>
+          <button type="button" class="btn" data-action="reload-roles" ${isLoadingRoles ? 'disabled' : ''}>Recargar roles</button>
         </div>
       </div>
       ${roleStatus}
@@ -417,7 +417,7 @@ function createGroupSection(group) {
   section.appendChild(head);
 
   const grid = document.createElement('div');
-  grid.className = 'form-grid form-grid--two';
+  grid.className = 'grid two';
   group.roles.forEach((role) => {
     const input = createRoleInput(role);
     grid.appendChild(input);
@@ -570,12 +570,12 @@ function renderReview() {
           <p class="muted">Repasa la información antes de calcular.</p>
         </div>
         <div class="inline-actions">
-          <button type="button" class="btn btn-primary" data-action="calc" ${
+          <button type="button" class="btn primary" data-action="calc" ${
             validation.errors.length || isCalculating ? 'disabled' : ''
           }>${isCalculating ? 'Calculando…' : 'Calcular'}</button>
         </div>
       </div>
-      <div class="summary-grid">
+      <div class="grid two">
         <div class="summary-item">
           <p class="eyebrow">Causante</p>
           <p><strong>${escapeHtml(state.deceased.name || 'Sin nombre')}</strong></p>
@@ -600,7 +600,7 @@ function renderReview() {
         <pre class="code-block">${escapeHtml(pretty)}</pre>
       </div>
       ${renderValidationMessages(['review'])}
-      ${state.lastError ? `<p class="text-error">${escapeHtml(state.lastError)}</p>` : ''}
+      ${state.lastError ? `<div class="banner error">${escapeHtml(state.lastError)}</div>` : ''}
     </section>
   `;
 }
@@ -669,7 +669,7 @@ function renderResults() {
   const canExport = Boolean(state.lastResponse || state.lastPayload);
 
   const errorBanner = state.lastError
-    ? `<div class="alert alert-error"><p>${escapeHtml(state.lastError)}</p></div>`
+    ? `<div class="banner error"><p>${escapeHtml(state.lastError)}</p></div>`
     : '';
   const noResults = !state.lastResponse && !state.lastError;
 
@@ -689,7 +689,7 @@ function renderResults() {
         <div class="inline-actions">
           <button type="button" class="btn" data-action="edit-case">Editar caso</button>
           <button type="button" class="btn" data-action="export-json" ${canExport ? '' : 'disabled'}>Exportar JSON</button>
-          <button type="button" class="btn" data-action="calc" ${isCalculating ? 'disabled' : ''}>${
+          <button type="button" class="btn primary" data-action="calc" ${isCalculating ? 'disabled' : ''}>${
             isCalculating ? 'Calculando…' : 'Recalcular'
           }</button>
         </div>
@@ -715,10 +715,10 @@ function renderValidationMessages(sections = []) {
   if (!errors.length && !warnings.length) return '';
 
   const errorList = errors.length
-    ? `<div class="alert alert-error"><p><strong>Errores</strong></p><ul>${errors.map((msg) => `<li>${escapeHtml(msg)}</li>`).join('')}</ul></div>`
+    ? `<div class="banner error"><p><strong>Errores</strong></p><ul>${errors.map((msg) => `<li>${escapeHtml(msg)}</li>`).join('')}</ul></div>`
     : '';
   const warningList = warnings.length
-    ? `<div class="alert alert-warning"><p><strong>Avisos</strong></p><ul>${warnings.map((msg) => `<li>${escapeHtml(msg)}</li>`).join('')}</ul></div>`
+    ? `<div class="banner warn"><p><strong>Avisos</strong></p><ul>${warnings.map((msg) => `<li>${escapeHtml(msg)}</li>`).join('')}</ul></div>`
     : '';
   return `<div class="stack">${errorList}${warningList}</div>`;
 }
