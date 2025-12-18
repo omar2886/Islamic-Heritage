@@ -1,27 +1,16 @@
-import { VERSION, createInitialHeirsCounts, createInitialState } from './state.js';
+import { VERSION, createInitialState } from './state.js';
 
 const STORAGE_KEY = 'heritage_flow_v2';
 
 function normalizeHeirsCounts(input = {}) {
-  const base = createInitialHeirsCounts();
-  return Object.entries(base).reduce((acc, [role, defaultValue]) => {
-    const raw = input[role];
+  const result = {};
+  Object.entries(input || {}).forEach(([role, raw]) => {
     const parsed = Number.parseInt(raw, 10);
-    const safe = Number.isFinite(parsed) && parsed >= 0 ? parsed : defaultValue;
-    return { ...acc, [role]: safe };
-  }, {});
-}
-
-function fromLegacyList(list) {
-  if (!Array.isArray(list)) return list || {};
-  return list.reduce((acc, entry) => {
-    if (!entry || typeof entry !== 'object') return acc;
-    const role = entry.role;
-    const count = Number.parseInt(entry.count, 10) || 0;
-    if (!role) return acc;
-    const prev = acc[role] || 0;
-    return { ...acc, [role]: prev + count };
-  }, {});
+    if (!role) return;
+    if (!Number.isFinite(parsed) || parsed < 0) return;
+    result[role] = parsed;
+  });
+  return result;
 }
 
 function loadState() {
@@ -33,7 +22,7 @@ function loadState() {
     if (parsed.version !== VERSION) return createInitialState();
 
     const base = createInitialState();
-    return {
+    const merged = {
       ...base,
       ...parsed,
       step: parsed.step && typeof parsed.step === 'string' ? parsed.step : base.step,
@@ -41,13 +30,29 @@ function loadState() {
       screening: { ...base.screening, ...(parsed.screening || {}) },
       deceased: { ...base.deceased, ...(parsed.deceased || {}) },
       estate: { ...base.estate, ...(parsed.estate || {}) },
-      heirsCounts: normalizeHeirsCounts(parsed.heirsCounts || fromLegacyList(parsed.heirs)),
+      heirsCounts: normalizeHeirsCounts(parsed.heirsCounts),
       lastResult: parsed.lastResult ?? null,
       lastResultRaw: parsed.lastResultRaw ?? null,
       lastPayload: parsed.lastPayload ?? null,
       lastResponse: parsed.lastResponse ?? null,
       lastError: parsed.lastError ?? '',
     };
+
+    if (!merged.heirsCounts) {
+      merged.heirsCounts = {};
+    }
+    if (Array.isArray(parsed.heirs)) {
+      for (const h of parsed.heirs) {
+        const role = h?.role;
+        const n = Number(h?.count || 0);
+        if (role && n > 0) {
+          merged.heirsCounts[role] = (merged.heirsCounts[role] || 0) + n;
+        }
+      }
+      delete merged.heirs;
+    }
+
+    return merged;
   } catch (error) {
     console.warn('No se pudo cargar el estado del Flow Wizard', error);
     return createInitialState();
