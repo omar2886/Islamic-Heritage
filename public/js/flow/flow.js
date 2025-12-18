@@ -1,18 +1,29 @@
-import { setDeceased, setStep, setLastResult, setLastResultRaw, setLastPayload, setEstateValue, setHeirCount } from './state.js';
-import { loadState, saveState } from './storage.js';
+import {
+  setDeceased,
+  setStep,
+  setLastResult,
+  setLastResultRaw,
+  setLastPayload,
+  setEstateValue,
+  setHeirCount,
+  setScreening,
+} from './state.js';
+import { loadState, saveState, resetCase } from './storage.js';
 import { loadRoles } from './roles.js';
 import { validateState } from './validate.js';
 import { buildPayload } from './payload.js';
 import { exportJson } from './export.js';
 import { ROLE_GROUPS, ROLE_LABELS } from './roles_meta.js';
 
-const STEP_ORDER = ['decedent', 'heirs', 'review', 'results'];
+const STEP_ORDER = ['screening', 'decedent', 'heirs', 'review', 'results'];
 const LABELS = {
+  screening: 'Prefiltro',
   decedent: 'Causante',
   heirs: 'Familia / Herederos',
   review: 'Revisión',
   results: 'Resultados',
 };
+const TOTAL_STEPS = STEP_ORDER.length;
 
 let state = syncWithUrl(loadState());
 let roles = [];
@@ -24,6 +35,7 @@ let calcError = null;
 const DEFAULT_CALC_URL = 'api/calc.php';
 
 const root = document.getElementById('flow-root');
+const page = document.querySelector('.flow');
 const nav = document.querySelector('.flow__steps');
 const footerActions = document.querySelector('.flow__footer-actions');
 
@@ -44,6 +56,10 @@ const heirsUI = {
   host: null,
   inputs: new Map(),
   validationSlot: null,
+  mainStack: null,
+  advanced: null,
+  advancedBody: null,
+  groups: new Map(),
 };
 
 if (!root) {
@@ -53,7 +69,7 @@ if (!root) {
 function syncWithUrl(current) {
   const url = new URL(window.location.href);
   const requested = url.searchParams.get('step');
-  const defaultStep = current.step || 'decedent';
+  const defaultStep = current.step || STEP_ORDER[0];
   const safeDefault = STEP_ORDER.includes(defaultStep) ? defaultStep : STEP_ORDER[0];
   const nextStep = STEP_ORDER.includes(requested) ? requested : safeDefault;
   if (nextStep !== current.step) {
@@ -101,6 +117,15 @@ function getCalcUrl() {
 
 function stepFromIndex(index) {
   return STEP_ORDER[Math.min(Math.max(index, 0), STEP_ORDER.length - 1)];
+}
+
+function stepNumber(step) {
+  return STEP_ORDER.indexOf(step) + 1;
+}
+
+function formatStepLabel(step) {
+  const number = Math.max(1, stepNumber(step));
+  return `Paso ${number}/${TOTAL_STEPS}`;
 }
 
 function nextStep(direction) {
@@ -165,13 +190,50 @@ function renderFooter() {
   }
 }
 
+function renderScreening() {
+  const screening = state?.screening || {};
+  const options = [
+    { field: 'spouse', label: '¿Cónyuge?', helper: 'Activa la sección de esposo/esposa.' },
+    { field: 'descendants', label: '¿Descendientes?', helper: 'Hijos o nietos directos.' },
+    { field: 'ascendants', label: '¿Padre/madre vivos?', helper: 'Incluye abuelos si aplica.' },
+    { field: 'siblings', label: '¿Hermanos?', helper: 'Germanos, consanguíneos o uterinos.' },
+    { field: 'collaterals', label: '¿Colaterales?', helper: 'Tíos paternos y descendencia.' },
+  ];
+
+  const fields = options
+    .map(
+      (item) => `
+        <label class="field field--inline">
+          <input type="checkbox" data-screening-field="${item.field}" ${screening[item.field] ? 'checked' : ''} />
+          <span><strong>${escapeHtml(item.label)}</strong><br /><span class="muted">${escapeHtml(item.helper)}</span></span>
+        </label>
+      `,
+    )
+    .join('');
+
+  return `
+    <section class="card">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">${formatStepLabel('screening')}</p>
+          <h2>${LABELS.screening}</h2>
+          <p class="muted">Selecciona las ramas familiares relevantes para este caso. Tus elecciones solo afectan la visualización.</p>
+        </div>
+      </div>
+      <div class="form-grid form-grid--two">
+        ${fields}
+      </div>
+    </section>
+  `;
+}
+
 function renderDecedent() {
   const { deceased, estate } = state;
   return `
     <section class="card">
       <div class="section-head">
         <div>
-          <p class="eyebrow">Paso 1</p>
+          <p class="eyebrow">${formatStepLabel('decedent')}</p>
           <h2>${LABELS.decedent}</h2>
           <p class="muted">Datos básicos del causante para contextualizar el caso.</p>
         </div>
@@ -192,10 +254,6 @@ function renderDecedent() {
               deceased.sex,
             )}
           </select>
-        </label>
-        <label class="field">
-          <span>Madhhab</span>
-          <input type="text" name="deceased-madhhab" data-deceased-field="madhhab" value="${escapeHtml(deceased.madhhab)}" placeholder="Escuela fiqh" />
         </label>
         <label class="field">
           <span>Montante de la herencia</span>
@@ -224,7 +282,7 @@ function renderHeirs() {
     <section class="card">
       <div class="section-head">
         <div>
-          <p class="eyebrow">Paso 2</p>
+          <p class="eyebrow">${formatStepLabel('heirs')}</p>
           <h2>${LABELS.heirs}</h2>
           <p class="muted">Declara cantidades por rol familiar.</p>
         </div>
@@ -293,24 +351,53 @@ function createGroupSection(group) {
   return section;
 }
 
+function createGroupWrapper(group) {
+  const section = createGroupSection(group);
+  let wrapper = section;
+  let details = null;
+
+  if (group.group === 'coll') {
+    details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = group.title;
+    details.appendChild(summary);
+    details.appendChild(section);
+    wrapper = details;
+  }
+
+  wrapper.dataset.groupKey = group.group;
+  heirsUI.groups.set(group.group, { wrapper, details });
+  return wrapper;
+}
+
 function createHeirsUIOnce() {
   if (heirsUI.container) return heirsUI.container;
   const container = document.createElement('div');
   container.className = 'stack';
 
+  const mainStack = document.createElement('div');
+  mainStack.className = 'stack';
+  heirsUI.mainStack = mainStack;
+
+  const advanced = document.createElement('details');
+  advanced.className = 'card card--subtle';
+  advanced.open = false;
+  const advancedSummary = document.createElement('summary');
+  advancedSummary.textContent = 'Avanzado';
+  advanced.appendChild(advancedSummary);
+  const advancedBody = document.createElement('div');
+  advancedBody.className = 'stack';
+  advanced.appendChild(advancedBody);
+  heirsUI.advanced = advanced;
+  heirsUI.advancedBody = advancedBody;
+
   ROLE_GROUPS.forEach((group) => {
-    if (group.group === 'coll') {
-      const details = document.createElement('details');
-      details.open = false;
-      const summary = document.createElement('summary');
-      summary.textContent = 'Avanzado';
-      details.appendChild(summary);
-      details.appendChild(createGroupSection(group));
-      container.appendChild(details);
-    } else {
-      container.appendChild(createGroupSection(group));
-    }
+    const wrapper = createGroupWrapper(group);
+    mainStack.appendChild(wrapper);
   });
+
+  container.appendChild(mainStack);
+  container.appendChild(advanced);
 
   heirsUI.validationSlot = document.createElement('div');
   heirsUI.validationSlot.className = 'stack';
@@ -318,6 +405,41 @@ function createHeirsUIOnce() {
 
   heirsUI.container = container;
   return container;
+}
+
+function applyScreeningLayout() {
+  if (!heirsUI.mainStack || !heirsUI.advancedBody) return;
+  heirsUI.mainStack.innerHTML = '';
+  heirsUI.advancedBody.innerHTML = '';
+
+  const prefs = state?.screening || {};
+
+  ROLE_GROUPS.forEach((group) => {
+    const groupUI = heirsUI.groups.get(group.group);
+    if (!groupUI?.wrapper) return;
+    const key =
+      group.group === 'spouse'
+        ? 'spouse'
+        : group.group === 'desc'
+        ? 'descendants'
+        : group.group === 'asc'
+        ? 'ascendants'
+        : group.group === 'sib'
+        ? 'siblings'
+        : 'collaterals';
+    const target = group.group === 'coll' ? heirsUI.advancedBody : prefs[key] ? heirsUI.mainStack : heirsUI.advancedBody;
+    target.appendChild(groupUI.wrapper);
+    if (groupUI.details && group.group === 'coll') {
+      groupUI.details.open = Boolean(prefs.collaterals);
+    }
+  });
+
+  const hasPrimary = heirsUI.mainStack.childElementCount > 0;
+  const hasAdvanced = heirsUI.advancedBody.childElementCount > 0;
+  if (heirsUI.advanced) {
+    heirsUI.advanced.classList.toggle('is-hidden', !hasAdvanced);
+    heirsUI.advanced.open = prefs.collaterals || !hasPrimary;
+  }
 }
 
 function syncHeirsUIFromState() {
@@ -364,7 +486,7 @@ function renderReview() {
     <section class="card">
       <div class="section-head">
         <div>
-          <p class="eyebrow">Paso 3</p>
+          <p class="eyebrow">${formatStepLabel('review')}</p>
           <h2>${LABELS.review}</h2>
           <p class="muted">Repasa la información antes de calcular.</p>
         </div>
@@ -376,7 +498,6 @@ function renderReview() {
         <div class="summary-item">
           <p class="eyebrow">Causante</p>
           <p><strong>${escapeHtml(state.deceased.name || 'Sin nombre')}</strong></p>
-          <p class="muted">${escapeHtml(state.deceased.madhhab || 'Sin madhhab')}</p>
         </div>
         <div class="summary-item">
           <p class="eyebrow">Herederos</p>
@@ -485,7 +606,7 @@ function renderResults() {
     <section class="card">
       <div class="section-head">
         <div>
-          <p class="eyebrow">Paso 4</p>
+          <p class="eyebrow">${formatStepLabel('results')}</p>
           <h2>${LABELS.results}</h2>
           <p class="muted">Consulta y comparte el resultado del cálculo.</p>
         </div>
@@ -540,7 +661,6 @@ function renderResultSummary(result) {
         <div class="summary-item">
           <p class="muted small">Causante</p>
           <strong>${escapeHtml(state.deceased.name || 'Sin nombre')}</strong>
-          <p class="muted">${escapeHtml(state.deceased.madhhab || 'Sin madhhab')}</p>
         </div>
         <div class="summary-item">
           <p class="muted small">Nº herederos</p>
@@ -748,6 +868,7 @@ function render() {
   validation = validateState(state, roles);
 
   const fragments = {
+    screening: renderScreening(),
     decedent: renderDecedent(),
     heirs: renderHeirs(),
     review: renderReview(),
@@ -762,6 +883,7 @@ function render() {
     if (matrix.parentElement !== heirsHost) {
       heirsHost.replaceChildren(matrix);
     }
+    applyScreeningLayout();
     syncHeirsUIFromState();
     renderHeirsValidation();
   }
@@ -822,6 +944,12 @@ function handleFooterClick(event) {
 function handleDecedentInput(event) {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
+  const screeningField = target.dataset.screeningField;
+  if (screeningField) {
+    const value = target instanceof HTMLInputElement ? target.checked : false;
+    persist(setScreening(state, { [screeningField]: value }));
+    return;
+  }
   const estateField = target.dataset.estateField;
   if (estateField) {
     const value = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement
@@ -881,6 +1009,19 @@ function handleRootClick(event) {
     if (state.lastResultRaw) {
       exportJson('calc_raw_response.json', state.lastResultRaw);
     }
+  }
+}
+
+function handlePageClick(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (target.dataset.action === 'reset-case') {
+    const fresh = setStep(resetCase(), STEP_ORDER[0]);
+    rolesError = null;
+    calcError = null;
+    isCalculating = false;
+    applyUrl(fresh.step);
+    persist(fresh);
   }
 }
 
@@ -961,6 +1102,7 @@ function bindEvents() {
   root?.addEventListener('input', handleDecedentInput);
   root?.addEventListener('change', handleDecedentInput);
   root?.addEventListener('click', handleRootClick);
+  page?.addEventListener('click', handlePageClick);
 }
 
 function mount() {

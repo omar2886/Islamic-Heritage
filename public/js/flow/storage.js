@@ -37,6 +37,7 @@ function loadState() {
       ...base,
       ...parsed,
       step: parsed.step && typeof parsed.step === 'string' ? parsed.step : base.step,
+      screening: { ...base.screening, ...(parsed.screening || {}) },
       deceased: { ...base.deceased, ...(parsed.deceased || {}) },
       estate: { ...base.estate, ...(parsed.estate || {}) },
       heirsCounts: normalizeHeirsCounts(parsed.heirsCounts || fromLegacyList(parsed.heirs)),
@@ -70,4 +71,13 @@ function saveState(state) {
   }
 }
 
-export { loadState, saveState, STORAGE_KEY };
+function resetCase() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (error) {
+    console.warn('No se pudo limpiar el estado del Flow Wizard', error);
+  }
+  return createInitialState();
+}
+
+export { loadState, saveState, STORAGE_KEY, resetCase };
