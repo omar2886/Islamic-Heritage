@@ -1,4 +1,4 @@
-import { postCalc } from '../../api.js';
+import { postCalc } from '../api.js';
 import { loadLastOutput, loadLastPayload, saveLastOutput } from '../storage_v3.js';
 import { el, clear } from '../dom.js';
 
@@ -151,14 +151,9 @@ export async function mount() {
     statusEl.textContent = 'Calculando…';
     btnRecalc.disabled = true;
     try {
-      const { status, ok, json, text } = await postCalc(payload, { meta: true });
-      if (!ok) {
-        state.error = { status, text: text || 'Error inesperado del servidor.' };
-        statusEl.textContent = 'Error en el cálculo.';
-        return;
-      }
+      const json = await postCalc({ ...payload, meta: true });
       if (!json) {
-        state.error = { status, text: text || 'Respuesta no-JSON del backend.' };
+        state.error = { text: 'Respuesta vacía del backend.' };
         statusEl.textContent = 'Error en el cálculo.';
         return;
       }
@@ -166,7 +161,10 @@ export async function mount() {
       if (state.output) saveLastOutput(state.output);
       statusEl.textContent = 'Cálculo actualizado.';
     } catch (err) {
-      state.error = { message: err?.message || 'Error al recalcular.' };
+      const errorText = typeof err?.body === 'string'
+        ? err.body
+        : (err?.body?.error || err?.body?.message || null);
+      state.error = { status: err?.status, text: errorText, message: err?.message || 'Error al recalcular.' };
       statusEl.textContent = 'Error en el cálculo.';
     } finally {
       state.loading = false;
