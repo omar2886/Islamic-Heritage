@@ -55,8 +55,12 @@ function notifyModelChanged(){
 }
 window.__onModelChanged = notifyModelChanged; // personas y counts lo invocan
 
-const cleanBase = (v) => String(v || '').trim().replace(/\/+$/, '');
-const cleanPath = (v) => String(v || '').trim().replace(/^\/+/, '');
+const cleanBase = (v) => String(v || '')
+  .trim()
+  .replace(/\/+$/, '');
+const cleanPath = (v) => String(v || '')
+  .trim()
+  .replace(/^\/+/, '');
 function joinBase(base, path){
   const b = cleanBase(base);
   const p = cleanPath(path);
@@ -466,3 +470,4 @@ export async function mount(){
   enforceUsePersonsDefault();
   window.__BUILDER_MOUNTED__ = true;
 }
+
