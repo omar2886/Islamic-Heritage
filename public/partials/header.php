@@ -25,15 +25,24 @@
     $full = $appBaseClean === '' ? $path : $appBaseClean . '/' . $path;
     return htmlspecialchars($full, ENT_QUOTES, 'UTF-8');
   };
+
+  $showExperimental = (isset($_GET['exp']) && $_GET['exp'] === '1');
 ?>
 <header class="site-header container" role="banner">
   <a href="#<?= htmlspecialchars($targetId) ?>" class="skip-link">Saltar al contenido</a>
   <h1>Calculadora de herencia islámica — escuela Maliki</h1>
   <nav class="nav" aria-label="Principal">
     <a href="<?= $navHref('home') ?>">Inicio</a>
-    <a href="<?= $navHref('builder3') ?>">Constructor</a>
-    <a href="<?= $navHref('results3') ?>">Resultados</a>
-    <a href="<?= $navHref('genealogy3') ?>">Genealogía</a>
+    <a href="<?= $navHref('flow') ?>">Flow</a>
+    <?php if ($showExperimental): ?>
+      <a href="<?= $navHref('builder3', ['exp' => '1']) ?>">Constructor V3 (experimental)</a>
+    <?php endif; ?>
+    <details>
+      <summary>Legacy</summary>
+      <a href="<?= $navHref('builder2') ?>">Constructor V2</a>
+      <a href="<?= $navHref('results2') ?>">Resultados V2</a>
+      <a href="<?= $navHref('genealogy2') ?>">Genealogía V2</a>
+    </details>
   </nav>
   <?php if ($legacyMode): ?>
     <nav class="nav nav-secondary" aria-label="Legacy">
