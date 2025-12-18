@@ -37,6 +37,7 @@ function loadState() {
       ...base,
       ...parsed,
       step: parsed.step && typeof parsed.step === 'string' ? parsed.step : base.step,
+      estateValue: parsed.estateValue ?? parsed.estate?.value ?? base.estateValue,
       screening: { ...base.screening, ...(parsed.screening || {}) },
       deceased: { ...base.deceased, ...(parsed.deceased || {}) },
       estate: { ...base.estate, ...(parsed.estate || {}) },
@@ -44,6 +45,8 @@ function loadState() {
       lastResult: parsed.lastResult ?? null,
       lastResultRaw: parsed.lastResultRaw ?? null,
       lastPayload: parsed.lastPayload ?? null,
+      lastResponse: parsed.lastResponse ?? null,
+      lastError: parsed.lastError ?? '',
     };
   } catch (error) {
     console.warn('No se pudo cargar el estado del Flow Wizard', error);
