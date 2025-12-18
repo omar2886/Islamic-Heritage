@@ -1,89 +1,57 @@
-const VERSION = 4;
-
-function createInitialHeirsCounts() {
-  return {};
-}
-
-function createInitialState() {
+export function createInitialState() {
   return {
-    version: VERSION,
-    step: 'screening',
-    screening: {
-      spouse: false,
-      descendants: false,
-      ascendants: false,
-      siblings: false,
-      collaterals: false,
-    },
-    deceased: { name: '', sex: '', notes: '' },
-    estate: { value: '', currency: 'MAD' },
-    heirsCounts: createInitialHeirsCounts(),
+    version: 1,
+    step: 'decedent',
+    deceased: { name: '', sex: 'M', notes: '' },
+    estate: { value: '' },
+    heirsCounts: {},
     lastPayload: null,
     lastResponse: null,
-    lastError: '',
+    lastError: ''
   };
 }
 
 function withVersion(state) {
-  return { ...state, version: VERSION };
+  return { ...state, version: 1 };
 }
 
-function setStep(state, step) {
+export function setStep(state, step) {
   return withVersion({ ...state, step });
 }
 
-function setDeceased(state, partial) {
+export function setDeceasedField(state, key, value) {
   return withVersion({
     ...state,
-    deceased: { ...state.deceased, ...partial },
+    deceased: { ...state.deceased, [key]: value }
   });
 }
 
-function setEstateValue(state, valueString) {
-  const nextValue = typeof valueString === 'string' || typeof valueString === 'number' ? String(valueString) : '';
+export function setEstateValue(state, valueString) {
+  const normalized = typeof valueString === 'string' || typeof valueString === 'number'
+    ? String(valueString).replace(',', '.')
+    : '';
   return withVersion({
     ...state,
-    estate: { ...state.estate, value: nextValue },
+    estate: { ...state.estate, value: normalized }
   });
 }
 
-function setHeirCount(state, role, countInt) {
-  const safeCount = Number.isInteger(countInt) && countInt >= 0 ? countInt : 0;
+export function setHeirCount(state, role, intCount) {
+  const safe = Number.isInteger(intCount) && intCount >= 0 ? intCount : 0;
   return withVersion({
     ...state,
-    heirsCounts: { ...state.heirsCounts, [role]: safeCount },
+    heirsCounts: { ...state.heirsCounts, [role]: safe }
   });
 }
 
-function setScreening(state, partial) {
-  return withVersion({
-    ...state,
-    screening: { ...state.screening, ...partial },
-  });
+export function setLastPayload(state, objOrNull) {
+  return withVersion({ ...state, lastPayload: objOrNull });
 }
 
-function setLastPayload(state, payloadObjOrNull) {
-  return withVersion({ ...state, lastPayload: payloadObjOrNull });
+export function setLastResponse(state, objOrNull) {
+  return withVersion({ ...state, lastResponse: objOrNull });
 }
 
-function setLastResponse(state, responseObjOrNull) {
-  return withVersion({ ...state, lastResponse: responseObjOrNull });
+export function setLastError(state, msgString) {
+  return withVersion({ ...state, lastError: msgString });
 }
-
-function setLastError(state, errorString) {
-  return withVersion({ ...state, lastError: errorString });
-}
-
-export {
-  VERSION,
-  createInitialState,
-  createInitialHeirsCounts,
-  setStep,
-  setDeceased,
-  setEstateValue,
-  setHeirCount,
-  setScreening,
-  setLastPayload,
-  setLastResponse,
-  setLastError,
-};

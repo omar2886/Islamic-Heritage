@@ -1,32 +1,34 @@
-export async function postJson(url, payload) {
-  const res = await fetch(url, {
+function apiUrl(rel) {
+  const base = (window.__APP_BASE__ || '').replace(/\/+$/, '');
+  return new URL(base + '/' + rel.replace(/^\/+/, ''), window.location.origin);
+}
+
+export async function getRoles() {
+  const response = await fetch(apiUrl('api/roles.php'));
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const data = await response.json();
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.roles)) return data.roles;
+  return [];
+}
+
+export async function postCalc(payload) {
+  const response = await fetch(apiUrl('api/calc.php'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-    credentials: 'same-origin',
   });
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${text.slice(0, 400)}`);
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
   }
   try {
     return JSON.parse(text);
-  } catch (e) {
-    throw new Error(`Non-JSON response: ${text.slice(0, 400)}`);
+  } catch (err) {
+    throw new Error('Non-JSON response from API');
   }
 }
 
-export async function postCalc(apiUrlFn, payload) {
-  return postJson(apiUrlFn('api/calc.php'), payload);
-}
-
-export async function loadRoles(apiUrlFn) {
-  const res = await fetch(apiUrlFn('api/roles.php'), { credentials: 'same-origin' });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 400)}`);
-  let data;
-  try { data = JSON.parse(text); } catch { throw new Error(`Non-JSON roles: ${text.slice(0, 400)}`); }
-  // roles.php puede devolver {roles:[...]} o [...]
-  const roles = Array.isArray(data) ? data : (data.roles || []);
-  return roles;
-}
+export { apiUrl };

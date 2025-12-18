@@ -1,105 +1,43 @@
-import { LABELS_FALLBACK } from './roles_meta.js';
+export function validateState(state, rolesCatalog = []) {
+  const errors = [];
+  const warnings = [];
+  const counts = state.heirsCounts || {};
+  const sex = state.deceased?.sex;
 
-function normalizeSex(value) {
-  const sex = String(value || '').toUpperCase();
-  return sex === 'F' ? 'F' : sex === 'M' ? 'M' : '';
-}
-
-function toInt(raw) {
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isInteger(parsed) ? parsed : NaN;
-}
-
-function resolveRoleLabel(role, catalog) {
-  return catalog.get(role) || LABELS_FALLBACK[role] || role;
-}
-
-function ensureSection(sectionBag, key) {
-  if (!sectionBag[key]) {
-    sectionBag[key] = { errors: [], warnings: [] };
+  const estateValue = state.estate?.value;
+  if (!estateValue || Number(estateValue) <= 0) {
+    errors.push('El valor de la herencia es obligatorio y debe ser mayor que cero');
   }
-  return sectionBag[key];
-}
 
-function pushIssue(collection, sectionBag, key, message, type = 'errors') {
-  collection.push(message);
-  const target = ensureSection(sectionBag, key);
-  target[type].push(message);
-}
+  Object.entries(counts).forEach(([role, raw]) => {
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isInteger(n) || n < 0) {
+      errors.push(`Conteo inválido para ${role}`);
+    }
+  });
 
-function validateState(state, roles = []) {
-  const roleCatalog = new Map();
-  if (Array.isArray(roles)) {
-    roles.forEach((entry) => {
-      const code = entry?.code || entry?.id || entry?.role;
-      const label = entry?.label || entry?.name || entry?.title;
-      if (code) {
-        roleCatalog.set(String(code), label ? String(label) : String(code));
+  if (sex === 'M') {
+    if (counts.wife > 4) errors.push('wife excede el máximo permitido (4)');
+    if ((counts.husband ?? 0) !== 0) errors.push('husband no es válido para causante masculino');
+  }
+  if (sex === 'F') {
+    if (counts.husband > 1) errors.push('husband excede el máximo permitido (1)');
+    if ((counts.wife ?? 0) !== 0) errors.push('wife no es válida para causante femenina');
+  }
+
+  if (counts.father > 1) errors.push('father excede el máximo permitido (1)');
+  if (counts.mother > 1) errors.push('mother excede el máximo permitido (1)');
+
+  if (Array.isArray(rolesCatalog) && rolesCatalog.length > 0) {
+    const allowed = new Set(
+      rolesCatalog.map((item) => (typeof item === 'string' ? item : item?.role || item?.code || item?.id)).filter(Boolean)
+    );
+    Object.keys(counts).forEach((role) => {
+      if (!allowed.has(role)) {
+        errors.push(`Rol desconocido: ${role}`);
       }
     });
   }
 
-  const errors = [];
-  const warnings = [];
-  const bySection = {
-    screening: { errors: [], warnings: [] },
-    decedent: { errors: [], warnings: [] },
-    heirs: { errors: [], warnings: [] },
-    review: { errors: [], warnings: [] },
-  };
-
-  const estateRaw = String(state?.estate?.value ?? '').trim();
-  const estateValue = Number(estateRaw.replace(',', '.'));
-  if (!Number.isFinite(estateValue) || estateValue <= 0) {
-    pushIssue(errors, bySection, 'decedent', 'Introduce un montante de herencia válido (> 0).');
-    pushIssue(errors, bySection, 'review', 'Introduce un montante de herencia válido (> 0).');
-  }
-
-  const deceasedSex = normalizeSex(state?.deceased?.sex);
-  if (!deceasedSex) {
-    pushIssue(errors, bySection, 'decedent', 'El sexo del causante es obligatorio.');
-    pushIssue(errors, bySection, 'heirs', 'Define sexo del causante antes de añadir herederos.');
-  }
-
-  const counts = state?.heirsCounts || {};
-  Object.entries(counts).forEach(([role, raw]) => {
-    const count = toInt(raw);
-    if (!Number.isInteger(count) || count < 0 || count > 20) {
-      pushIssue(errors, bySection, 'heirs', `"${resolveRoleLabel(role, roleCatalog)}" debe ser un entero entre 0 y 20.`);
-      return;
-    }
-
-    if (role && roleCatalog.size && !roleCatalog.has(role)) {
-      pushIssue(errors, bySection, 'heirs', `Rol desconocido: ${resolveRoleLabel(role, roleCatalog)}.`);
-    }
-  });
-
-  if ((counts.father || 0) > 1) {
-    pushIssue(errors, bySection, 'heirs', 'Padre no puede superar 1.');
-  }
-  if ((counts.mother || 0) > 1) {
-    pushIssue(errors, bySection, 'heirs', 'Madre no puede superar 1.');
-  }
-  if ((counts.husband || 0) > 1) {
-    pushIssue(errors, bySection, 'heirs', 'Solo se admite un esposo.');
-  }
-  if ((counts.wife || 0) > 4) {
-    pushIssue(errors, bySection, 'heirs', 'Máximo 4 esposas.');
-  }
-
-  if (deceasedSex === 'M' && (counts.husband || 0) > 0) {
-    pushIssue(warnings, bySection, 'heirs', 'Para causante varón, se ignorará el rol esposo en el cálculo.', 'warnings');
-  }
-
-  if (deceasedSex === 'F' && (counts.wife || 0) > 0) {
-    pushIssue(warnings, bySection, 'heirs', 'Para causante mujer, se ignorará el rol esposa en el cálculo.', 'warnings');
-  }
-
-  return {
-    errors,
-    warnings,
-    bySection,
-  };
+  return { errors, warnings };
 }
-
-export { validateState };
