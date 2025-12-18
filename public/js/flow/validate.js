@@ -31,6 +31,15 @@ function validateState(state, roles = []) {
   const warnings = [];
   const catalog = new Set(Array.isArray(roles) ? roles.map((role) => role.code) : []);
 
+  const estateValueRaw = (state?.estate?.value || '').toString().trim();
+  const estateValue = Number.parseFloat(estateValueRaw);
+
+  if (!estateValueRaw) {
+    errors.push('El montante de la herencia es obligatorio.');
+  } else if (Number.isNaN(estateValue) || estateValue <= 0) {
+    errors.push('El montante de la herencia debe ser un número mayor que cero.');
+  }
+
   if (!state?.deceased?.sex) {
     errors.push('El sexo del causante es obligatorio.');
   }

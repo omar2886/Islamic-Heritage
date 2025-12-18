@@ -26,8 +26,10 @@ function loadState() {
       ...parsed,
       step: parsed.step && typeof parsed.step === 'string' ? parsed.step : base.step,
       deceased: { ...base.deceased, ...(parsed.deceased || {}) },
+      estate: { ...base.estate, ...(parsed.estate || {}) },
       heirs: Array.isArray(parsed.heirs) ? parsed.heirs.map(normalizeHeir) : base.heirs,
       lastResult: parsed.lastResult ?? null,
+      lastResultRaw: parsed.lastResultRaw ?? null,
       lastPayload: parsed.lastPayload ?? null,
     };
   } catch (error) {

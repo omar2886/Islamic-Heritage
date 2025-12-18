@@ -7,8 +7,10 @@ function createInitialState() {
     version: VERSION,
     step: 'decedent',
     deceased: { name: '', sex: 'M', madhhab: '', notes: '' },
+    estate: { value: '', currency: 'MAD' },
     heirs: [],
     lastResult: null,
+    lastResultRaw: null,
     lastPayload: null,
   };
 }
@@ -31,10 +33,28 @@ function setStep(state, step) {
   });
 }
 
+function setEstateValue(state, value) {
+  const nextValue = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+  return withVersion({
+    ...state,
+    estate: {
+      ...state.estate,
+      value: nextValue,
+    },
+  });
+}
+
 function setLastResult(state, payload) {
   return withVersion({
     ...state,
     lastResult: payload,
+  });
+}
+
+function setLastResultRaw(state, payload) {
+  return withVersion({
+    ...state,
+    lastResultRaw: payload,
   });
 }
 
@@ -74,7 +94,9 @@ export {
   createInitialState,
   setDeceased,
   setStep,
+  setEstateValue,
   setLastResult,
+  setLastResultRaw,
   setLastPayload,
   addHeir,
   updateHeir,
