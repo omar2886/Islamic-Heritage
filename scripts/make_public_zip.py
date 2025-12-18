@@ -3,7 +3,11 @@ import os, sys, zipfile, argparse
 
 def should_skip(root, rel):
   parts = rel.split(os.sep)
-  if parts[0] in ("tools","_legacy"):  # no empaquetar backend ni legacy
+  if parts[0] in ("tools","_legacy"):
+    return True
+  if rel.startswith("js/ui/"):
+    return True
+  if rel in ("views/builder.php", "views/results.php", "views/genealogy.php"):
     return True
   return False
 
@@ -20,7 +24,7 @@ def make_zip(public_dir, out_zip):
   return out_zip
 
 def main():
-  ap = argparse.ArgumentParser(description="Empaqueta public/ en public.zip (excluye public/tools y public/_legacy)")
+  ap = argparse.ArgumentParser(description="Empaqueta public/ en public.zip (excluye legacy y herramientas)")
   ap.add_argument("--public", default="public")
   ap.add_argument("--out", default="public.zip")
   args = ap.parse_args()

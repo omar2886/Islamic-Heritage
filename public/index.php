@@ -1,6 +1,10 @@
 <?php declare(strict_types=1);
 $PAGE = $_GET['page'] ?? 'home';
-$valid = ['home','builder','builder2','builder3','results','results2','results3','genealogy','genealogy2','genealogy3'];
+$legacyMode = ($_GET['legacy'] ?? '') === '1';
+$valid = ['home','builder3','results3','genealogy3'];
+if ($legacyMode) {
+  $valid = array_merge($valid, ['builder', 'builder2', 'results', 'results2', 'genealogy', 'genealogy2']);
+}
 if (!in_array($PAGE, $valid, true)) $PAGE = 'notfound';
 
 require __DIR__.'/partials/head.php';
