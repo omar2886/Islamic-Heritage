@@ -1,27 +1,10 @@
 <main class="container flow">
   <header class="flow__header">
     <div>
-      <p class="eyebrow">Flow Wizard</p>
-      <h1>Nueva experiencia guiada</h1>
-      <p class="muted">Captura la información del causante, agrega herederos, revisa los datos y consulta los resultados sin salir de este flujo.</p>
-    </div>
-    <div class="flow__header-actions">
-      <button type="button" class="btn" data-action="reset-case">Nuevo caso</button>
+      <p class="eyebrow">Flow</p>
+      <h1>Distribución de herencia</h1>
+      <p class="muted">Captura los datos esenciales, agrega herederos y calcula la distribución sin salir de este flujo.</p>
     </div>
   </header>
-  <nav class="stepper" aria-label="Pasos del proceso">
-    <button type="button" class="step" data-step="screening">Paso 1 · Prefiltro</button>
-    <button type="button" class="step" data-step="decedent">Paso 2 · Causante</button>
-    <button type="button" class="step" data-step="heirs">Paso 3 · Familia/Herederos</button>
-    <button type="button" class="step" data-step="review">Paso 4 · Revisión</button>
-    <button type="button" class="step" data-step="results">Paso 5 · Resultados</button>
-  </nav>
-  <section id="flow-root"></section>
-  <footer class="flow__footer">
-    <div class="flow__footer-actions">
-      <button type="button" class="btn" data-action="back">Atrás</button>
-      <button type="button" class="btn primary" data-action="next">Siguiente</button>
-      <button type="button" class="btn" data-action="recalc">Recalcular</button>
-    </div>
-  </footer>
+  <section id="flow-root" aria-live="polite"></section>
 </main>

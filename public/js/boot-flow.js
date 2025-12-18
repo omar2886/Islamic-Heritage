@@ -1,17 +1,17 @@
+import { mount } from './flow/flow.js';
+
 window.__BOOT_FLOW_STARTED__ = true;
 window.__BOOT_FLOW_MOUNTED__ = false;
 
-async function init() {
-  const moduleUrl = new URL('./flow/flow.js', import.meta.url);
-  const mod = await import(moduleUrl.href);
-  if (typeof mod.mount === 'function') {
-    await mod.mount();
-  }
-  window.__BOOT_FLOW_MOUNTED__ = true;
+function start() {
+  const root = document.getElementById('flow-root') || document.getElementById('flowApp');
+  mount(root).finally(() => {
+    window.__BOOT_FLOW_MOUNTED__ = true;
+  });
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => { void init(); }, { once: true });
+  document.addEventListener('DOMContentLoaded', () => start(), { once: true });
 } else {
-  void init();
+  start();
 }
