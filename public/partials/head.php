@@ -48,11 +48,14 @@
   $bootMap = [
     'builder' => 'js/boot-builder.js',
     'builder2' => 'js/boot-builder2.js',
+    'builder3' => 'js/v3/boot-builder3.js',
     'results' => 'js/boot-results.js',
     'results2' => 'js/boot-results2.js',
+    'results3' => 'js/v3/boot-results3.js',
     'home'    => 'js/boot-home.js',
     'genealogy' => 'js/boot-genealogy.js',
     'genealogy2' => 'js/boot-genealogy2.js',
+    'genealogy3' => 'js/v3/boot-genealogy3.js',
   ];
   $bootPath = $bootMap[$page] ?? $bootMap['home'];
 
@@ -60,10 +63,13 @@
     'home' => 'Herencia Islámica – Inicio',
     'builder' => 'Herencia Islámica – Constructor',
     'builder2' => 'Herencia Islámica – Constructor V2',
+    'builder3' => 'Herencia Islámica – Constructor V3 (beta)',
     'results' => 'Herencia Islámica – Resultados',
     'results2' => 'Herencia Islámica – Resultados V2',
+    'results3' => 'Herencia Islámica – Resultados V3 (beta)',
     'genealogy' => 'Herencia Islámica – Genealogía',
     'genealogy2' => 'Herencia Islámica – Genealogía V2',
+    'genealogy3' => 'Herencia Islámica – Genealogía V3 (beta)',
   ];
   $pageTitle = $titleMap[$page] ?? 'Herencia Islámica';
 
