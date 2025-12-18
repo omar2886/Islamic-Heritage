@@ -27,6 +27,16 @@ let warningsBox = null;
 let errorBanner = null;
 let footer = null;
 
+function downloadJson(filename, obj) {
+  if (!obj) return;
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 function getRoleLabel(role) {
   const match = rolesCatalog.find((r) => {
     if (typeof r === 'string') return r === role;
@@ -210,6 +220,12 @@ function renderReview() {
       <h3>Herederos</h3>
       <ul>${heirsList.join('')}</ul>
       <button type="button" data-action="calc" class="btn primary">Calcular</button>
+      <div class="downloads">
+        <button type="button" data-action="dl-payload">Descargar payload</button>
+        <label class="file-input">Cargar payload
+          <input type="file" accept="application/json" data-action="import" />
+        </label>
+      </div>
     </div>
   `;
 }
@@ -221,6 +237,9 @@ function renderResults() {
       <h2>Resultados</h2>
       ${state.lastError ? `<div class="error-banner">${state.lastError}</div>` : ''}
       ${response ? `<details open><summary>RAW JSON</summary><pre>${JSON.stringify(response, null, 2)}</pre></details>` : '<p>Sin resultados.</p>'}
+      <div class="downloads">
+        <button type="button" data-action="dl-result">Descargar resultado</button>
+      </div>
     </div>
   `;
 }
@@ -272,6 +291,16 @@ function onInput(event) {
 
 function onChange(event) {
   const target = event.target;
+  const action = target.dataset?.action;
+  if (action === 'import') {
+    const [file] = target.files || [];
+    if (file) {
+      void handleImport(file);
+    }
+    target.value = '';
+    return;
+  }
+
   const deceasedKey = target.dataset?.deceased;
   if (deceasedKey === 'sex') {
     const next = setDeceasedField(state, 'sex', target.value);
@@ -324,6 +353,15 @@ function onClick(event) {
     setState(setStep(state, prev));
     return;
   }
+  if (action === 'dl-payload') {
+    const payload = buildPayload(state);
+    downloadJson('payload.json', payload);
+    return;
+  }
+  if (action === 'dl-result') {
+    downloadJson('result.json', state.lastResponse);
+    return;
+  }
   if (action === 'reset') {
     clearStorage();
     state = createInitialState();
@@ -342,6 +380,47 @@ function onClick(event) {
     const next = setHeirCount(state, role, nextValue);
     setState(next, { render: false });
     syncSingleRoleRow(role);
+  }
+}
+
+function importPayloadToState(payload) {
+  const heirsCounts = {};
+  if (Array.isArray(payload?.heirs)) {
+    payload.heirs.forEach((entry) => {
+      const role = entry?.role;
+      const count = Number.parseInt(entry?.count, 10);
+      if (!role || !Number.isFinite(count) || count <= 0) return;
+      heirsCounts[role] = count;
+    });
+  }
+
+  const estateValue = payload?.estate_value ?? payload?.amount ?? payload?.estateValue ?? '';
+  return {
+    estate: { value: estateValue != null ? String(estateValue) : '' },
+    heirsCounts
+  };
+}
+
+async function handleImport(file) {
+  try {
+    const content = await file.text();
+    const parsed = JSON.parse(content);
+    const { estate, heirsCounts } = importPayloadToState(parsed);
+    let next = {
+      ...state,
+      estate,
+      heirsCounts,
+      lastPayload: parsed,
+      lastResponse: null,
+      lastError: ''
+    };
+    next = setStep(next, 'review');
+    setState(next);
+  } catch (err) {
+    console.warn('No se pudo importar el payload', err);
+    const next = setLastError(state, 'No se pudo importar el payload seleccionado');
+    setState(next, { render: false });
+    updateFooterAndErrors();
   }
 }
 
