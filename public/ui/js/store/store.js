@@ -8,6 +8,12 @@ function clone(value){
 
 export const DEFAULT_STATE = {
   schemaVersion: CURRENT_SCHEMA_VERSION,
+  boot: {
+    status: "idle",     // idle | checking | ready | blocked
+    error: null,
+    rolesServer: null,
+    diff: null,
+  },
   ui: {
     route: "wizard",
     focus: { key: null },
@@ -31,6 +37,7 @@ function sanitize(candidate){
   const out = {
     ...base,
     ...safe,
+    boot: base.boot,
     ui: {
       ...base.ui,
       ...(safe.ui || {}),
@@ -45,6 +52,14 @@ function sanitize(candidate){
       dirty: false,
       lastTouched: null,
     },
+  };
+
+  const boot = safe?.boot && typeof safe.boot === "object" ? safe.boot : {};
+  out.boot = {
+    status: typeof boot.status === "string" ? boot.status : "idle",
+    error: boot.error ?? null,
+    rolesServer: Array.isArray(boot.rolesServer) ? boot.rolesServer : null,
+    diff: boot.diff ?? null,
   };
 
   return out;

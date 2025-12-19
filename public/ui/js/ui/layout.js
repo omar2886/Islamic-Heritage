@@ -42,8 +42,25 @@ function escapeHtml(s){
 export function renderLayout(state, derived){
   const year = new Date().getFullYear();
   const route = derived.route;
+  const boot = state.boot || { status: "idle" };
 
   const mainHtml = (() => {
+    if (boot.status === "blocked") return `
+      <section class="card card-pad hero">
+        <h1>UI bloqueada</h1>
+        <p>No coincide el contrato de roles con el servidor, o no se pudo verificar.</p>
+        <hr class="hr" />
+        <div class="stack">
+          <span class="badge">Estado: blocked</span>
+          <p style="color:var(--muted); margin:0; line-height:1.4;">${escapeHtml(String(boot.error || "Error desconocido"))}</p>
+          ${boot.diff ? `<pre class="codebox">${escapeHtml(JSON.stringify(boot.diff, null, 2))}</pre>` : ""}
+          <div class="row">
+            <a class="btn" href="#/wizard">Ir a wizard</a>
+            <button class="btn" type="button" id="btn-reset" data-focus-key="btn-reset">Reset</button>
+          </div>
+        </div>
+      </section>
+    `;
     if (route === "wizard") return `
       <section class="card card-pad hero">
         <h1>Case Wizard</h1>
@@ -99,6 +116,11 @@ export function renderLayout(state, derived){
 
       <main class="shell-main">
         <div class="container">
+          ${boot.status === "checking" ? `
+            <div class="card card-pad" style="margin-bottom:12px;">
+              <span class="badge">Verificando contrato...</span>
+            </div>
+          ` : ""}
           ${mainHtml}
         </div>
       </main>
