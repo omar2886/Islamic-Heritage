@@ -1,4 +1,4 @@
-import { ROLE_CATALOG, ROLE_SECTIONS, ROLE_SET } from '../domain/roles.js';
+import { ROLE_CATALOG, ROLE_SECTIONS, ROLE_SET, roleLabel } from '../domain/roles.js';
 import { evaluateHardRules } from '../domain/rules-hard.js';
 import { evaluateSoftWarnings } from '../domain/rules-soft.js';
 
@@ -10,6 +10,129 @@ const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 const isObject = (value) => value !== null && typeof value === 'object';
 
 export const WIZARD_STEPS = ['intro', 'roles', 'summary'];
+
+const FRACTION_REGEX = /^(-?\d+)\s*\/\s*([1-9]\d*)$/;
+
+const parseFraction = (value) => {
+  const raw = typeof value === 'string' ? value.trim() : null;
+  if (!raw) return null;
+  const match = raw.match(FRACTION_REGEX);
+  if (!match) return null;
+  const numerator = Number.parseInt(match[1], 10);
+  const denominator = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) return null;
+  return {
+    raw,
+    numerator,
+    denominator,
+    value: numerator / denominator,
+  };
+};
+
+const fractionToPercent = (fraction) => {
+  if (!fraction) return null;
+  const percent = (fraction.numerator / fraction.denominator) * 100;
+  const decimals = Math.abs(percent) >= 1 ? 2 : 4;
+  return {
+    value: percent,
+    label: `${percent.toFixed(decimals)}%`,
+    decimals,
+  };
+};
+
+const parseAmount = (value) => {
+  if (value === null || value === undefined) return null;
+  const numeric =
+    typeof value === 'number' ? value : Number.parseFloat(String(value).replace(',', '.'));
+  if (!Number.isFinite(numeric)) {
+    return { raw: String(value) };
+  }
+  const decimals = Math.abs(numeric) >= 1 ? 2 : 4;
+  return {
+    raw: String(value),
+    value: numeric,
+    label: numeric.toFixed(decimals),
+    decimals,
+  };
+};
+
+const normalizeStringList = (list) =>
+  Array.isArray(list)
+    ? list
+        .map((entry) => (typeof entry === 'string' ? entry : entry?.message || entry?.reason))
+        .filter(Boolean)
+    : [];
+
+const normalizeAuditBlocks = (blocks) => {
+  if (!Array.isArray(blocks)) return [];
+  return blocks
+    .map((block, index) => {
+      const rule = block?.rule_id || block?.rule || block?.code || `block-${index + 1}`;
+      const reason = block?.reason || block?.message || block?.note || null;
+      const targets = Array.isArray(block?.targets) ? block.targets : [];
+      return {
+        rule: String(rule),
+        reason: reason ? String(reason) : null,
+        targets,
+      };
+    })
+    .filter(Boolean);
+};
+
+const normalizeExplainSteps = (steps) => {
+  if (!Array.isArray(steps)) return [];
+  return steps
+    .map((step, index) => {
+      const stage = typeof step?.stage === 'string' ? step.stage.toLowerCase() : 'general';
+      const rule = typeof step?.rule === 'string' ? step.rule : `step-${index + 1}`;
+      const note = typeof step?.note === 'string' ? step.note : null;
+      const rawChanges = isObject(step?.changes) ? step.changes : {};
+      const changes = Object.entries(rawChanges).map(([roleId, change]) => {
+        const before = parseFraction(change?.before ?? change?.from ?? null);
+        const after = parseFraction(change?.after ?? change?.to ?? null);
+        return {
+          roleId,
+          label: roleLabel(roleId),
+          before,
+          after,
+          percentBefore: fractionToPercent(before),
+          percentAfter: fractionToPercent(after),
+        };
+      });
+      return {
+        id: `${stage}-${rule}-${index}`,
+        stage,
+        rule,
+        note,
+        changes,
+        byPerson: isObject(step?.byPerson) ? step.byPerson : {},
+        targets: Array.isArray(step?.targets) ? step.targets : [],
+      };
+    })
+    .filter(Boolean);
+};
+
+const buildResultRows = (output) => {
+  const groupShares = isObject(output?.group_shares) ? output.group_shares : {};
+  const amounts = isObject(output?.amounts_by_role) ? output.amounts_by_role : null;
+  const rows = Object.entries(groupShares).map(([roleId, share]) => {
+    const fraction = parseFraction(share);
+    const percentage = fractionToPercent(fraction);
+    const amount = amounts && Object.prototype.hasOwnProperty.call(amounts, roleId)
+      ? parseAmount(amounts[roleId])
+      : null;
+    return {
+      roleId,
+      label: roleLabel(roleId),
+      fraction,
+      fractionText: typeof share === 'string' ? share : String(share ?? ''),
+      percentage,
+      amount,
+    };
+  });
+  rows.sort((a, b) => a.label.localeCompare(b.label, 'es'));
+  return rows;
+};
 
 const BASE_WIZARD_SECTIONS = ROLE_SECTIONS.reduce(
   (acc, section) => ({
@@ -136,6 +259,44 @@ function deepEqual(a, b) {
   return false;
 }
 
+const deriveResults = (results) => {
+  const status = ['idle', 'pending', 'success', 'error', 'aborted'].includes(results?.status)
+    ? results.status
+    : 'idle';
+  const lastResponse = isObject(results?.lastResponse) ? results.lastResponse : null;
+  const output = isObject(lastResponse?.output) ? lastResponse.output : null;
+  const ok = lastResponse?.ok === true;
+  const warnings = normalizeStringList(output?.warnings || lastResponse?.warnings);
+  const auditBlocks = normalizeAuditBlocks(output?.audit?.blocks_applied);
+  const explainSteps = normalizeExplainSteps(output?.explain?.steps);
+  const rows = buildResultRows(output);
+  const sumFinal = parseFraction(output?.sum_final);
+  const payload = results?.payload ?? null;
+  const errorMessage =
+    typeof results?.error === 'string'
+      ? results.error
+      : typeof lastResponse?.error === 'string'
+        ? lastResponse.error
+        : null;
+  const currency = typeof output?.currency === 'string' ? output.currency : null;
+  const hasResults = rows.length > 0 || !!output || status === 'error';
+
+  return {
+    status,
+    ok,
+    warnings,
+    auditBlocks,
+    explainSteps,
+    rows,
+    sumFinal,
+    payload,
+    currency,
+    errorMessage,
+    lastComputedAt: results?.lastComputedAt ?? null,
+    hasResults,
+  };
+};
+
 export function deriveState(baseState, defaults = {}) {
   const route = normalizeRoute(baseState.route ?? defaults.route);
   const wizardBase = { ...(defaults.wizard || {}), ...(baseState.wizard || {}) };
@@ -144,6 +305,7 @@ export function deriveState(baseState, defaults = {}) {
   const results = { ...(defaults.results || {}), ...(baseState.results || {}) };
   const ui = { ...(defaults.ui || {}), ...(baseState.ui || {}) };
   const meta = { ...(defaults.meta || {}), ...(baseState.meta || {}) };
+  const derivedResults = deriveResults(results);
 
   const trimmed = { ...baseState, wizard, builder, results, ui, meta, route };
   const hasUserData = !deepEqual(
@@ -161,7 +323,8 @@ export function deriveState(baseState, defaults = {}) {
     isBuilder: route === 'builder',
     isResults: route === 'results',
     hasUserData,
-    hasResults: !!results.payload,
+    hasResults: derivedResults.hasResults,
+    results: derivedResults,
     lastRoute: baseState.route,
     enabledRoles: derivedWizard.enabledRoles,
     hardBlocks: derivedWizard.hardBlocks,

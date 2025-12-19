@@ -1,0 +1,44 @@
+@media print {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  .results-shell,
+  .builder-shell,
+  .wizard-shell {
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .ui-toolbar,
+  .ui-btn,
+  .results-alert {
+    display: none !important;
+  }
+
+  .results-card,
+  .builder-section,
+  .wizard-section-card {
+    border-color: #cccccc !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+  }
+
+  .results-table th,
+  .results-table td {
+    border-color: #cccccc !important;
+    color: #000000 !important;
+  }
+
+  a {
+    text-decoration: none !important;
+    color: inherit !important;
+  }
+}

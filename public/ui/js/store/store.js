@@ -15,6 +15,9 @@ export const DEFAULT_STATE = {
     notes: '',
   },
   results: {
+    status: 'idle',
+    error: null,
+    lastResponse: null,
     payload: null,
     lastComputedAt: null,
   },
@@ -31,13 +34,28 @@ export const DEFAULT_STATE = {
 
 const sanitizeState = (candidate) => {
   const route = normalizeRoute(candidate?.route ?? DEFAULT_STATE.route);
+  const sanitizeResults = (raw = {}) => {
+    const status = ['idle', 'pending', 'success', 'error', 'aborted'].includes(raw.status)
+      ? raw.status
+      : 'idle';
+    return {
+      ...DEFAULT_STATE.results,
+      ...(raw || {}),
+      status,
+      lastComputedAt: raw.lastComputedAt ?? null,
+      lastResponse: raw.lastResponse ?? null,
+      payload: raw.payload ?? null,
+      error: raw.error ?? null,
+    };
+  };
+
   return {
     ...DEFAULT_STATE,
     ...(candidate || {}),
     route,
     wizard: { ...DEFAULT_STATE.wizard, ...(candidate?.wizard || {}) },
     builder: { ...DEFAULT_STATE.builder, ...(candidate?.builder || {}) },
-    results: { ...DEFAULT_STATE.results, ...(candidate?.results || {}) },
+    results: sanitizeResults(candidate?.results),
     ui: { ...DEFAULT_STATE.ui, ...(candidate?.ui || {}) },
     meta: { ...DEFAULT_STATE.meta, ...(candidate?.meta || {}) },
   };
