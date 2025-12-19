@@ -7,6 +7,7 @@ import { createFocusManager } from './ui/focus.js';
 import { createModal } from './ui/modal.js';
 import { showToast } from './ui/toast.js';
 import { mountWizardPage } from './pages/wizard.js';
+import { mountBuilderPage } from './pages/builder.js';
 
 const focusManager = createFocusManager();
 const modal = createModal();
@@ -154,6 +155,7 @@ const bootstrap = () => {
 
     navigationEnabled = true;
     const teardownWizard = mountWizardPage();
+    const teardownBuilder = mountBuilderPage();
     const stopRouter = startRouter(store);
     const unsubscribe = store.subscribe(render, { immediate: true });
 
@@ -161,6 +163,7 @@ const bootstrap = () => {
       stopRouter();
       unsubscribe();
       if (typeof teardownWizard === 'function') teardownWizard();
+      if (typeof teardownBuilder === 'function') teardownBuilder();
     });
   });
 
