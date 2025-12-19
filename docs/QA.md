@@ -7,3 +7,4 @@ Pasos básicos para verificar que el foco no se pierde y el flujo completo funci
 3. Definir sexo masculino y añadir wife = 1 en herederos; avanzar por los pasos.
 4. En "Revisión" pulsar "Calcular" y comprobar que llega la respuesta JSON (RAW visible).
 5. Probar el caso con montante vacío y confirmar que aparece error visible y no calcula.
+6. Caso manual PR3: herencia 1000, causante masculino, wife = 1 y son = 1 → en resultados se debe ver wife 1/8 y el resto para son sin errores en consola.
