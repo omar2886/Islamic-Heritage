@@ -1,6 +1,7 @@
 import { UI_VERSION, UI_BUILD } from "../config.js";
 import { renderWizard } from "../pages/wizard.js";
 import { renderBuilder } from "../pages/builder.js";
+import { renderResults } from "../pages/results.js";
 
 function navLink(route, label, currentRoute){
   const active = route === currentRoute;
@@ -64,17 +65,7 @@ export function renderLayout(state, derived){
     `;
     if (route === "wizard") return renderWizard(state, derived);
     if (route === "builder") return renderBuilder(state, derived);
-    return `
-      <section class="card card-pad hero">
-        <h1>Results Viewer</h1>
-        <p>Placeholder PR1. No hay cálculo ni API.</p>
-        <hr class="hr" />
-        <div class="stack">
-          <span class="badge">Ruta: results</span>
-          <button class="btn" type="button" id="btn-toast" data-focus-key="btn-toast">Mostrar toast</button>
-        </div>
-      </section>
-    `;
+    if (route === "results") return renderResults(state, derived);
   })();
 
   return `

@@ -199,6 +199,24 @@
   background: rgba(255,193,7,.08);
 }
 
+.results-table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+.results-table th,
+.results-table td{
+  border-bottom:1px solid var(--border);
+  padding:10px 8px;
+  text-align:left;
+}
+
+.results-table th{
+  color:var(--muted);
+  font-weight:600;
+  font-size:13px;
+}
+
 .builder-guard ul{
   margin:6px 0 0;
   padding-left:18px;

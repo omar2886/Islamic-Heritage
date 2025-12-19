@@ -205,7 +205,7 @@ function prefillFromWizard(store){
 }
 
 export function wireBuilder(store){
-  if (prefillFromWizard(store)) return;
+  prefillFromWizard(store);
 
   const inputs = document.querySelectorAll("[data-role-input]");
   inputs.forEach((el) => {

@@ -61,6 +61,15 @@ function makeDefaultBuilder(){
   };
 }
 
+function makeDefaultResults(){
+  return {
+    status: "idle",    // idle | running | ok | error
+    error: null,
+    response: null,
+    lastRunAt: null,
+  };
+}
+
 export const DEFAULT_STATE = {
   schemaVersion: CURRENT_SCHEMA_VERSION,
   boot: {
@@ -77,7 +86,7 @@ export const DEFAULT_STATE = {
   },
   wizard: makeDefaultWizard(),
   builder: makeDefaultBuilder(),
-  results: {},
+  results: makeDefaultResults(),
   meta: {
     dirty: false,
     lastTouched: null,
@@ -173,6 +182,15 @@ function sanitize(candidate){
     fromWizardApplied: builder.fromWizardApplied === true,
     heirsByRole,
     payloadPreview: payloadHeirs.length ? { heirs: payloadHeirs } : null,
+  };
+
+  const results = safe?.results && typeof safe.results === "object" ? safe.results : {};
+  const allowedStatuses = new Set(["idle", "running", "ok", "error"]);
+  out.results = {
+    status: allowedStatuses.has(results.status) ? results.status : "idle",
+    error: typeof results.error === "string" ? results.error : null,
+    response: results.response && typeof results.response === "object" ? results.response : null,
+    lastRunAt: Number.isFinite(results.lastRunAt) ? results.lastRunAt : null,
   };
 
   return out;

@@ -76,3 +76,20 @@ CHECKLIST FINAL
 - No tocar public/index.php
 - No tocar public/api/calc.php
 - No tocar public/app/
+
+PR5: Integración con calc.php + Results Viewer real
+- POST ../api/calc.php con el payload actual del builder (solo heirs).
+- Viewer real en #/results con tabla de shares (rol/fracción/porcentaje/importe) o JSON crudo como fallback, audit/trace, exclusiones/bloqueos y errores si llegan.
+- Se mantiene contract guard de roles y se evita cualquier endpoint absoluto.
+- Sin frameworks ni pasos de build.
+- Validaciones obligatorias:
+  1) git diff --name-only: solo public/ui/*
+  2) Abrir /Heritage/public/ui/
+  3) Completar wizard (sexo) -> builder (al menos 1 heredero) -> results
+  4) Click "Calcular ahora":
+     - status running aparece
+     - si el server responde: status ok y se renderiza algo (tabla o JSON fallback)
+     - si falla: status error con mensaje claro
+  5) Consola sin errores
+  6) Confirmar que no hay endpoints absolutos "/api/.."
+  7) Nota: habilitado POST calc.php

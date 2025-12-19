@@ -35,3 +35,45 @@ export async function fetchRoles({ signal } = {}){
   }
   return { ok: false, error: "Formato de roles.php inesperado" };
 }
+
+export async function postCalc(payload, { signal } = {}){
+  const url = new URL("../api/calc.php", window.location.href);
+  const controller = signal ? null : new AbortController();
+  const abortSignal = signal || controller?.signal;
+  const timer = controller ? setTimeout(() => controller.abort(), 12000) : null;
+
+  try{
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: abortSignal,
+      cache: "no-store",
+    });
+
+    if (!res.ok){
+      return { ok: false, error: `HTTP ${res.status} en calc.php` };
+    }
+
+    const text = await res.text();
+    try{
+      const data = JSON.parse(text);
+      return { ok: true, data };
+    }catch(_e){
+      return { ok: false, error: "Respuesta de calc.php no es JSON", debug: text.slice(0, 800) };
+    }
+  }catch(err){
+    const aborted = err && err.name === "AbortError";
+    const debug = err && err.message ? err.message : undefined;
+    return {
+      ok: false,
+      error: aborted ? "Timeout de calc.php" : "Error de red en calc.php",
+      debug,
+    };
+  }finally{
+    if (timer) clearTimeout(timer);
+  }
+}
