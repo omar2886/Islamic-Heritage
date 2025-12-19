@@ -57,6 +57,7 @@ function makeDefaultBuilder(){
   return {
     fromWizardApplied: false,
     heirsByRole: {},
+    wizardHashApplied: null,
     payloadPreview: null,
   };
 }
@@ -167,6 +168,16 @@ function sanitize(candidate){
     heirsByRole[role] = clampRoleCount(role, builder?.heirsByRole?.[role] ?? 0);
   });
 
+  if (out.wizard.deceased_sex === "male"){
+    heirsByRole.husband = 0;
+  } else if (out.wizard.deceased_sex === "female"){
+    heirsByRole.wife = 0;
+  }
+  if (!out.wizard.spouse.enabled){
+    heirsByRole.wife = 0;
+    heirsByRole.husband = 0;
+  }
+
   const payloadHeirs = [];
   ROLE_GROUPS.forEach((group) => {
     group.roles.forEach((role) => {
@@ -181,6 +192,7 @@ function sanitize(candidate){
   out.builder = {
     fromWizardApplied: builder.fromWizardApplied === true,
     heirsByRole,
+    wizardHashApplied: typeof builder.wizardHashApplied === "string" ? builder.wizardHashApplied : null,
     payloadPreview: payloadHeirs.length ? { heirs: payloadHeirs } : null,
   };
 

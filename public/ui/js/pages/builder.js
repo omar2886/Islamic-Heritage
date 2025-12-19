@@ -34,8 +34,31 @@ function escapeHtml(s){
     .replaceAll("&","&amp;")
     .replaceAll("<","&lt;")
     .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
+    .replaceAll("\"","&quot;")
     .replaceAll("'","&#039;");
+}
+
+function computeWizardHash(wizard){
+  const safeWizard = wizard || {};
+  const payload = {
+    deceased_sex: safeWizard.deceased_sex || null,
+    spouse: {
+      enabled: safeWizard.spouse?.enabled === true,
+      wives_count: Number(safeWizard.spouse?.wives_count ?? 0),
+      husband_present: safeWizard.spouse?.husband_present === true,
+    },
+    descendants: {
+      enabled: safeWizard.descendants?.enabled === true,
+      sons_count: Number(safeWizard.descendants?.son ?? 0),
+      daughters_count: Number(safeWizard.descendants?.daughter ?? 0),
+    },
+    parents: {
+      enabled: safeWizard.parents?.enabled === true,
+      father_alive: safeWizard.parents?.father === true,
+      mother_alive: safeWizard.parents?.mother === true,
+    },
+  };
+  return JSON.stringify(payload);
 }
 
 function renderRoleRow(role, value){
@@ -126,6 +149,8 @@ function renderGuards(builder, wizard){
 export function renderBuilder(state){
   const builder = state.builder;
   const wizard = state.wizard;
+  const wizardHash = computeWizardHash(wizard);
+  const wizardChanged = builder.fromWizardApplied && builder.wizardHashApplied && builder.wizardHashApplied !== wizardHash;
   const blocks = hardBlocks(builder, wizard);
   const payloadHtml = buildPayloadPreview(builder);
 
@@ -140,6 +165,19 @@ export function renderBuilder(state){
           <span class="badge">Local only</span>
         </div>
       </div>
+
+      ${wizardChanged ? `
+        <div class="card card-pad builder-banner">
+          <div class="row" style="justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+            <div class="stack">
+              <strong>El wizard ha cambiado. Aplica los cambios si quieres sincronizar el builder.</strong>
+            </div>
+            <div class="row" style="gap:8px; flex-wrap:wrap;">
+              <button class="btn" type="button" id="builder-apply-wizard" data-focus-key="builder-apply-wizard">Aplicar cambios del wizard</button>
+            </div>
+          </div>
+        </div>
+      ` : ""}
 
       <div class="builder-grid">
         <div class="stack builder-left">
@@ -170,12 +208,8 @@ export function renderBuilder(state){
   `;
 }
 
-function prefillFromWizard(store){
-  const state = store.getState();
-  if (state.builder.fromWizardApplied) return false;
-
-  const wizard = state.wizard || {};
-  const heirs = { ...state.builder.heirsByRole };
+function applyWizardRoles(baseHeirs, wizard){
+  const heirs = { ...baseHeirs };
 
   if (wizard.deceased_sex === "male"){
     heirs.husband = 0;
@@ -183,6 +217,9 @@ function prefillFromWizard(store){
   } else if (wizard.deceased_sex === "female"){
     heirs.wife = 0;
     heirs.husband = wizard.spouse?.enabled && wizard.spouse?.husband_present ? 1 : 0;
+  } else {
+    heirs.husband = 0;
+    heirs.wife = 0;
   }
 
   heirs.son = wizard.descendants?.son ?? 0;
@@ -193,15 +230,53 @@ function prefillFromWizard(store){
   heirs.father = wizard.parents?.father ? 1 : 0;
   heirs.mother = wizard.parents?.mother ? 1 : 0;
 
+  return heirs;
+}
+
+function prefillFromWizard(store){
+  const state = store.getState();
+  const wizard = state.wizard || {};
+  const wizardHash = computeWizardHash(wizard);
+
+  if (!state.builder.fromWizardApplied){
+    const heirs = applyWizardRoles({ ...state.builder.heirsByRole }, wizard);
+    store.setState((s) => ({
+      ...s,
+      builder: {
+        ...s.builder,
+        heirsByRole: { ...s.builder.heirsByRole, ...heirs },
+        fromWizardApplied: true,
+        wizardHashApplied: wizardHash,
+      },
+    }));
+    return true;
+  }
+
+  if (!state.builder.wizardHashApplied){
+    store.setState((s) => ({
+      ...s,
+      builder: { ...s.builder, wizardHashApplied: wizardHash },
+    }));
+  }
+
+  return false;
+}
+
+export function applyWizardSync(store){
+  const state = store.getState();
+  const wizard = state.wizard || {};
+  const wizardHash = computeWizardHash(wizard);
+  const heirs = applyWizardRoles({ ...state.builder.heirsByRole }, wizard);
+
   store.setState((s) => ({
     ...s,
     builder: {
       ...s.builder,
       heirsByRole: { ...s.builder.heirsByRole, ...heirs },
       fromWizardApplied: true,
+      wizardHashApplied: wizardHash,
     },
   }));
-  return true;
 }
 
 export function wireBuilder(store){
@@ -252,6 +327,24 @@ export function wireBuilder(store){
   if (continueBtn && continueBtn.classList.contains("btn-disabled")){
     continueBtn.addEventListener("click", (ev) => {
       ev.preventDefault();
+    });
+  }
+
+  const applyBtn = document.getElementById("builder-apply-wizard");
+  if (applyBtn){
+    applyBtn.addEventListener("click", () => {
+      store.setState((s) => ({
+        ...s,
+        ui: {
+          ...s.ui,
+          modal: {
+            title: "Aplicar cambios del wizard",
+            body: "Esto sobrescribirá solo los campos derivados del wizard (cónyuge, padres, descendientes). Otros roles no se tocan.",
+            confirmLabel: "Aplicar cambios",
+            confirmAction: "builder-apply-wizard",
+          },
+        },
+      }), { persist: false });
     });
   }
 }

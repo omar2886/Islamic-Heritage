@@ -150,6 +150,10 @@
   align-items:start;
 }
 
+.builder-banner{
+  background:rgba(122, 167, 255, .06);
+}
+
 .builder-list{
   display:flex;
   flex-direction:column;

@@ -1,12 +1,22 @@
 # --- Security baseline (safe for shared hosting) ---
 Options -Indexes
 
+DirectoryIndex index.php
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
   # Block accidental exposure of dev/tool folders if they ever get uploaded
   RewriteRule ^tools(?:/|$) - [F,L]
   RewriteRule ^_legacy(?:/|$) - [F,L]
+
+  # Serve UI assets directly without rewriting
+  RewriteRule ^ui/ - [L]
+
+  # Skip rewrites for real files or directories
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
 </IfModule>
 
 # --- Correct MIME types (some shared hostings mis-serve JS) ---

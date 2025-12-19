@@ -20,6 +20,8 @@ function renderModal(modal){
   if (!modal) return "";
   const title = escapeHtml(modal.title || "Modal");
   const body = escapeHtml(modal.body || "");
+  const confirmAction = typeof modal.confirmAction === "string" ? modal.confirmAction : null;
+  const confirmLabel = escapeHtml(modal.confirmLabel || "Confirmar");
   return `
     <div class="modal-backdrop" role="dialog" aria-modal="true" aria-label="${title}">
       <div class="modal card card-pad">
@@ -28,6 +30,11 @@ function renderModal(modal){
           <button class="btn" type="button" id="btn-modal-close" data-focus-key="modal-close">Cerrar</button>
         </div>
         <p style="color:var(--muted); margin:10px 0 0; line-height:1.4;">${body}</p>
+        ${confirmAction ? `
+          <div class="row" style="justify-content:flex-end; flex-wrap:wrap; margin-top:12px;">
+            <button class="btn" type="button" id="btn-modal-confirm" data-confirm-action="${escapeHtml(confirmAction)}">${confirmLabel}</button>
+          </div>
+        ` : ""}
       </div>
     </div>
   `;
@@ -81,7 +88,7 @@ export function renderLayout(state, derived){
             ${navLink("wizard","Wizard",route)}
             ${navLink("builder","Builder",route)}
             ${navLink("results","Results",route)}
-            <button class="btn nav-link" type="button" id="btn-reset" data-focus-key="btn-reset">Reset</button>
+            <button class="btn nav-link" type="button" id="btn-reset" data-focus-key="btn-reset">Nuevo caso</button>
           </nav>
         </div>
       </header>
