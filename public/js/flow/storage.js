@@ -54,6 +54,9 @@ export function loadState() {
     state.lastPayload = parsed.lastPayload && typeof parsed.lastPayload === 'object' ? parsed.lastPayload : null;
     state.lastResponse = parsed.lastResponse && typeof parsed.lastResponse === 'object' ? parsed.lastResponse : null;
     state.lastError = typeof parsed.lastError === 'string' ? parsed.lastError : '';
+    state.reached = parsed.reached && typeof parsed.reached === 'object'
+      ? { ...base.reached, ...parsed.reached }
+      : { ...base.reached };
 
     if (typeof parsed.estateValue === 'string' && !parsed.estate?.value) {
       state.estate.value = parsed.estateValue;
@@ -74,6 +77,7 @@ export function saveState(state) {
       deceased: state.deceased,
       estate: state.estate,
       heirsCounts: state.heirsCounts,
+      reached: state.reached,
       lastPayload: state.lastPayload,
       lastResponse: state.lastResponse,
       lastError: state.lastError,
