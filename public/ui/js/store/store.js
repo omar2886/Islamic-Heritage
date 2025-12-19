@@ -1,4 +1,4 @@
-import { deriveState, normalizeRoute } from './derive.js';
+import { createDefaultWizardState, deriveState, normalizeRoute } from './derive.js';
 import { CURRENT_SCHEMA_VERSION, clearPersistedState, loadState, persistState } from './persist.js';
 
 const clone = (value) => {
@@ -9,10 +9,7 @@ const clone = (value) => {
 export const DEFAULT_STATE = {
   schemaVersion: CURRENT_SCHEMA_VERSION,
   route: 'wizard',
-  wizard: {
-    step: 'intro',
-    selections: {},
-  },
+  wizard: createDefaultWizardState(),
   builder: {
     draft: {},
     notes: '',

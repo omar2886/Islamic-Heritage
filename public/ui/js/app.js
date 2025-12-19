@@ -6,6 +6,7 @@ import { ROLE_CATALOG, diffRoleSets, roleLabel } from './domain/roles.js';
 import { createFocusManager } from './ui/focus.js';
 import { createModal } from './ui/modal.js';
 import { showToast } from './ui/toast.js';
+import { mountWizardPage } from './pages/wizard.js';
 
 const focusManager = createFocusManager();
 const modal = createModal();
@@ -152,12 +153,14 @@ const bootstrap = () => {
     if (!ok) return;
 
     navigationEnabled = true;
+    const teardownWizard = mountWizardPage();
     const stopRouter = startRouter(store);
     const unsubscribe = store.subscribe(render, { immediate: true });
 
     window.addEventListener('unload', () => {
       stopRouter();
       unsubscribe();
+      if (typeof teardownWizard === 'function') teardownWizard();
     });
   });
 
