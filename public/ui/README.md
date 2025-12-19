@@ -47,13 +47,20 @@ PR3: Case wizard (prefiltro lógico sin calc)
 - Panel de resumen y paso al builder cuando el sexo está definido
 - No se toca el core ni el contrato, no hay llamadas a calc.php
 
+PR4: Family builder MVP
+- Ruta real #/builder con roles agrupados y conteos editables (0..100 con excepciones).
+- Precarga opcional desde wizard (solo una vez) para cónyuge, descendencia y padres.
+- Vista previa de payload (heirs/count) sin enviar nada. No calc.php en PR4.
+- Guardarraíles mínimos: sexo definido en wizard y al menos un heredero; avisos de combinaciones incoherentes.
+- Persistencia local conservada.
+
 VALIDACIONES
 - Abrir /Heritage/public/ui/
 - Ver banner "Verificando contrato..." un instante
 - Si roles.php responde y coincide: navegar wizard/builder/results normal
 - Si se rompe roles.php o mismatch: ver "UI bloqueada" y diff JSON
 - Consola sin errores
-- No calc.php en PR3 (solo GET roles.php heredado)
+- No calc.php en PR4 (solo GET roles.php heredado)
 
 ENTREGA PR2
 - Rama: codex/pr2-contract-guard

@@ -6,6 +6,7 @@ import { captureFocus, restoreFocus } from "./ui/focus.js";
 import { pushToast } from "./ui/toast.js";
 import { closeModal } from "./ui/modal.js";
 import { wireWizard } from "./pages/wizard.js";
+import { wireBuilder } from "./pages/builder.js";
 
 import { fetchRoles } from "./api/client.js";
 import { EXPECTED_ROLES, diffRoles } from "./api/contract.js";
@@ -50,6 +51,9 @@ function render(){
   wireUi();
   if (derived.route === "wizard"){
     wireWizard(store);
+  }
+  if (derived.route === "builder"){
+    wireBuilder(store);
   }
 }
 

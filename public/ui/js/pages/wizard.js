@@ -13,6 +13,12 @@ function formatDesc(value, singular, plural){
   return `${n} ${plural}`;
 }
 
+function labelSex(value){
+  if (value === "male") return "Hombre";
+  if (value === "female") return "Mujer";
+  return "pendiente";
+}
+
 export function renderWizard(state){
   const wizard = state.wizard;
   const warnings = [];
@@ -144,7 +150,7 @@ export function renderWizard(state){
           <div class="card card-pad stack wizard-summary">
             <h3 style="margin:0;">Resumen</h3>
             <ul class="wizard-list">
-              <li>Sexo del causante: ${wizard.deceased_sex ? wizard.deceased_sex : "pendiente"}</li>
+              <li>Sexo del causante: ${labelSex(wizard.deceased_sex)}</li>
               <li>${summarySpouse}</li>
               <li>Descendencia directa: ${formatDesc(wizard.descendants.son, "hijo", "hijos")} · ${formatDesc(wizard.descendants.daughter, "hija", "hijas")}</li>
               <li>Nietos por hijo: ${formatDesc(wizard.descendants.sons_son, "nieto", "nietos")} · ${formatDesc(wizard.descendants.sons_daughter, "nieta", "nietas")}</li>

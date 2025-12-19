@@ -1,5 +1,7 @@
 import { CURRENT_SCHEMA_VERSION, loadState, saveState, clearPersistedState } from "./persist.js";
 import { deriveState, normalizeRoute } from "./derive.js";
+import { EXPECTED_ROLES } from "../api/contract.js";
+import { ROLE_GROUPS } from "../domain/roles.js";
 
 function clone(value){
   if (typeof structuredClone === "function") return structuredClone(value);
@@ -11,6 +13,23 @@ function clampCount(value, min = 0, max = 100){
   if (!Number.isFinite(num)) return min;
   const safe = Math.trunc(num);
   return Math.min(max, Math.max(min, safe));
+}
+
+const ROLE_LIMITS = {
+  husband: 1,
+  wife: 4,
+  father: 1,
+  mother: 1,
+  paternal_grandfather: 1,
+  paternal_grandmother: 1,
+  maternal_grandmother: 1,
+  paternal_great_grandmother: 1,
+  maternal_great_grandmother: 1,
+};
+
+function clampRoleCount(role, value){
+  const max = ROLE_LIMITS[role] ?? 100;
+  return clampCount(value, 0, max);
 }
 
 function makeDefaultWizard(){
@@ -34,6 +53,14 @@ function makeDefaultWizard(){
   };
 }
 
+function makeDefaultBuilder(){
+  return {
+    fromWizardApplied: false,
+    heirsByRole: {},
+    payloadPreview: null,
+  };
+}
+
 export const DEFAULT_STATE = {
   schemaVersion: CURRENT_SCHEMA_VERSION,
   boot: {
@@ -49,7 +76,7 @@ export const DEFAULT_STATE = {
     modal: null,
   },
   wizard: makeDefaultWizard(),
-  builder: {},
+  builder: makeDefaultBuilder(),
   results: {},
   meta: {
     dirty: false,
@@ -123,6 +150,29 @@ function sanitize(candidate){
       father: parents.father === true,
       mother: parents.mother === true,
     },
+  };
+
+  const builder = safe?.builder && typeof safe.builder === "object" ? safe.builder : {};
+  const heirsByRole = {};
+  EXPECTED_ROLES.forEach((role) => {
+    heirsByRole[role] = clampRoleCount(role, builder?.heirsByRole?.[role] ?? 0);
+  });
+
+  const payloadHeirs = [];
+  ROLE_GROUPS.forEach((group) => {
+    group.roles.forEach((role) => {
+      if (!Object.prototype.hasOwnProperty.call(heirsByRole, role)) return;
+      const count = heirsByRole[role];
+      if (count > 0){
+        payloadHeirs.push({ role, count });
+      }
+    });
+  });
+
+  out.builder = {
+    fromWizardApplied: builder.fromWizardApplied === true,
+    heirsByRole,
+    payloadPreview: payloadHeirs.length ? { heirs: payloadHeirs } : null,
   };
 
   return out;
