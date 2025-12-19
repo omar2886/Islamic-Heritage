@@ -3,6 +3,7 @@ import { navigate } from '../router.js';
 import { store } from '../store/store.js';
 import { WIZARD_STEPS } from '../store/derive.js';
 import { showToast } from '../ui/toast.js';
+import { runCalculation } from '../actions/calc.js';
 
 const STEP_LABELS = {
   intro: 'Introducción',
@@ -297,7 +298,7 @@ const bindEvents = (root) => {
     }
     if (navTarget) navigate(navTarget);
     if (action === 'finish') {
-      showToast('Resumen listo. Puedes compartirlo o continuar con el cálculo.', { type: 'info' });
+      runCalculation();
     }
   };
 

@@ -35,3 +35,46 @@ export async function apiFetch(path, options = {}) {
 
   return payload;
 }
+
+let inflightCalcController = null;
+
+const composeSignal = (controller, externalSignal) => {
+  if (!externalSignal) return controller.signal;
+  if (externalSignal.aborted) {
+    controller.abort(externalSignal.reason);
+    return controller.signal;
+  }
+  const onAbort = () => controller.abort(externalSignal.reason);
+  externalSignal.addEventListener('abort', onAbort, { once: true });
+  controller.signal.addEventListener('abort', () =>
+    externalSignal.removeEventListener('abort', onAbort),
+  );
+  return controller.signal;
+};
+
+export const abortCalcRequest = () => {
+  if (!inflightCalcController) return;
+  inflightCalcController.abort();
+  inflightCalcController = null;
+};
+
+export async function postCalc(body, options = {}) {
+  abortCalcRequest();
+  const controller = new AbortController();
+  inflightCalcController = controller;
+  const { signal, ...rest } = options;
+
+  try {
+    return await apiFetch('/api/calc.php', {
+      method: 'POST',
+      cache: 'no-store',
+      body,
+      signal: composeSignal(controller, signal),
+      ...rest,
+    });
+  } finally {
+    if (inflightCalcController === controller) {
+      inflightCalcController = null;
+    }
+  }
+}

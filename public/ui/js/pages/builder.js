@@ -1,5 +1,6 @@
 import { ROLE_CATALOG, ROLE_SECTIONS, roleLabel } from '../domain/roles.js';
 import { navigate } from '../router.js';
+import { runCalculation } from '../actions/calc.js';
 import { store } from '../store/store.js';
 import { clampNumber, createElement, ensureStylesheet, formatJson } from '../ui/form.js';
 import { showToast } from '../ui/toast.js';
@@ -295,8 +296,9 @@ export function mountBuilderPage({ root: providedRoot } = {}) {
     if (action === 'calculate') {
       const hasHardBlocks = lastState?.derived?.hardBlocks?.length > 0;
       const heirsCount = lastState?.derived?.payloadPreview?.heirs?.length || 0;
-      if (hasHardBlocks || heirsCount === 0) return;
-      showToast('Payload listo para enviar al motor.', { type: 'success' });
+      const isPending = lastState?.results?.status === 'pending';
+      if (hasHardBlocks || heirsCount === 0 || isPending) return;
+      runCalculation();
     }
     if (action === 'copy-payload') {
       const payload = lastState?.derived?.payloadPreview;
@@ -378,7 +380,7 @@ export function mountBuilderPage({ root: providedRoot } = {}) {
 
   const render = (state) => {
     lastState = state;
-    const { route, wizard, derived, builder } = state;
+    const { route, wizard, derived, builder, results } = state;
     const isBuilderRoute = route === 'builder';
     root.hidden = !isBuilderRoute;
     if (!isBuilderRoute) return;
@@ -491,7 +493,9 @@ export function mountBuilderPage({ root: providedRoot } = {}) {
 
     const calculateBtn = root.querySelector('[data-action="calculate"]');
     if (calculateBtn) {
-      calculateBtn.disabled = hasHardBlocks || heirCount === 0;
+      const isPending = results?.status === 'pending';
+      calculateBtn.disabled = hasHardBlocks || heirCount === 0 || isPending;
+      calculateBtn.textContent = isPending ? 'Calculando...' : 'Calcular';
     }
   };
 
