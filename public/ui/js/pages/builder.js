@@ -51,6 +51,8 @@ function computeWizardHash(wizard){
       enabled: safeWizard.descendants?.enabled === true,
       sons_count: Number(safeWizard.descendants?.son ?? 0),
       daughters_count: Number(safeWizard.descendants?.daughter ?? 0),
+      sons_son_count: Number(safeWizard.descendants?.sons_son ?? 0),
+      sons_daughter_count: Number(safeWizard.descendants?.sons_daughter ?? 0),
     },
     parents: {
       enabled: safeWizard.parents?.enabled === true,
