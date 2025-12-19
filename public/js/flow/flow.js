@@ -23,6 +23,35 @@ const DEFAULT_REACHED = {
   results: false,
 };
 
+const ROLE_ALIASES = {
+  wives: 'wife',
+  husbands: 'husband',
+  sons: 'son',
+  daughters: 'daughter'
+};
+
+function formatMoney(n, currency) {
+  const amount = Number(n);
+  if (!Number.isFinite(amount)) return String(n ?? '');
+  try {
+    return new Intl.NumberFormat('es-ES', { style: 'currency', currency }).format(amount);
+  } catch (err) {
+    const suffix = currency ? ` ${currency}` : '';
+    return `${amount.toFixed(2)}${suffix}`;
+  }
+}
+
+function fractionToPercent(fr) {
+  if (typeof fr !== 'string') return '';
+  const match = fr.trim().match(/^([0-9]+)\s*\/\s*([0-9]+)$/);
+  if (!match) return '';
+  const numerator = Number(match[1]);
+  const denominator = Number(match[2]);
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) return '';
+  const pct = (numerator / denominator) * 100;
+  return `${pct.toFixed(2)}%`;
+}
+
 let state = createInitialState();
 let rolesCatalog = [];
 let validation = { errors: [], warnings: [] };
@@ -361,12 +390,149 @@ function renderReview() {
   `;
 }
 
+function canonicalRole(role) {
+  return ROLE_ALIASES[role] || role;
+}
+
+function renderSummaryCard(output) {
+  const estateValue = output?.input?.estate_value ?? state.estate.value ?? '';
+  const currency = output?.input?.currency || output?.currency || '';
+  const estateDisplay = estateValue ? formatMoney(estateValue, currency) : '(sin valor)';
+  const heirsList = Object.entries(state.heirsCounts || {})
+    .filter(([, count]) => Number.parseInt(count, 10) > 0)
+    .map(([role, count]) => `<li>${getRoleLabel(role)}: ${count}</li>`);
+
+  return `
+    <section class="card">
+      <h3 style="margin-top:0">Resumen</h3>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="muted">Valor de la herencia</div>
+          <div style="font-weight:700; font-size:1.05rem">${estateDisplay}</div>
+        </div>
+      </div>
+      <div>
+        <p class="muted" style="margin:.25rem 0 .35rem 0">Herederos introducidos</p>
+        ${heirsList.length ? `<ul class="muted" style="margin:0; padding-left:1.2rem;">${heirsList.join('')}</ul>` : '<p class="muted" style="margin:0">(sin herederos)</p>'}
+      </div>
+    </section>
+  `;
+}
+
+function renderGroupDistributionCard(output) {
+  const shares = output?.shares?.normalized?.groups || output?.shares?.final?.groups || output?.group_shares || {};
+  const amountsByRole = output?.amounts?.amounts_by_role || output?.amounts_by_role || {};
+  const currency = output?.input?.currency || output?.currency || '';
+  const rows = Object.entries(shares).map(([role, fraction]) => {
+    const canonical = canonicalRole(role);
+    const amount = amountsByRole[role] ?? amountsByRole[canonical] ?? '';
+    const pct = fractionToPercent(fraction);
+    return `
+      <tr>
+        <td>${getRoleLabel(canonical)}</td>
+        <td>${fraction}</td>
+        <td>${pct}</td>
+        <td>${amount ? formatMoney(amount, currency) : ''}</td>
+      </tr>
+    `;
+  });
+
+  return `
+    <section class="card">
+      <h3 style="margin-top:0">Distribución por grupo</h3>
+      <div class="table-responsive">
+        <table class="result-table">
+          <thead>
+            <tr><th>Rol</th><th>Fracción</th><th>%</th><th>Importe</th></tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.join('') : '<tr><td colspan="4" class="muted">Sin datos</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderIndividualAmounts(output) {
+  const individuals = output?.amounts?.individual_amounts_by_role
+    || output?.amounts_by_individual
+    || output?.individual_amounts_by_role
+    || {};
+  const currency = output?.input?.currency || output?.currency || '';
+  const entries = Object.entries(individuals);
+  if (!entries.length) return '';
+
+  const list = entries.map(([role, amounts]) => {
+    const canonical = canonicalRole(role);
+    const count = Array.isArray(amounts) ? amounts.length : 0;
+    const amountLabel = Array.isArray(amounts) && amounts.length
+      ? formatMoney(amounts[0], currency)
+      : '';
+    return `<li>${getRoleLabel(canonical)} (${count}) — ${amountLabel}</li>`;
+  });
+
+  return `
+    <section class="card">
+      <h3 style="margin-top:0">Detalle por individuo</h3>
+      <ul class="muted" style="margin:0; padding-left:1.2rem;">${list.join('')}</ul>
+    </section>
+  `;
+}
+
+function renderWarningsAndTrace(output, warnings) {
+  const trace = output?.audit?.trace || output?.audit?.explain;
+  const traceBody = trace ? (typeof trace === 'string' ? trace : JSON.stringify(trace, null, 2)) : '';
+  const warnList = (warnings || []).map((w) => `<li>${w}</li>`);
+  const hasWarns = warnList.length > 0;
+  const details = traceBody
+    ? `<details><summary>Justificación</summary><pre>${traceBody}</pre></details>`
+    : '';
+
+  return `
+    <section class="card">
+      <h3 style="margin-top:0">Avisos / trazas</h3>
+      ${hasWarns ? `<ul class="muted" style="margin:0; padding-left:1.2rem;">${warnList.join('')}</ul>` : '<p class="muted" style="margin:0">Sin avisos</p>'}
+      ${details}
+    </section>
+  `;
+}
+
 function renderResults() {
   const response = state.lastResponse;
+  if (!response) {
+    return `
+      <h2>Resultados</h2>
+      <p class="muted">Aún no se ha calculado.</p>
+    `;
+  }
+
+  const output = response.output || response;
+  const warnings = output?.warnings || response?.warnings || [];
+  const errors = output?.errors || [];
+  const hasErrors = Array.isArray(errors) && errors.length > 0;
+
+  const errorBannerHtml = hasErrors
+    ? `<div class="banner banner-error" style="margin-bottom:.75rem;">${errors.join('\\n')}</div>`
+    : '';
+
+  const content = hasErrors
+    ? `
+      <p class="muted">El cálculo devolvió errores. Ajusta los datos e inténtalo de nuevo.</p>
+      ${renderWarningsAndTrace(output, warnings)}
+    `
+    : `
+      ${renderSummaryCard(output)}
+      ${renderGroupDistributionCard(output)}
+      ${renderIndividualAmounts(output)}
+      ${renderWarningsAndTrace(output, warnings)}
+    `;
+
   return `
     <h2>Resultados</h2>
     ${state.lastError ? `<div class="error-banner">${state.lastError}</div>` : ''}
-    ${response ? `<details open><summary>RAW JSON</summary><pre>${JSON.stringify(response, null, 2)}</pre></details>` : '<p>Sin resultados.</p>'}
+    ${errorBannerHtml}
+    <div class="result-stack">${content}</div>
     <div class="downloads">
       <button type="button" class="btn" data-action="dl-result">Descargar resultado</button>
     </div>
