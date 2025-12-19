@@ -14,168 +14,190 @@ function formatCell(value){
   return escapeHtml(String(value));
 }
 
-function baseResponse(response){
-  if (response && typeof response === "object" && response.output && typeof response.output === "object"){
-    return response.output;
-  }
-  return response && typeof response === "object" ? response : null;
+function safeObject(candidate){
+  return candidate && typeof candidate === "object" ? candidate : null;
 }
 
-function normalizeGroupObject(obj){
-  if (!obj || typeof obj !== "object") return null;
-  const rows = Object.entries(obj).map(([role, fraction]) => ({
-    role,
-    fraction,
-    percent: null,
-    amount: null,
-  }));
-  return rows.length ? rows : null;
-}
+function parseFractionToNumber(fracStr){
+  if (fracStr === null || fracStr === undefined) return null;
+  if (typeof fracStr === "number" && Number.isFinite(fracStr)) return fracStr;
+  const raw = String(fracStr).trim();
+  if (!raw) return null;
 
-function normalizeShareArray(arr){
-  if (!Array.isArray(arr)) return null;
-  const rows = [];
-  arr.forEach((item) => {
-    if (Array.isArray(item)){
-      const [role, fraction, percent, amount] = item;
-      rows.push({ role, fraction, percent, amount });
-      return;
-    }
-    if (item && typeof item === "object"){
-      const role = item.role ?? item.name ?? item.heir ?? item.beneficiary ?? item.id ?? null;
-      const fraction = item.fraction ?? item.share ?? item.part ?? item.ratio ?? item.value ?? null;
-      const percent = item.percent ?? item.percentage ?? item.pct ?? null;
-      const amount = item.amount ?? item.total ?? item.import ?? item.importe ?? null;
-      if (role || fraction || percent || amount){
-        rows.push({ role, fraction, percent, amount });
-      }
-      return;
-    }
-    if (typeof item === "string" && item.trim() !== ""){
-      rows.push({ role: item, fraction: item, percent: null, amount: null });
-    }
-  });
-  return rows.length ? rows : null;
-}
-
-function extractAmounts(base){
-  if (!base || typeof base !== "object") return null;
-  const candidates = [
-    base?.amounts?.amounts_by_role,
-    base?.amounts_by_role,
-  ];
-  for (const cand of candidates){
-    if (cand && typeof cand === "object") return cand;
-  }
-  return null;
-}
-
-function normalizeShareContainer(container, base){
-  if (!container) return null;
-
-  let rows = null;
-  if (Array.isArray(container)){
-    rows = normalizeShareArray(container);
-  } else if (typeof container === "object"){
-    const distribution = container.distribution || container.items || container.list;
-    if (Array.isArray(distribution)){
-      rows = normalizeShareArray(distribution);
-    } else {
-      const groupObj = container.final?.groups || container.groups || container.group_shares || container.amounts_by_role;
-      rows = normalizeGroupObject(groupObj);
+  if (raw.includes("/")){
+    const [numStr, denStr] = raw.split("/");
+    const num = Number(numStr);
+    const den = Number(denStr);
+    if (Number.isFinite(num) && Number.isFinite(den) && den !== 0){
+      return num / den;
     }
   }
 
-  if (rows && rows.length){
-    const amounts = extractAmounts(base);
-    if (amounts){
-      rows = rows.map((row) => ({
-        ...row,
-        amount: row.amount ?? amounts[row.role] ?? null,
-      }));
-    }
-    return rows;
-  }
-
-  return null;
+  const asNum = Number(raw);
+  return Number.isFinite(asNum) ? asNum : null;
 }
 
-function extractShareRows(response){
-  const base = baseResponse(response);
+function fractionToPercentString(fracStr){
+  const num = parseFractionToNumber(fracStr);
+  if (num === null) return "-";
+  return `${(num * 100).toFixed(2)}%`;
+}
+
+function normalizeFractionValue(value){
+  if (value === null || value === undefined) return null;
+  if (typeof value === "object" && value.fraction !== undefined){
+    return value.fraction;
+  }
+  const str = String(value).trim();
+  return str ? str : null;
+}
+
+function formatMoney(value, currency){
+  if (value === null || value === undefined) return null;
+  const base = String(value).trim();
   if (!base) return null;
-
-  const candidates = [
-    base?.shares,
-    base?.result,
-    base?.distribution,
-    base?.group_shares,
-  ];
-
-  for (const cand of candidates){
-    const rows = normalizeShareContainer(cand, base);
-    if (rows && rows.length) return rows;
-  }
-  return null;
+  return currency ? `${base} ${currency}` : base;
 }
 
-function takeData(response, keys){
-  const holders = [response, baseResponse(response)];
-  for (const holder of holders){
-    if (!holder || typeof holder !== "object") continue;
-    for (const key of keys){
-      if (Object.prototype.hasOwnProperty.call(holder, key)){
-        return holder[key];
+function collectMessages(containers, keys){
+  const out = [];
+  containers.forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    keys.forEach((key) => {
+      const val = item[key];
+      if (!val && val !== 0) return;
+      if (Array.isArray(val)){
+        val.forEach((entry) => {
+          const str = entry === null || entry === undefined ? "" : String(entry);
+          if (str.trim()) out.push(str.trim());
+        });
+        return;
       }
-    }
+      const str = String(val).trim();
+      if (str) out.push(str);
+    });
+  });
+  return out;
+}
+
+function aggregateFractions(arr){
+  if (!Array.isArray(arr) || !arr.length) return null;
+  const normalized = arr
+    .map((item) => normalizeFractionValue(item))
+    .filter((item) => item !== null);
+  if (!normalized.length) return null;
+
+  const parsed = normalized
+    .map((item) => parseFractionToNumber(item))
+    .filter((num) => num !== null);
+  if (parsed.length === normalized.length && parsed.length > 0){
+    const sum = parsed.reduce((acc, num) => acc + num, 0);
+    return String(sum);
   }
+
+  return normalized[0];
+}
+
+function roleCount(role, peopleByRole, individualShares){
+  if (Array.isArray(peopleByRole?.[role])) return peopleByRole[role].length;
+  if (Array.isArray(individualShares?.[role])) return individualShares[role].length;
   return null;
 }
 
-function takeList(response, keys){
-  const data = takeData(response, keys);
-  if (!data) return null;
-  if (Array.isArray(data)) return data;
-  if (typeof data === "string") return [data];
-  return null;
+function buildIndividuals(role, peopleByRole, individualShares, amountsByIndividual, currency){
+  const shares = Array.isArray(individualShares?.[role]) ? individualShares[role] : null;
+  if (!shares || !shares.length) return [];
+  const names = Array.isArray(peopleByRole?.[role]) ? peopleByRole[role] : [];
+  const amounts = Array.isArray(amountsByIndividual?.[role]) ? amountsByIndividual[role] : [];
+
+  return shares.map((fractionEntry, idx) => {
+    const fraction = normalizeFractionValue(fractionEntry);
+    const person = names[idx];
+    const label = person && typeof person === "object" && person.name ? person.name : `${role} #${idx + 1}`;
+    const amountRaw = amounts[idx];
+    return {
+      label,
+      fraction,
+      percent: fractionToPercentString(fraction),
+      amount: formatMoney(amountRaw, currency),
+    };
+  });
 }
 
-function renderShareTable(rows){
-  if (!rows || !rows.length) return "";
-  const body = rows.map((row) => `
-    <tr>
-      <td>${formatCell(row.role)}</td>
-      <td>${formatCell(row.fraction)}</td>
-      <td>${formatCell(row.percent)}</td>
-      <td>${formatCell(row.amount)}</td>
-    </tr>
-  `).join("");
-  return `
-    <div class="stack">
-      <h3 style="margin:0;">Distribución</h3>
-      <table class="results-table">
-        <thead>
-          <tr>
-            <th>Rol</th>
-            <th>Fracción</th>
-            <th>Porcentaje</th>
-            <th>Importe</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${body}
-        </tbody>
-      </table>
-    </div>
-  `;
+function buildShare(role, fraction, amountRaw, ctx){
+  const { currency, peopleByRole, individualShares, amountsByIndividual } = ctx;
+  const individuals = buildIndividuals(role, peopleByRole, individualShares, amountsByIndividual, currency);
+  return {
+    role,
+    count: roleCount(role, peopleByRole, individualShares),
+    groupFraction: fraction ?? null,
+    groupPercent: fractionToPercentString(fraction),
+    groupAmount: formatMoney(amountRaw, currency),
+    individuals: individuals.length ? individuals : undefined,
+  };
 }
 
-function renderListBlock(title, items){
+function buildSharesByRole(output, raw){
+  if (!output || typeof output !== "object") return [];
+  const currency = output.currency ?? raw?.currency ?? null;
+  const peopleByRole = safeObject(output.people_by_role) || {};
+  const individualShares = safeObject(output.individual_shares) || null;
+  const amountsByIndividual = safeObject(output.amounts_by_individual) || safeObject(output?.amounts?.amounts_by_individual) || null;
+  const amountsByRole = safeObject(output.amounts_by_role) || safeObject(output?.amounts?.amounts_by_role) || null;
+
+  const ctx = { currency, peopleByRole, individualShares, amountsByIndividual };
+  const shares = [];
+
+  const groupShares = safeObject(output.group_shares);
+  if (groupShares && Object.keys(groupShares).length){
+    Object.entries(groupShares).forEach(([role, fraction]) => {
+      const normalizedFraction = normalizeFractionValue(fraction);
+      const amount = amountsByRole ? amountsByRole[role] : null;
+      shares.push(buildShare(role, normalizedFraction, amount, ctx));
+    });
+    if (shares.length) return shares;
+  }
+
+  const shareGroups = safeObject(output.shares?.final?.groups);
+  if (shareGroups && Object.keys(shareGroups).length){
+    Object.entries(shareGroups).forEach(([role, fractions]) => {
+      const fraction = aggregateFractions(fractions);
+      const amount = amountsByRole ? amountsByRole[role] : null;
+      shares.push(buildShare(role, fraction, amount, ctx));
+    });
+    if (shares.length) return shares;
+  }
+
+  return [];
+}
+
+export function normalizeCalcResponse(response){
+  const raw = response ?? null;
+  const output = raw && raw.output && typeof raw.output === "object" ? raw.output : null;
+  const containers = [raw, output];
+  const errors = collectMessages(containers, ["errors", "error"]);
+  const warnings = collectMessages(containers, ["warnings", "warning"]);
+  const sharesByRole = buildSharesByRole(output, raw);
+  const ok = typeof raw?.ok === "boolean" ? raw.ok : raw?.status === "ok" ? true : errors.length === 0;
+
+  return {
+    ok,
+    output,
+    errors,
+    warnings,
+    sharesByRole,
+    raw,
+  };
+}
+
+function renderMessageBlock(title, items, tone){
   if (!items || !items.length) return "";
+  const badgeClass = tone === "error" ? "badge badge-error" : "badge badge-warn";
   return `
-    <section class="card card-pad stack">
+    <section class="card card-pad stack ${tone === "error" ? "card-error" : "card-warn"}">
       <div class="row" style="justify-content:space-between; align-items:center;">
         <strong>${escapeHtml(title)}</strong>
-        <span class="badge">${items.length}</span>
+        <span class="${badgeClass}">${items.length}</span>
       </div>
       <ul class="wizard-list">
         ${items.map((item) => `<li>${formatCell(item)}</li>`).join("")}
@@ -184,18 +206,101 @@ function renderListBlock(title, items){
   `;
 }
 
+function renderIndividualsBlock(individuals, hasAmountColumn){
+  if (!individuals || !individuals.length) return "";
+  const header = `
+    <tr>
+      <th>Persona</th>
+      <th>Fracción</th>
+      <th>Porcentaje</th>
+      ${hasAmountColumn ? `<th>Importe</th>` : ""}
+    </tr>
+  `;
+  const rows = individuals.map((ind) => `
+    <tr>
+      <td>${formatCell(ind.label)}</td>
+      <td>${formatCell(ind.fraction)}</td>
+      <td>${formatCell(ind.percent)}</td>
+      ${hasAmountColumn ? `<td>${formatCell(ind.amount)}</td>` : ""}
+    </tr>
+  `).join("");
+
+  return `
+    <tr class="results-individuals">
+      <td colspan="${hasAmountColumn ? 4 : 3}">
+        <details open class="results-details">
+          <summary>Detalle individual</summary>
+          <table class="results-table results-table-nested">
+            <thead>${header}</thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </details>
+      </td>
+    </tr>
+  `;
+}
+
+function renderShareTable(shares, hasAmountColumn){
+  if (!shares || !shares.length) return "";
+  const header = `
+    <tr>
+      <th>Rol</th>
+      <th>Fracción</th>
+      <th>Porcentaje</th>
+      ${hasAmountColumn ? `<th>Importe</th>` : ""}
+    </tr>
+  `;
+
+  const body = shares.map((share) => {
+    const amountCell = hasAmountColumn ? `<td>${formatCell(share.groupAmount)}</td>` : "";
+    const countHint = typeof share.count === "number" ? `<div class="wizard-hint" style="margin-top:4px;">${share.count} persona${share.count === 1 ? "" : "s"}</div>` : "";
+    const individualsRow = renderIndividualsBlock(share.individuals, hasAmountColumn);
+    return `
+      <tr>
+        <td>${formatCell(share.role)}${countHint}</td>
+        <td>${formatCell(share.groupFraction)}</td>
+        <td>${formatCell(share.groupPercent)}</td>
+        ${amountCell}
+      </tr>
+      ${individualsRow}
+    `;
+  }).join("");
+
+  return `
+    <div class="stack">
+      <h3 style="margin:0;">Distribución</h3>
+      <table class="results-table">
+        <thead>${header}</thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderJsonDetails(title, data){
+  if (!data) return "";
+  return `
+    <details class="results-details">
+      <summary>${escapeHtml(title)}</summary>
+      <pre class="codebox" style="margin-top:10px;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+    </details>
+  `;
+}
+
 export function renderResults(state){
   const results = state.results || {};
   const builderReady = Boolean(state.builder?.payloadPreview);
   const response = results.response && typeof results.response === "object" ? results.response : null;
-  const shareRows = results.status === "ok" && builderReady ? extractShareRows(response) : null;
-  const auditBlock = takeData(response, ["audit"]);
-  const traceBlock = takeData(response, ["trace", "traces"]);
-  const exclusions = takeList(response, ["exclusions"]);
-  const blocks = takeList(response, ["blocks"]);
-  const errorsList = takeList(response, ["errors"]);
-  const rawResponseError = takeData(response, ["error"]);
-  const responseError = typeof rawResponseError === "string" ? rawResponseError : null;
+  const normalized = response ? normalizeCalcResponse(response) : null;
+  const shareRows = results.status === "ok" && builderReady ? normalized?.sharesByRole || [] : [];
+  const output = normalized?.output || null;
+  const auditBlock = output?.audit || response?.audit || null;
+  const traceBlock = output?.trace || output?.traces || response?.trace || response?.traces || null;
+  const explainBlock = output?.explain || response?.explain || null;
+  const errorsList = normalized?.errors || [];
+  const warningsList = normalized?.warnings || [];
+  const rawResponseError = response && typeof response.error === "string" ? response.error : null;
+  const hasAmounts = Boolean(output && Object.prototype.hasOwnProperty.call(output, "estate_value"));
 
   const statusBadge = results.status === "running" ? `<span class="badge">Calculando...</span>` : "";
 
@@ -228,7 +333,7 @@ export function renderResults(state){
               <span class="badge">Status: error</span>
             </div>
             <p style="margin:0; color:var(--muted); line-height:1.4;">${escapeHtml(results.error || "Error desconocido")}</p>
-            ${responseError ? `<p style="margin:0;">${escapeHtml(responseError)}</p>` : ""}
+            ${rawResponseError ? `<p style="margin:0;">${escapeHtml(rawResponseError)}</p>` : ""}
             ${response ? `<pre class="codebox">${escapeHtml(JSON.stringify(response, null, 2))}</pre>` : ""}
           </section>
         ` : ""}
@@ -239,39 +344,19 @@ export function renderResults(state){
               <strong>Respuesta de calc.php</strong>
               ${results.lastRunAt ? `<span class="wizard-hint">Última ejecución: ${escapeHtml(new Date(results.lastRunAt).toLocaleString())}</span>` : ""}
             </div>
-            ${shareRows ? renderShareTable(shareRows) : `
+            ${renderMessageBlock("Errores reportados", errorsList, "error")}
+            ${renderMessageBlock("Avisos", warningsList, "warn")}
+            ${shareRows && shareRows.length ? renderShareTable(shareRows, hasAmounts) : `
               <div class="stack">
                 <p class="wizard-hint" style="margin:0;">No se detectó una tabla de shares. Se muestra la respuesta cruda.</p>
-                <pre class="codebox">${escapeHtml(JSON.stringify(response, null, 2))}</pre>
+                ${response ? `<pre class="codebox">${escapeHtml(JSON.stringify(response, null, 2))}</pre>` : ""}
               </div>
             `}
-            ${response ? `
-              <div class="stack">
-                <details>
-                  <summary>Ver respuesta completa</summary>
-                  <pre class="codebox" style="margin-top:10px;">${escapeHtml(JSON.stringify(response, null, 2))}</pre>
-                </details>
-              </div>
-            ` : ""}
+            ${renderJsonDetails("JSON completo", normalized?.raw)}
+            ${renderJsonDetails("Audit", auditBlock || null)}
+            ${renderJsonDetails("Trace", traceBlock || null)}
+            ${renderJsonDetails("Explain", explainBlock || null)}
           </section>
-
-          ${auditBlock ? `
-            <section class="card card-pad stack">
-              <strong>Audit</strong>
-              <pre class="codebox">${escapeHtml(JSON.stringify(auditBlock, null, 2))}</pre>
-            </section>
-          ` : ""}
-
-          ${traceBlock ? `
-            <section class="card card-pad stack">
-              <strong>Trace</strong>
-              <pre class="codebox">${escapeHtml(JSON.stringify(traceBlock, null, 2))}</pre>
-            </section>
-          ` : ""}
-
-          ${renderListBlock("Exclusiones", exclusions || [])}
-          ${renderListBlock("Bloqueos", blocks || [])}
-          ${renderListBlock("Errores reportados", errorsList || [])}
         ` : `
           <section class="card card-pad stack">
             <p class="wizard-hint" style="margin:0;">Pulsa "Calcular ahora" para obtener la respuesta del core.</p>
