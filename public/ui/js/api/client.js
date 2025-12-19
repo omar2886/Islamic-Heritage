@@ -37,7 +37,7 @@ export async function fetchRoles({ signal } = {}){
 }
 
 export async function postCalc(payload, { signal } = {}){
-  const url = new URL("../api/calc.php", window.location.href);
+  const url = apiUrl("../api/calc.php");
   const controller = signal ? null : new AbortController();
   const abortSignal = signal || controller?.signal;
   const timer = controller ? setTimeout(() => controller.abort(), 12000) : null;
