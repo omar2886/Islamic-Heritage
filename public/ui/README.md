@@ -41,12 +41,19 @@ PR2: Contract guard (roles)
 - Si mismatch o fallo: UI bloqueada con detalle missing/extra
 - Aun no hay POST calc.php
 
+PR3: Case wizard (prefiltro lógico sin calc)
+- Ruta real #/wizard con preguntas guiadas, persistencia en localStorage
+- Validaciones de coherencia básicas (sexo obligatorio para continuar, rangos 0..100, esposas solo para causante hombre, esposo solo para mujer)
+- Panel de resumen y paso al builder cuando el sexo está definido
+- No se toca el core ni el contrato, no hay llamadas a calc.php
+
 VALIDACIONES
 - Abrir /Heritage/public/ui/
 - Ver banner "Verificando contrato..." un instante
 - Si roles.php responde y coincide: navegar wizard/builder/results normal
 - Si se rompe roles.php o mismatch: ver "UI bloqueada" y diff JSON
 - Consola sin errores
+- No calc.php en PR3 (solo GET roles.php heredado)
 
 ENTREGA PR2
 - Rama: codex/pr2-contract-guard

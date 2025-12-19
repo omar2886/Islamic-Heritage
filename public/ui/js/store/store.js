@@ -6,6 +6,34 @@ function clone(value){
   return JSON.parse(JSON.stringify(value));
 }
 
+function clampCount(value, min = 0, max = 100){
+  const num = Number(value);
+  if (!Number.isFinite(num)) return min;
+  const safe = Math.trunc(num);
+  return Math.min(max, Math.max(min, safe));
+}
+
+function makeDefaultWizard(){
+  return {
+    deceased_sex: null,
+    spouse: {
+      enabled: false,
+      wives_count: 0,
+      husband_present: false,
+    },
+    descendants: {
+      son: 0,
+      daughter: 0,
+      sons_son: 0,
+      sons_daughter: 0,
+    },
+    parents: {
+      father: false,
+      mother: false,
+    },
+  };
+}
+
 export const DEFAULT_STATE = {
   schemaVersion: CURRENT_SCHEMA_VERSION,
   boot: {
@@ -20,7 +48,7 @@ export const DEFAULT_STATE = {
     toasts: [],
     modal: null,
   },
-  wizard: {},
+  wizard: makeDefaultWizard(),
   builder: {},
   results: {},
   meta: {
@@ -60,6 +88,41 @@ function sanitize(candidate){
     error: boot.error ?? null,
     rolesServer: Array.isArray(boot.rolesServer) ? boot.rolesServer : null,
     diff: boot.diff ?? null,
+  };
+
+  const wizard = safe?.wizard && typeof safe.wizard === "object" ? safe.wizard : {};
+  const deceasedSex = wizard.deceased_sex === "male" || wizard.deceased_sex === "female" ? wizard.deceased_sex : null;
+  const spouse = wizard.spouse && typeof wizard.spouse === "object" ? wizard.spouse : {};
+  const spouseEnabled = spouse.enabled === true;
+  let wivesCount = clampCount(spouse.wives_count, 0, 4);
+  let husbandPresent = spouse.husband_present === true;
+  if (deceasedSex !== "male") wivesCount = 0;
+  if (deceasedSex !== "female") husbandPresent = false;
+  if (!spouseEnabled){
+    wivesCount = 0;
+    husbandPresent = false;
+  }
+
+  const descendants = wizard.descendants && typeof wizard.descendants === "object" ? wizard.descendants : {};
+  const parents = wizard.parents && typeof wizard.parents === "object" ? wizard.parents : {};
+
+  out.wizard = {
+    deceased_sex: deceasedSex,
+    spouse: {
+      enabled: spouseEnabled,
+      wives_count: wivesCount,
+      husband_present: husbandPresent,
+    },
+    descendants: {
+      son: clampCount(descendants.son),
+      daughter: clampCount(descendants.daughter),
+      sons_son: clampCount(descendants.sons_son),
+      sons_daughter: clampCount(descendants.sons_daughter),
+    },
+    parents: {
+      father: parents.father === true,
+      mother: parents.mother === true,
+    },
   };
 
   return out;
