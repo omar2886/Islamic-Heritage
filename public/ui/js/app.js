@@ -4,9 +4,9 @@ import { createStore } from "./store/store.js";
 import { initRouter } from "./router.js";
 import { captureFocus, restoreFocus } from "./ui/focus.js";
 import { pushToast } from "./ui/toast.js";
-import { closeModal } from "./ui/modal.js";
+import { openModal, closeModal } from "./ui/modal.js";
 import { wireWizard } from "./pages/wizard.js";
-import { wireBuilder } from "./pages/builder.js";
+import { wireBuilder, applyWizardSync } from "./pages/builder.js";
 import { wireResults } from "./pages/results.js";
 
 import { fetchRoles } from "./api/client.js";
@@ -17,6 +17,14 @@ const store = createStore();
 
 let lastFocus = { key: null };
 let bootAbort = null;
+let lastRoute = store.getDerived().route;
+
+function isBuilderInput(el){
+  if (!el || !el.tagName) return false;
+  const tag = el.tagName.toLowerCase();
+  if (tag !== "input" && tag !== "textarea" && tag !== "select") return false;
+  return Boolean(el.closest(".builder-grid"));
+}
 
 function wireUi(){
   const btnToast = document.getElementById("btn-toast");
@@ -27,9 +35,12 @@ function wireUi(){
   const btnReset = document.getElementById("btn-reset");
   if (btnReset){
     btnReset.addEventListener("click", () => {
-      store.reset();
-      location.hash = "#/wizard";
-      startBootCheck();
+      openModal(store, {
+        title: "Nuevo caso",
+        body: "Se borrará el caso guardado en este navegador y volverás al wizard.",
+        confirmLabel: "Confirmar reinicio",
+        confirmAction: "reset-case",
+      });
     });
   }
 
@@ -37,9 +48,20 @@ function wireUi(){
   if (btnModalClose){
     btnModalClose.addEventListener("click", () => closeModal(store));
   }
+
+  const btnModalConfirm = document.getElementById("btn-modal-confirm");
+  if (btnModalConfirm){
+    btnModalConfirm.addEventListener("click", () => {
+      const action = btnModalConfirm.getAttribute("data-confirm-action");
+      handleModalConfirm(action);
+    });
+  }
 }
 
 function render(){
+  const prevRoute = lastRoute;
+  const prevScrollY = window.scrollY;
+  const activeElement = document.activeElement;
   lastFocus = captureFocus();
 
   const state = store.getState();
@@ -59,6 +81,14 @@ function render(){
   if (derived.route === "results"){
     wireResults(store);
   }
+
+  if (prevRoute === derived.route && isBuilderInput(activeElement)){
+    requestAnimationFrame(() => {
+      window.scrollTo(0, prevScrollY);
+    });
+  }
+
+  lastRoute = derived.route;
 }
 
 async function startBootCheck(){
@@ -100,3 +130,18 @@ store.subscribe(() => render());
 initRouter(store);
 render();
 startBootCheck();
+
+function handleModalConfirm(action){
+  if (!action) return;
+  if (action === "reset-case"){
+    closeModal(store);
+    store.reset();
+    location.hash = "#/wizard";
+    startBootCheck();
+    return;
+  }
+  if (action === "builder-apply-wizard"){
+    closeModal(store);
+    applyWizardSync(store);
+  }
+}

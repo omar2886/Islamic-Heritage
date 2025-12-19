@@ -86,10 +86,22 @@ PR5: Integración con calc.php + Results Viewer real
   1) git diff --name-only: solo public/ui/*
   2) Abrir /Heritage/public/ui/
   3) Completar wizard (sexo) -> builder (al menos 1 heredero) -> results
-  4) Click "Calcular ahora":
+ 4) Click "Calcular ahora":
      - status running aparece
      - si el server responde: status ok y se renderiza algo (tabla o JSON fallback)
      - si falla: status error con mensaje claro
-  5) Consola sin errores
-  6) Confirmar que no hay endpoints absolutos "/api/.."
-  7) Nota: habilitado POST calc.php
+ 5) Consola sin errores
+ 6) Confirmar que no hay endpoints absolutos "/api/.."
+ 7) Nota: habilitado POST calc.php
+
+PR6: Hardening routing + wizard sync
+- Routing estable:
+  - Con DocumentRoot en /Heritage/ acceder a /Heritage/ y /Heritage/public/ debe redirigir a /Heritage/public/ui/.
+  - /Heritage/public/ui/ responde 200 sin necesidad de añadir /index.html (DirectoryIndex en .htaccess).
+- Repro wizard actualizado:
+  1) Completar wizard y pasar a builder.
+  2) Volver al wizard, cambiar por ejemplo sons_count, y regresar a builder.
+  3) Debe mostrarse el banner "El wizard ha cambiado..." con el botón "Aplicar cambios del wizard".
+  4) Al confirmar, se actualizan solo cónyuge, padres y descendientes; otros roles siguen igual.
+- Scroll en builder:
+  - Desplazar hasta la mitad de la lista, editar un input numérico, y comprobar que el scroll no salta arriba.
