@@ -13,8 +13,15 @@ import { validateState } from './validate.js';
 import { buildPayload } from './payload.js';
 import { getRoles, postCalc } from './api.js';
 import { ROLE_GROUPS, ROLE_LABELS } from './roles_meta.js';
+import { exportJson } from './export.js';
 
-const STEPS = ['decedent', 'heirs', 'review', 'results'];
+const STEP_ORDER = ['decedent', 'heirs', 'review', 'results'];
+const DEFAULT_REACHED = {
+  decedent: true,
+  heirs: false,
+  review: false,
+  results: false,
+};
 
 let state = createInitialState();
 let rolesCatalog = [];
@@ -27,14 +34,59 @@ let warningsBox = null;
 let errorBanner = null;
 let footer = null;
 
-function downloadJson(filename, obj) {
-  if (!obj) return;
-  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+function normalizeReached(reached = {}) {
+  return { ...DEFAULT_REACHED, ...reached };
+}
+
+function ensureStepValue(step) {
+  return STEP_ORDER.includes(step) ? step : STEP_ORDER[0];
+}
+
+function markStepReached(current, step) {
+  const safeStep = ensureStepValue(step || current.step);
+  const reached = normalizeReached(current.reached);
+  const idx = STEP_ORDER.indexOf(safeStep);
+  if (idx < 0) return current;
+  const nextReached = { ...reached };
+  for (let i = 0; i <= idx; i += 1) {
+    nextReached[STEP_ORDER[i]] = true;
+  }
+  return { ...current, reached: nextReached };
+}
+
+function withStateDefaults(next) {
+  return {
+    ...next,
+    step: ensureStepValue(next.step),
+    reached: normalizeReached(next.reached),
+  };
+}
+
+function applyRoleFilter(query) {
+  if (!stepContainer) return;
+  const term = String(query || '').trim().toLowerCase();
+  const rows = stepContainer.querySelectorAll('[data-role-row]');
+  rows.forEach((row) => {
+    const role = row.getAttribute('data-role-row');
+    const label = row.querySelector('.role-label')?.textContent || '';
+    const matches = !term || role.toLowerCase().includes(term) || label.toLowerCase().includes(term);
+    row.style.display = matches ? '' : 'none';
+  });
+}
+
+function setState(next, { render = true } = {}) {
+  const normalized = withStateDefaults(next);
+  state = normalized;
+  validation = validateState(state, rolesCatalog);
+  if (rolesWarning) {
+    validation = { ...validation, warnings: [...validation.warnings, rolesWarning] };
+  }
+  saveState(state);
+  if (render) {
+    renderStep(state.step);
+  } else {
+    updateFooterAndErrors();
+  }
 }
 
 function getRoleLabel(role) {
@@ -61,30 +113,47 @@ function clampRoleCount(role, raw, sex) {
   return n;
 }
 
-function setState(next, { render = true } = {}) {
-  state = next;
-  saveState(state);
-  validation = validateState(state, rolesCatalog);
-  if (rolesWarning) {
-    validation = { ...validation, warnings: [...validation.warnings, rolesWarning] };
-  }
-  if (render) {
-    renderStep(state.step);
-  } else {
-    updateFooterAndErrors();
-  }
+function updateStepper() {
+  if (!root) return;
+  const buttons = root.querySelectorAll('[data-step]');
+  const currentIdx = STEP_ORDER.indexOf(state.step);
+  const reached = normalizeReached(state.reached);
+  const hasErrors = validation.errors.length > 0;
+
+  buttons.forEach((btn) => {
+    const step = btn.dataset?.step;
+    const idx = STEP_ORDER.indexOf(step);
+    const isCurrent = step === state.step;
+    if (isCurrent) {
+      btn.setAttribute('aria-current', 'step');
+    } else {
+      btn.removeAttribute('aria-current');
+    }
+    const isFuture = idx > currentIdx;
+    const isReachable = reached[step];
+    btn.disabled = !isReachable || (hasErrors && isFuture);
+  });
 }
 
-function applyRoleFilter(query) {
-  if (!stepContainer) return;
-  const term = String(query || '').trim().toLowerCase();
-  const rows = stepContainer.querySelectorAll('[data-role-row]');
-  rows.forEach((row) => {
-    const role = row.getAttribute('data-role-row');
-    const label = row.querySelector('.role-label')?.textContent || '';
-    const matches = !term || role.toLowerCase().includes(term) || label.toLowerCase().includes(term);
-    row.style.display = matches ? '' : 'none';
-  });
+function updateFooterControls() {
+  if (!footer) return;
+  const backBtn = footer.querySelector('[data-action="back"]');
+  const nextBtn = footer.querySelector('[data-action="next"]');
+  const calcBtn = footer.querySelector('[data-action="calc"]');
+
+  const idx = STEP_ORDER.indexOf(state.step);
+  if (backBtn) backBtn.disabled = idx <= 0;
+
+  if (nextBtn) {
+    nextBtn.style.display = state.step === 'results' ? 'none' : '';
+    nextBtn.disabled = state.step === 'review' || state.step === 'results' || validation.errors.length > 0;
+  }
+
+  if (calcBtn) {
+    const isReview = state.step === 'review';
+    calcBtn.style.display = isReview ? '' : 'none';
+    calcBtn.disabled = !isReview;
+  }
 }
 
 function updateFooterAndErrors() {
@@ -115,20 +184,7 @@ function updateFooterAndErrors() {
     errorBanner.style.display = state.lastError ? '' : 'none';
   }
   updateFooterControls();
-}
-
-function updateFooterControls() {
-  if (!footer) return;
-  const backBtn = footer.querySelector('[data-action="back"]');
-  const nextBtn = footer.querySelector('[data-action="next"]');
-  const calcBtn = footer.querySelector('[data-action="calc"]');
-  const resetBtn = footer.querySelector('[data-action="reset"]');
-
-  const idx = STEPS.indexOf(state.step);
-  if (backBtn) backBtn.disabled = idx <= 0;
-  if (nextBtn) nextBtn.style.display = state.step === 'review' || state.step === 'results' ? 'none' : '';
-  if (calcBtn) calcBtn.style.display = state.step === 'review' ? '' : 'none';
-  if (resetBtn) resetBtn.disabled = false;
+  updateStepper();
 }
 
 function syncSingleRoleRow(role) {
@@ -141,22 +197,26 @@ function syncSingleRoleRow(role) {
 
 function renderDecedent() {
   return `
-    <div class="card">
-      <h2>Causante</h2>
-      <label>Nombre
-        <input type="text" data-deceased="name" value="${state.deceased.name || ''}" />
+    <h3>Datos del causante</h3>
+    <div class="form-grid">
+      <label class="field">
+        <span class="field__label">Nombre</span>
+        <input type="text" name="deceased-name" data-deceased="name" value="${state.deceased.name || ''}" placeholder="Nombre completo" />
       </label>
-      <label>Sexo
-        <select data-deceased="sex">
+      <label class="field">
+        <span class="field__label">Sexo</span>
+        <select name="deceased-sex" data-deceased="sex">
           <option value="M" ${state.deceased.sex === 'M' ? 'selected' : ''}>Masculino</option>
           <option value="F" ${state.deceased.sex === 'F' ? 'selected' : ''}>Femenino</option>
         </select>
       </label>
-      <label>Notas
-        <textarea data-deceased="notes">${state.deceased.notes || ''}</textarea>
+      <label class="field">
+        <span class="field__label">Valor de la herencia</span>
+        <input type="number" min="0" step="0.01" name="estate-value" data-estate="value" value="${state.estate.value || ''}" placeholder="0.00" />
       </label>
-      <label>Valor de la herencia
-        <input type="number" step="0.01" data-estate="value" value="${state.estate.value || ''}" />
+      <label class="field" style="grid-column: 1 / -1">
+        <span class="field__label">Notas</span>
+        <textarea name="deceased-notes" data-deceased="notes" rows="3" placeholder="Observaciones relevantes...">${state.deceased.notes || ''}</textarea>
       </label>
     </div>
   `;
@@ -166,12 +226,12 @@ function renderRoleRow(role) {
   const count = state.heirsCounts[role] ?? 0;
   const label = getRoleLabel(role);
   return `
-    <div class="row" data-role-row="${role}">
-      <span class="role-label">${label}</span>
+    <div class="role-row" data-role-row="${role}">
+      <div class="role-label">${label}</div>
       <div class="role-controls">
-        <button type="button" data-action="dec" data-role="${role}">−</button>
-        <input type="number" min="0" step="1" data-role="${role}" value="${count}" />
-        <button type="button" data-action="inc" data-role="${role}">+</button>
+        <button type="button" class="btn ghost" data-action="dec" data-role="${role}">−</button>
+        <input type="number" min="0" step="1" name="role-${role}" data-role="${role}" value="${count}" />
+        <button type="button" class="btn ghost" data-action="inc" data-role="${role}">+</button>
       </div>
     </div>
   `;
@@ -197,12 +257,13 @@ function renderHeirs() {
   }).join('');
 
   return `
-    <div class="heirs">
-      <div class="filter">
-        <input type="text" data-filter="roles" placeholder="Buscar rol…" />
-      </div>
-      ${groupsHtml}
+    <div class="form-grid">
+      <label class="field">
+        <span class="field__label">Buscar rol</span>
+        <input type="text" data-filter="roles" name="roles-filter" placeholder="Buscar rol…" />
+      </label>
     </div>
+    <div class="heirs">${groupsHtml}</div>
   `;
 }
 
@@ -211,21 +272,33 @@ function renderReview() {
     .filter(([, count]) => Number.parseInt(count, 10) > 0)
     .map(([role, count]) => `<li>${getRoleLabel(role)}: ${count}</li>`) || [];
   return `
-    <div class="card">
-      <h2>Revisión</h2>
-      <p><strong>Nombre:</strong> ${state.deceased.name || '(sin nombre)'}</p>
-      <p><strong>Sexo:</strong> ${state.deceased.sex}</p>
-      <p><strong>Valor herencia:</strong> ${state.estate.value || '(sin valor)'}</p>
-      <p><strong>Notas:</strong> ${state.deceased.notes || '(sin notas)'}</p>
-      <h3>Herederos</h3>
-      <ul>${heirsList.join('')}</ul>
-      <button type="button" data-action="calc" class="btn primary">Calcular</button>
-      <div class="downloads">
-        <button type="button" data-action="dl-payload">Descargar payload</button>
-        <label class="file-input">Cargar payload
-          <input type="file" accept="application/json" data-action="import" />
-        </label>
+    <h2>Revisión</h2>
+    <div class="form-grid">
+      <div class="field">
+        <span class="field__label">Nombre</span>
+        <p>${state.deceased.name || '(sin nombre)'}</p>
       </div>
+      <div class="field">
+        <span class="field__label">Sexo</span>
+        <p>${state.deceased.sex}</p>
+      </div>
+      <div class="field">
+        <span class="field__label">Valor herencia</span>
+        <p>${state.estate.value || '(sin valor)'}</p>
+      </div>
+      <div class="field" style="grid-column: 1 / -1">
+        <span class="field__label">Notas</span>
+        <p>${state.deceased.notes || '(sin notas)'}</p>
+      </div>
+    </div>
+    <h3>Herederos</h3>
+    <ul class="muted">${heirsList.length ? heirsList.join('') : '<li>(sin herederos)</li>'}</ul>
+    <div class="downloads">
+      <button type="button" class="btn" data-action="dl-payload">Descargar payload</button>
+      <label class="btn file-input">
+        Cargar payload
+        <input type="file" accept="application/json" data-action="import" />
+      </label>
     </div>
   `;
 }
@@ -233,27 +306,62 @@ function renderReview() {
 function renderResults() {
   const response = state.lastResponse;
   return `
-    <div class="card">
-      <h2>Resultados</h2>
-      ${state.lastError ? `<div class="error-banner">${state.lastError}</div>` : ''}
-      ${response ? `<details open><summary>RAW JSON</summary><pre>${JSON.stringify(response, null, 2)}</pre></details>` : '<p>Sin resultados.</p>'}
-      <div class="downloads">
-        <button type="button" data-action="dl-result">Descargar resultado</button>
-      </div>
+    <h2>Resultados</h2>
+    ${state.lastError ? `<div class="error-banner">${state.lastError}</div>` : ''}
+    ${response ? `<details open><summary>RAW JSON</summary><pre>${JSON.stringify(response, null, 2)}</pre></details>` : '<p>Sin resultados.</p>'}
+    <div class="downloads">
+      <button type="button" class="btn" data-action="dl-result">Descargar resultado</button>
     </div>
   `;
 }
 
-function renderStep(step) {
+function captureActiveFocus() {
+  if (!stepContainer) return null;
+  const active = document.activeElement;
+  if (!active || !stepContainer.contains(active)) return null;
+  return {
+    name: active.getAttribute('name'),
+    role: active.dataset?.role,
+    deceased: active.dataset?.deceased,
+    selectionStart: typeof active.selectionStart === 'number' ? active.selectionStart : null,
+    selectionEnd: typeof active.selectionEnd === 'number' ? active.selectionEnd : null,
+  };
+}
+
+function restoreFocus(snapshot) {
+  if (!snapshot || !stepContainer) return;
+  let target = null;
+  if (snapshot.name) {
+    target = stepContainer.querySelector(`[name="${snapshot.name}"]`);
+  }
+  if (!target && snapshot.role) {
+    target = stepContainer.querySelector(`[data-role="${snapshot.role}"]`);
+  }
+  if (!target && snapshot.deceased) {
+    target = stepContainer.querySelector(`[data-deceased="${snapshot.deceased}"]`);
+  }
+  if (target) {
+    target.focus({ preventScroll: true });
+    if (
+      typeof snapshot.selectionStart === 'number'
+      && typeof snapshot.selectionEnd === 'number'
+      && typeof target.setSelectionRange === 'function'
+    ) {
+      target.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+    }
+  }
+}
+
+function renderStep(step = state.step) {
   if (!stepContainer) return;
-  state = setStep(state, step);
-  saveState(state);
+  const focusSnapshot = captureActiveFocus();
   let body = '';
   if (step === 'decedent') body = renderDecedent();
   else if (step === 'heirs') body = renderHeirs();
   else if (step === 'review') body = renderReview();
   else if (step === 'results') body = renderResults();
   stepContainer.innerHTML = body;
+  restoreFocus(focusSnapshot);
   updateFooterAndErrors();
 }
 
@@ -295,7 +403,7 @@ function onChange(event) {
   if (action === 'import') {
     const [file] = target.files || [];
     if (file) {
-      void handleImport(file);
+      void handlePayloadImport(file);
     }
     target.value = '';
     return;
@@ -311,9 +419,9 @@ function onChange(event) {
 }
 
 function nextStep(direction) {
-  const idx = STEPS.indexOf(state.step);
-  const nextIdx = Math.min(Math.max(idx + direction, 0), STEPS.length - 1);
-  return STEPS[nextIdx];
+  const idx = STEP_ORDER.indexOf(state.step);
+  const nextIdx = Math.min(Math.max(idx + direction, 0), STEP_ORDER.length - 1);
+  return STEP_ORDER[nextIdx];
 }
 
 async function handleCalc() {
@@ -329,43 +437,70 @@ async function handleCalc() {
   saveState(state);
   try {
     const result = await postCalc(payload);
-    state = setLastResponse(state, result);
-    state = setLastError(state, '');
-    setState(setStep(state, 'results'));
+    let next = setLastResponse(state, result);
+    next = setLastError(next, '');
+    next = markStepReached(next, 'results');
+    next = setStep(next, 'results');
+    setState(next);
   } catch (err) {
-    state = setLastResponse(state, null);
-    state = setLastError(state, err.message);
-    saveState(state);
-    renderStep('review');
+    let next = setLastResponse(state, null);
+    next = setLastError(next, err.message);
+    next = markStepReached(next, 'review');
+    next = setStep(next, 'review');
+    setState(next);
   }
 }
 
+function canNavigateToStep(step) {
+  const reached = normalizeReached(state.reached);
+  const stepIdx = STEP_ORDER.indexOf(step);
+  const currentIdx = STEP_ORDER.indexOf(state.step);
+  if (stepIdx === -1) return false;
+  if (!reached[step]) return false;
+  if (validation.errors.length && stepIdx > currentIdx) return false;
+  return true;
+}
+
+function goToStep(step, { viaStepper = false } = {}) {
+  const safeStep = ensureStepValue(step);
+  const currentIdx = STEP_ORDER.indexOf(state.step);
+  const targetIdx = STEP_ORDER.indexOf(safeStep);
+  if (viaStepper && !canNavigateToStep(safeStep)) return;
+  if (validation.errors.length && targetIdx > currentIdx) return;
+  let next = markStepReached(state, safeStep);
+  next = setStep(next, safeStep);
+  setState(next);
+}
+
 function onClick(event) {
-  const action = event.target?.dataset?.action;
-  const role = event.target?.dataset?.role;
+  const target = event.target?.closest('button, [data-action], [data-step]');
+  if (!target || (root && !root.contains(target))) return;
+  const action = target.dataset?.action;
+  const role = target.dataset?.role;
+  const step = target.dataset?.step;
+
+  if (step) {
+    goToStep(step, { viaStepper: true });
+    return;
+  }
+
   if (action === 'next') {
     const next = nextStep(1);
-    setState(setStep(state, next));
+    goToStep(next);
     return;
   }
   if (action === 'back') {
     const prev = nextStep(-1);
-    setState(setStep(state, prev));
+    goToStep(prev);
     return;
   }
   if (action === 'dl-payload') {
     const payload = buildPayload(state);
-    downloadJson('payload.json', payload);
+    exportJson('payload.json', payload);
     return;
   }
   if (action === 'dl-result') {
-    downloadJson('result.json', state.lastResponse);
-    return;
-  }
-  if (action === 'reset') {
-    clearStorage();
-    state = createInitialState();
-    setState(state);
+    exportJson('result.json', state.lastResponse);
     return;
   }
   if (action === 'calc') {
@@ -380,6 +515,21 @@ function onClick(event) {
     const next = setHeirCount(state, role, nextValue);
     setState(next, { render: false });
     syncSingleRoleRow(role);
+    return;
+  }
+  if (action === 'new') {
+    clearStorage();
+    state = createInitialState();
+    setState(state);
+    return;
+  }
+  if (action === 'export') {
+    exportJson('heritage_flow.json', { state, lastPayload: state.lastPayload, lastResponse: state.lastResponse });
+    return;
+  }
+  if (action === 'import') {
+    triggerStateImport();
+    return;
   }
 }
 
@@ -401,7 +551,7 @@ function importPayloadToState(payload) {
   };
 }
 
-async function handleImport(file) {
+async function handlePayloadImport(file) {
   try {
     const content = await file.text();
     const parsed = JSON.parse(content);
@@ -414,6 +564,7 @@ async function handleImport(file) {
       lastResponse: null,
       lastError: ''
     };
+    next = markStepReached(next, 'review');
     next = setStep(next, 'review');
     setState(next);
   } catch (err) {
@@ -422,6 +573,48 @@ async function handleImport(file) {
     setState(next, { render: false });
     updateFooterAndErrors();
   }
+}
+
+function parseImportedState(obj) {
+  if (!obj || typeof obj !== 'object' || typeof obj.state !== 'object') return null;
+  let imported = withStateDefaults({ ...createInitialState(), ...obj.state });
+  if (!imported.step) return null;
+  imported.step = ensureStepValue(imported.step);
+  imported.reached = normalizeReached(imported.reached);
+  imported = markStepReached(imported, imported.step);
+  return imported;
+}
+
+function triggerStateImport() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/json';
+  input.style.display = 'none';
+  input.addEventListener('change', async () => {
+    const [file] = input.files || [];
+    if (!file) return;
+    try {
+      const content = await file.text();
+      const parsed = JSON.parse(content);
+      const importedState = parseImportedState(parsed);
+      if (importedState && importedState.step) {
+        setState(importedState, { render: false });
+        renderStep(importedState.step);
+      }
+    } catch (err) {
+      console.warn('No se pudo importar el estado', err);
+    } finally {
+      input.remove();
+    }
+  });
+  document.body.appendChild(input);
+  input.click();
+}
+
+function normalizeStateOnLoad(initial) {
+  let next = withStateDefaults(initial || createInitialState());
+  next = markStepReached(next, next.step);
+  return next;
 }
 
 async function loadRolesCatalog() {
@@ -442,36 +635,58 @@ async function loadRolesCatalog() {
 export async function mount(el) {
   root = el || document.getElementById('flow-root') || document.getElementById('flowApp');
   if (!root) throw new Error('flow root not found');
-  state = loadState();
+  state = normalizeStateOnLoad(loadState());
   validation = validateState(state, rolesCatalog);
   root.innerHTML = `
-    <div class="flow-shell">
-      <div class="flow-messages">
-        <div class="errors" data-errors></div>
-        <div class="warnings" data-warnings></div>
-        <div class="error-banner" data-error-banner style="display:none;"></div>
-      </div>
-      <div data-step-container></div>
-      <div class="flow-footer">
-        <button type="button" data-action="back">Atrás</button>
-        <button type="button" data-action="next">Siguiente</button>
-        <button type="button" data-action="calc">Calcular</button>
-        <button type="button" data-action="reset">Reset</button>
-      </div>
+  <div class="flow__header">
+    <div>
+      <p class="eyebrow">Calculadora</p>
+      <h2 style="margin:.25rem 0 0 0">Herencia islámica (MVP)</h2>
+      <p class="muted" style="margin:.35rem 0 0 0">Introduce el causante, herederos y el valor de la herencia. El motor calcula fracciones e importes.</p>
     </div>
-  `;
+    <div class="flow__header-actions">
+      <button type="button" class="btn" data-action="new">Nuevo caso</button>
+      <button type="button" class="btn" data-action="export">Exportar JSON</button>
+      <button type="button" class="btn" data-action="import">Importar JSON</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: .9rem">
+    <div class="errors" data-errors></div>
+    <div class="warnings" data-warnings></div>
+    <div class="error-banner" data-error-banner style="display:none"></div>
+  </div>
+
+  <nav class="flow__steps" aria-label="Pasos">
+    <button type="button" data-step="decedent">1. Causante</button>
+    <button type="button" data-step="heirs">2. Herederos</button>
+    <button type="button" data-step="review">3. Revisión</button>
+    <button type="button" data-step="results">4. Resultados</button>
+  </nav>
+
+  <div class="card" data-step-container></div>
+
+  <div class="flow__footer">
+    <div class="flow__footer-actions">
+      <button type="button" class="btn" data-action="back">Atrás</button>
+      <button type="button" class="btn primary" data-action="next">Siguiente</button>
+      <button type="button" class="btn primary" data-action="calc">Calcular</button>
+    </div>
+  </div>
+`;
 
   stepContainer = root.querySelector('[data-step-container]');
   errorsBox = root.querySelector('[data-errors]');
   warningsBox = root.querySelector('[data-warnings]');
   errorBanner = root.querySelector('[data-error-banner]');
-  footer = root.querySelector('.flow-footer');
+  footer = root.querySelector('.flow__footer');
 
   root.addEventListener('input', onInput, true);
   root.addEventListener('change', onChange, true);
   root.addEventListener('click', onClick, true);
 
   renderStep(state.step);
+  updateStepper();
   updateFooterAndErrors();
   void loadRolesCatalog();
 }

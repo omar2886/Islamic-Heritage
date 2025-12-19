@@ -5,6 +5,12 @@ export function createInitialState() {
     deceased: { name: '', sex: 'M', notes: '' },
     estate: { value: '' },
     heirsCounts: {},
+    reached: {
+      decedent: true,
+      heirs: false,
+      review: false,
+      results: false,
+    },
     lastPayload: null,
     lastResponse: null,
     lastError: ''
