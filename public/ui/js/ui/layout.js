@@ -1,10 +1,86 @@
 import { UI_VERSION, UI_BUILD } from "../config.js";
 
-export function renderLayout(){
+function navLink(route, label, currentRoute){
+  const active = route === currentRoute;
+  const cls = active ? "btn nav-link is-active" : "btn nav-link";
+  const aria = active ? ' aria-current="page"' : "";
+  return `<a class="${cls}" href="#/${route}"${aria}>${label}</a>`;
+}
+
+function renderToasts(toasts){
+  if (!toasts || toasts.length === 0) return "";
+  const items = toasts.map((t) => `<div class="toast" role="status">${escapeHtml(t.message)}</div>`).join("");
+  return `<div class="toast-wrap">${items}</div>`;
+}
+
+function renderModal(modal){
+  if (!modal) return "";
+  const title = escapeHtml(modal.title || "Modal");
+  const body = escapeHtml(modal.body || "");
+  return `
+    <div class="modal-backdrop" role="dialog" aria-modal="true" aria-label="${title}">
+      <div class="modal card card-pad">
+        <div class="row" style="justify-content:space-between;">
+          <strong>${title}</strong>
+          <button class="btn" type="button" id="btn-modal-close" data-focus-key="modal-close">Cerrar</button>
+        </div>
+        <p style="color:var(--muted); margin:10px 0 0; line-height:1.4;">${body}</p>
+      </div>
+    </div>
+  `;
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+export function renderLayout(state, derived){
   const year = new Date().getFullYear();
+  const route = derived.route;
+
+  const mainHtml = (() => {
+    if (route === "wizard") return `
+      <section class="card card-pad hero">
+        <h1>Case Wizard</h1>
+        <p>Placeholder PR1. En este PR solo hay routing, store y persistencia.</p>
+        <hr class="hr" />
+        <div class="stack">
+          <span class="badge">Ruta: wizard</span>
+          <button class="btn" type="button" id="btn-toast" data-focus-key="btn-toast">Mostrar toast</button>
+        </div>
+      </section>
+    `;
+    if (route === "builder") return `
+      <section class="card card-pad hero">
+        <h1>Family Builder</h1>
+        <p>Placeholder PR1. No hay roles ni conteos todavía.</p>
+        <hr class="hr" />
+        <div class="stack">
+          <span class="badge">Ruta: builder</span>
+          <button class="btn" type="button" id="btn-toast" data-focus-key="btn-toast">Mostrar toast</button>
+        </div>
+      </section>
+    `;
+    return `
+      <section class="card card-pad hero">
+        <h1>Results Viewer</h1>
+        <p>Placeholder PR1. No hay cálculo ni API.</p>
+        <hr class="hr" />
+        <div class="stack">
+          <span class="badge">Ruta: results</span>
+          <button class="btn" type="button" id="btn-toast" data-focus-key="btn-toast">Mostrar toast</button>
+        </div>
+      </section>
+    `;
+  })();
 
   return `
-    <div class="shell">
+    <div class="shell" data-route="${route}">
       <header class="shell-header">
         <div class="container shell-header-inner">
           <div class="brand">
@@ -12,37 +88,29 @@ export function renderLayout(){
             <div class="brand-title">Islamic Heritage</div>
             <span class="badge">v ${UI_VERSION} ${UI_BUILD}</span>
           </div>
-          <button class="btn" type="button" id="btn-noop" title="Sin acción en PR0" disabled>
-            UI bootstrap
-          </button>
+          <nav class="nav">
+            ${navLink("wizard","Wizard",route)}
+            ${navLink("builder","Builder",route)}
+            ${navLink("results","Results",route)}
+            <button class="btn nav-link" type="button" id="btn-reset" data-focus-key="btn-reset">Reset</button>
+          </nav>
         </div>
       </header>
 
       <main class="shell-main">
         <div class="container">
-          <section class="card card-pad hero">
-            <h1>UI base instalada</h1>
-            <p>
-              Este es el esqueleto estático. En PR0 no hay wizard, no hay builder, no hay resultados y no hay llamadas a API.
-            </p>
-            <hr class="hr" />
-            <div class="stack">
-              <div class="row">
-                <span class="badge">ES modules</span>
-                <span class="badge">Sin framework</span>
-                <span class="badge">Sin build</span>
-              </div>
-              <p class="sr-only" id="status-msg">OK</p>
-            </div>
-          </section>
+          ${mainHtml}
         </div>
       </main>
 
       <footer class="shell-footer">
         <div class="container">
-          <div>© ${year} Islamic Heritage. UI PR0.</div>
+          <div>© ${year} Islamic Heritage. UI PR1.</div>
         </div>
       </footer>
+
+      ${renderToasts(state.ui.toasts)}
+      ${renderModal(state.ui.modal)}
     </div>
   `;
 }

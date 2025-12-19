@@ -28,3 +28,9 @@ PROHIBIDO
 - Tocar public/index.php o cualquier archivo del core/contrato
 - Añadir llamadas fetch o endpoints
 - Añadir librerías externas
+
+PR1: Store + router + persistencia
+- Routing por hash: #/wizard, #/builder, #/results
+- Persistencia en localStorage (heritage_ui_state_v1)
+- Reset borra storage y vuelve a wizard
+- Placeholders, sin API
