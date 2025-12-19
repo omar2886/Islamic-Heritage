@@ -1,0 +1,67 @@
+.shell{
+  display:flex;
+  min-height:100vh;
+  flex-direction:column;
+}
+
+.shell-header{
+  border-bottom:1px solid var(--border);
+  background:rgba(15,22,32,.75);
+  backdrop-filter: blur(10px);
+}
+
+.shell-header-inner{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 0;
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.brand-mark{
+  width:28px;
+  height:28px;
+  border-radius:10px;
+  background:linear-gradient(135deg, #2c7be5, #7aa7ff);
+  border:1px solid rgba(255,255,255,.1);
+}
+
+.brand-title{
+  font-weight:650;
+  letter-spacing:.2px;
+}
+
+.shell-main{
+  flex:1;
+  padding:18px 0;
+}
+
+.shell-footer{
+  border-top:1px solid var(--border);
+  padding:14px 0;
+  color:var(--muted);
+  font-size:13px;
+}
+
+.hero{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.hero h1{
+  margin:0;
+  font-size:22px;
+  letter-spacing:.2px;
+}
+
+.hero p{
+  margin:0;
+  color:var(--muted);
+  line-height:1.4;
+}
