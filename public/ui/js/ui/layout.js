@@ -1,4 +1,5 @@
 import { UI_VERSION, UI_BUILD } from "../config.js";
+import { renderWizard } from "../pages/wizard.js";
 
 function navLink(route, label, currentRoute){
   const active = route === currentRoute;
@@ -56,22 +57,11 @@ export function renderLayout(state, derived){
           ${boot.diff ? `<pre class="codebox">${escapeHtml(JSON.stringify(boot.diff, null, 2))}</pre>` : ""}
           <div class="row">
             <a class="btn" href="#/wizard">Ir a wizard</a>
-            <button class="btn" type="button" id="btn-reset" data-focus-key="btn-reset">Reset</button>
           </div>
         </div>
       </section>
     `;
-    if (route === "wizard") return `
-      <section class="card card-pad hero">
-        <h1>Case Wizard</h1>
-        <p>Placeholder PR1. En este PR solo hay routing, store y persistencia.</p>
-        <hr class="hr" />
-        <div class="stack">
-          <span class="badge">Ruta: wizard</span>
-          <button class="btn" type="button" id="btn-toast" data-focus-key="btn-toast">Mostrar toast</button>
-        </div>
-      </section>
-    `;
+    if (route === "wizard") return renderWizard(state, derived);
     if (route === "builder") return `
       <section class="card card-pad hero">
         <h1>Family Builder</h1>
@@ -127,7 +117,7 @@ export function renderLayout(state, derived){
 
       <footer class="shell-footer">
         <div class="container">
-          <div>© ${year} Islamic Heritage. UI PR1.</div>
+          <div>© ${year} Islamic Heritage. UI ${UI_BUILD}.</div>
         </div>
       </footer>
 
