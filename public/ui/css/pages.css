@@ -276,3 +276,163 @@ body[data-route="wizard"] {
     align-items: stretch;
   }
 }
+
+body[data-route="builder"] {
+  background-color: var(--ui-surface);
+  color: var(--ui-text);
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.builder-shell {
+  max-width: 1220px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+}
+
+.builder-hero {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  background: linear-gradient(145deg, #121826, #0b1120);
+  border: 1px solid var(--ui-border);
+  border-radius: 16px;
+  padding: 1.25rem;
+  box-shadow: 0 14px 50px rgba(0, 0, 0, 0.35);
+  margin-bottom: 1.25rem;
+}
+
+.builder-hero__title {
+  margin: 0 0 0.35rem;
+}
+
+.builder-hero__lead {
+  margin: 0;
+  color: var(--ui-muted);
+}
+
+.builder-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  gap: 1rem;
+}
+
+.builder-sections {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.builder-section {
+  border: 1px solid var(--ui-border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.75rem;
+}
+
+.builder-section.is-disabled {
+  opacity: 0.5;
+  filter: grayscale(1);
+}
+
+.builder-section__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.builder-section__title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.builder-section__actions {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.builder-section__body {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.builder-section.is-collapsed .builder-section__body {
+  display: none;
+}
+
+.builder-role {
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  background: rgba(255, 255, 255, 0.01);
+  display: grid;
+  gap: 0.4rem;
+}
+
+.builder-role__meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.builder-role__id {
+  color: var(--ui-muted);
+}
+
+.builder-sidebar {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.builder-preview details summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.builder-preview details summary::-webkit-details-marker {
+  display: none;
+}
+
+.builder-preview__meta {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.builder-empty {
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  border: 1px dashed var(--ui-border);
+  color: var(--ui-muted);
+}
+
+.builder-message {
+  margin: 0.25rem 0;
+}
+
+@media (max-width: 960px) {
+  .builder-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .builder-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .builder-section__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

@@ -102,6 +102,19 @@ function deriveWizard(baseWizard, defaults = {}) {
   };
 }
 
+const buildPayloadPreview = (selections = {}, enabledRoles = []) => {
+  const enabledSet = new Set(enabledRoles || []);
+  const heirs = Object.entries(selections || {})
+    .filter(([, count]) => Number.isFinite(count) && count > 0)
+    .filter(([roleId]) => enabledSet.size === 0 || enabledSet.has(roleId))
+    .map(([role, count]) => ({ role, count }))
+    .filter((entry) => entry.count > 0);
+
+  return {
+    heirs,
+  };
+};
+
 function deepEqual(a, b) {
   if (a === b) return true;
   if (Array.isArray(a) && Array.isArray(b)) {
@@ -154,6 +167,7 @@ export function deriveState(baseState, defaults = {}) {
     hardBlocks: derivedWizard.hardBlocks,
     disabledRoles: derivedWizard.disabledRoles,
     softWarnings: derivedWizard.softWarnings,
+    payloadPreview: buildPayloadPreview(wizard.selections, derivedWizard.enabledRoles),
   };
 
   return { ...trimmed, derived };
