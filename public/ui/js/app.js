@@ -6,19 +6,16 @@ import { captureFocus, restoreFocus } from "./ui/focus.js";
 import { pushToast } from "./ui/toast.js";
 import { closeModal } from "./ui/modal.js";
 
+import { fetchRoles } from "./api/client.js";
+import { EXPECTED_ROLES, diffRoles } from "./api/contract.js";
+
 const root = document.getElementById("app");
 const store = createStore();
 
-function render(){
-  const focusInfo = captureFocus();
+let lastFocus = { key: null };
+let bootAbort = null;
 
-  const state = store.getState();
-  const derived = store.getDerived();
-
-  mount(root, renderLayout(state, derived));
-
-  restoreFocus(state.ui.focus && state.ui.focus.key ? state.ui.focus : focusInfo);
-
+function wireUi(){
   const btnToast = document.getElementById("btn-toast");
   if (btnToast){
     btnToast.addEventListener("click", () => pushToast(store, "Toast OK"));
@@ -29,6 +26,7 @@ function render(){
     btnReset.addEventListener("click", () => {
       store.reset();
       location.hash = "#/wizard";
+      startBootCheck();
     });
   }
 
@@ -36,14 +34,57 @@ function render(){
   if (btnModalClose){
     btnModalClose.addEventListener("click", () => closeModal(store));
   }
+}
+
+function render(){
+  lastFocus = captureFocus();
+
+  const state = store.getState();
+  const derived = store.getDerived();
+
+  mount(root, renderLayout(state, derived));
+
+  restoreFocus(lastFocus);
+
+  wireUi();
+}
+
+async function startBootCheck(){
+  if (bootAbort) bootAbort.abort();
+  bootAbort = new AbortController();
 
   store.setState((s) => ({
     ...s,
-    ui: { ...s.ui, focus: focusInfo },
-  }), { persist: true });
+    boot: { ...s.boot, status: "checking", error: null, diff: null, rolesServer: null },
+  }), { persist: false });
+
+  const res = await fetchRoles({ signal: bootAbort.signal });
+
+  if (!res.ok){
+    store.setState((s) => ({
+      ...s,
+      boot: { ...s.boot, status: "blocked", error: res.error || "No se pudo cargar roles.php", diff: null, rolesServer: null },
+    }), { persist: false });
+    return;
+  }
+
+  const diff = diffRoles(EXPECTED_ROLES, res.roles);
+  if (!diff.ok){
+    store.setState((s) => ({
+      ...s,
+      boot: { ...s.boot, status: "blocked", error: "Roles mismatch entre UI y servidor", diff, rolesServer: res.roles },
+    }), { persist: false });
+    return;
+  }
+
+  store.setState((s) => ({
+    ...s,
+    boot: { ...s.boot, status: "ready", error: null, diff: null, rolesServer: res.roles },
+  }), { persist: false });
 }
 
 store.subscribe(() => render());
 
 initRouter(store);
 render();
+startBootCheck();
