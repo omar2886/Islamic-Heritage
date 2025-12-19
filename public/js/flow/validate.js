@@ -17,14 +17,14 @@ export function validateState(state, rolesCatalog = []) {
   });
 
   if (sex === 'M') {
-    if (counts.wife > 4) errors.push('wife excede el máximo permitido (4)');
     if ((counts.husband ?? 0) !== 0) errors.push('husband no es válido para causante masculino');
   }
   if (sex === 'F') {
-    if (counts.husband > 1) errors.push('husband excede el máximo permitido (1)');
     if ((counts.wife ?? 0) !== 0) errors.push('wife no es válida para causante femenina');
   }
 
+  if (counts.wife > 4) errors.push('wife excede el máximo permitido (4)');
+  if (counts.husband > 1) errors.push('husband excede el máximo permitido (1)');
   if (counts.father > 1) errors.push('father excede el máximo permitido (1)');
   if (counts.mother > 1) errors.push('mother excede el máximo permitido (1)');
 

@@ -12,7 +12,7 @@ import { loadState, saveState, resetState as clearStorage } from './storage.js';
 import { validateState } from './validate.js';
 import { buildPayload } from './payload.js';
 import { getRoles, postCalc } from './api.js';
-import { ROLE_GROUPS, ROLE_LABELS } from './roles_meta.js';
+import { ROLE_LABELS } from './roles_meta.js';
 import { exportJson } from './export.js';
 
 const STEP_ORDER = ['decedent', 'heirs', 'review', 'results'];
@@ -75,7 +75,7 @@ function applyRoleFilter(query) {
 }
 
 function setState(next, { render = true } = {}) {
-  const normalized = withStateDefaults(next);
+  const normalized = withStateDefaults(normalizeSpouseCounts(next));
   state = normalized;
   validation = validateState(state, rolesCatalog);
   if (rolesWarning) {
@@ -111,6 +111,38 @@ function clampRoleCount(role, raw, sex) {
   const max = getRoleMax(role, sex);
   if (Number.isFinite(max)) n = Math.min(n, max);
   return n;
+}
+
+function normalizeSpouseCounts(current) {
+  const sex = current?.deceased?.sex;
+  const counts = { ...(current.heirsCounts || {}) };
+  if (sex === 'M') {
+    counts.husband = 0;
+    counts.wife = clampRoleCount('wife', counts.wife, sex);
+  } else if (sex === 'F') {
+    counts.wife = 0;
+    counts.husband = clampRoleCount('husband', counts.husband, sex);
+  }
+  return { ...current, heirsCounts: counts };
+}
+
+function roleRow(role, label, hint, max) {
+  const v = Number(state.heirsCounts?.[role] || 0);
+  const mAttr = Number.isFinite(max) ? `max=\"${max}\"` : '';
+  return `
+    <div class=\"row\" style=\"align-items:center; gap:.75rem; justify-content:space-between;\">
+      <div>
+        <strong>${label}</strong>
+        ${hint ? `<div class=\"muted\" style=\"margin-top:.15rem\">${hint}</div>` : ``}
+      </div>
+      <div class=\"row\" style=\"gap:.5rem; align-items:center;\">
+        <button type=\"button\" class=\"btn\" data-action=\"dec\" data-role=\"${role}\">−</button>
+        <input class=\"input\" type=\"number\" inputmode=\"numeric\" min=\"0\" ${mAttr}
+          value=\"${v}\" data-role=\"${role}\" style=\"width:96px; text-align:center;\">
+        <button type=\"button\" class=\"btn\" data-action=\"inc\" data-role=\"${role}\">+</button>
+      </div>
+    </div>
+  `;
 }
 
 function updateStepper() {
@@ -189,9 +221,9 @@ function updateFooterAndErrors() {
 
 function syncSingleRoleRow(role) {
   if (!stepContainer) return;
-  const row = stepContainer.querySelector(`[data-role-row="${role}"] input[data-role="${role}"]`);
-  if (row) {
-    row.value = state.heirsCounts[role] ?? 0;
+  const input = stepContainer.querySelector(`input[data-role="${role}"]`);
+  if (input) {
+    input.value = state.heirsCounts[role] ?? 0;
   }
 }
 
@@ -222,48 +254,74 @@ function renderDecedent() {
   `;
 }
 
-function renderRoleRow(role) {
-  const count = state.heirsCounts[role] ?? 0;
-  const label = getRoleLabel(role);
-  return `
-    <div class="role-row" data-role-row="${role}">
-      <div class="role-label">${label}</div>
-      <div class="role-controls">
-        <button type="button" class="btn ghost" data-action="dec" data-role="${role}">−</button>
-        <input type="number" min="0" step="1" name="role-${role}" data-role="${role}" value="${count}" />
-        <button type="button" class="btn ghost" data-action="inc" data-role="${role}">+</button>
-      </div>
-    </div>
-  `;
-}
-
 function renderHeirs() {
-  const sex = state.deceased.sex;
-  const groupsHtml = ROLE_GROUPS.map((group) => {
-    let roles = group.roles;
-    if (group.id === 'spouse') {
-      roles = sex === 'M' ? ['wife'] : ['husband'];
-    }
-    if (!roles || roles.length === 0) return '';
-    const rows = roles.map((role) => renderRoleRow(role)).join('');
-    return `
-      <section class="card" data-group="${group.id}">
-        <details open>
-          <summary>${group.title}</summary>
-          <div class="role-rows">${rows}</div>
+  const spouseCard = state.deceased.sex === 'M'
+    ? roleRow('wife', getRoleLabel('wife'), 'Máximo 4 esposas', 4)
+    : roleRow('husband', getRoleLabel('husband'), 'Máximo 1 esposo', 1);
+
+  const descendants = [
+    roleRow('son', getRoleLabel('son'), 'Incluye todos los hijos'),
+    roleRow('daughter', getRoleLabel('daughter'), 'Incluye todas las hijas'),
+    roleRow('sons_son', getRoleLabel('sons_son'), 'Nietos por hijo'),
+    roleRow('sons_daughter', getRoleLabel('sons_daughter'), 'Nietas por hijo')
+  ].join('');
+
+  const ascendants = [
+    roleRow('father', getRoleLabel('father'), '', 1),
+    roleRow('mother', getRoleLabel('mother'), '', 1),
+    roleRow('paternal_grandfather', getRoleLabel('paternal_grandfather')),
+    roleRow('paternal_grandmother', getRoleLabel('paternal_grandmother')),
+    roleRow('maternal_grandmother', getRoleLabel('maternal_grandmother'))
+  ].join('');
+
+  const siblings = [
+    roleRow('full_brother', getRoleLabel('full_brother')),
+    roleRow('full_sister', getRoleLabel('full_sister')),
+    roleRow('consanguine_brother', getRoleLabel('consanguine_brother')),
+    roleRow('consanguine_sister', getRoleLabel('consanguine_sister')),
+    roleRow('uterine_brother', getRoleLabel('uterine_brother')),
+    roleRow('uterine_sister', getRoleLabel('uterine_sister'))
+  ].join('');
+
+  const others = [
+    roleRow('paternal_uncle', getRoleLabel('paternal_uncle')),
+    roleRow('paternal_uncle_son', getRoleLabel('paternal_uncle_son')),
+    roleRow('maternal_uncle', getRoleLabel('maternal_uncle')),
+    roleRow('maternal_uncle_son', getRoleLabel('maternal_uncle_son'))
+  ].join('');
+
+  return `
+    <div class="muted" style="margin-bottom:.75rem">
+      <p style="margin:0">Introduce conteos.</p>
+      <p style="margin:.15rem 0 0 0">Si un pariente existe pero queda bloqueado por otros, el motor lo indicará en resultados.</p>
+    </div>
+    <div class="stack" style="gap:.75rem">
+      <section class="card">
+        <h3 style="margin-top:0">Cónyuge</h3>
+        <div class="stack" style="gap:.75rem">${spouseCard}</div>
+      </section>
+      <section class="card">
+        <h3 style="margin-top:0">Descendientes</h3>
+        <div class="stack" style="gap:.75rem">${descendants}</div>
+      </section>
+
+      <section class="card">
+        <h3 style="margin-top:0">Ascendientes</h3>
+        <div class="stack" style="gap:.75rem">${ascendants}</div>
+      </section>
+
+      <section class="card">
+        <h3 style="margin-top:0">Hermanos/as</h3>
+        <div class="stack" style="gap:.75rem">${siblings}</div>
+      </section>
+
+      <section class="card">
+        <details>
+          <summary><strong>Otros (tíos, primos, etc.)</strong></summary>
+          <div class="stack" style="gap:.75rem; margin-top:.75rem">${others}</div>
         </details>
       </section>
-    `;
-  }).join('');
-
-  return `
-    <div class="form-grid">
-      <label class="field">
-        <span class="field__label">Buscar rol</span>
-        <input type="text" data-filter="roles" name="roles-filter" placeholder="Buscar rol…" />
-      </label>
     </div>
-    <div class="heirs">${groupsHtml}</div>
   `;
 }
 
@@ -411,7 +469,8 @@ function onChange(event) {
 
   const deceasedKey = target.dataset?.deceased;
   if (deceasedKey === 'sex') {
-    const next = setDeceasedField(state, 'sex', target.value);
+    let next = setDeceasedField(state, 'sex', target.value);
+    next = normalizeSpouseCounts(next);
     setState(next, { render: false });
     const shouldRenderHeirs = state.step === 'heirs';
     renderStep(shouldRenderHeirs ? 'heirs' : state.step);
@@ -425,6 +484,7 @@ function nextStep(direction) {
 }
 
 async function handleCalc() {
+  setState(normalizeSpouseCounts(state), { render: false });
   validation = validateState(state, rolesCatalog);
   if (validation.errors.length) {
     state = setLastError(state, validation.errors.join('; '));
