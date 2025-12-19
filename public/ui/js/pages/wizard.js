@@ -177,7 +177,16 @@ export function wireWizard(store){
       const value = el.value === "female" ? "female" : "male";
       store.setState((s) => ({
         ...s,
-        wizard: { ...s.wizard, deceased_sex: value },
+        wizard: {
+          ...s.wizard,
+          deceased_sex: value,
+          spouse: {
+            ...s.wizard.spouse,
+            enabled: s.wizard.spouse.enabled,
+            wives_count: value === "female" ? 0 : (s.wizard.spouse.enabled ? s.wizard.spouse.wives_count : 0),
+            husband_present: value === "male" ? false : (s.wizard.spouse.enabled ? s.wizard.spouse.husband_present : false),
+          },
+        },
       }));
     });
   });
