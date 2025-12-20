@@ -101,27 +101,25 @@ export function renderWizard(state){
             <h2 style="margin:0;">Patrimonio</h2>
             <div class="wizard-fields">
               <label class="stack">
-                <span>Valor de la herencia (opcional)</span>
+                <span>Patrimonio (opcional)</span>
                 <input
                   class="input"
                   id="wizard-estate-value"
                   type="text"
                   inputmode="decimal"
-                  placeholder="Ej: 250000 o 250000.50"
-                  value="${wizard.estate?.value ?? ""}"
+                  placeholder="Ej. 100000"
+                  value="${wizard.estate_value ?? ""}"
                 />
-                <p class="wizard-hint">Si se indica un valor, el cálculo mostrará importes por heredero. Se acepta coma o punto decimal.</p>
               </label>
-
               <label class="stack">
-                <span>Moneda (3 letras, opcional)</span>
+                <span>Moneda (3 letras)</span>
                 <input
                   class="input"
-                  id="wizard-estate-currency"
+                  id="wizard-currency"
                   type="text"
                   maxlength="3"
                   placeholder="MAD"
-                  value="${wizard.estate?.currency ?? "MAD"}"
+                  value="${wizard.currency ?? "MAD"}"
                   list="currency-list"
                 />
                 <datalist id="currency-list">
@@ -130,9 +128,9 @@ export function renderWizard(state){
                   <option value="USD"></option>
                   <option value="SAR"></option>
                 </datalist>
-                <p class="wizard-hint">Código ISO 4217. Si lo dejas vacío y envías un valor, el backend aplicará su moneda por defecto.</p>
               </label>
             </div>
+            <p class="wizard-hint">Opcional. Si se indica, el resultado incluirá importes.</p>
           </div>
 
           <div class="card card-pad stack">
@@ -182,6 +180,20 @@ export function renderWizard(state){
               </label>
             </div>
           </div>
+
+          <div class="card card-pad stack">
+            <h2 style="margin:0;">Opciones de salida</h2>
+            <div class="stack">
+              <label class="row" style="gap:8px; align-items:center;">
+                <input type="checkbox" id="wizard-flag-audit" ${wizard.flags?.audit !== false ? "checked" : ""} />
+                <span>Audit</span>
+              </label>
+              <label class="row" style="gap:8px; align-items:center;">
+                <input type="checkbox" id="wizard-flag-explain" ${wizard.flags?.explain !== false ? "checked" : ""} />
+                <span>Explain</span>
+              </label>
+            </div>
+          </div>
         </div>
 
         <div class="stack">
@@ -194,8 +206,8 @@ export function renderWizard(state){
               <li>Nietos por hijo: ${formatDesc(wizard.descendants.sons_son, "nieto", "nietos")} · ${formatDesc(wizard.descendants.sons_daughter, "nieta", "nietas")}</li>
               <li>Padre: ${wizard.parents.father ? "vivo" : "ausente"} · Madre: ${wizard.parents.mother ? "viva" : "ausente"}</li>
               <li>Patrimonio: ${
-                (wizard.estate?.value && String(wizard.estate.value).trim())
-                  ? `${String(wizard.estate.value).trim()} ${(wizard.estate?.currency || "").trim() ? String(wizard.estate.currency).trim().toUpperCase() : ""}`.trim()
+                (wizard.estate_value && String(wizard.estate_value).trim())
+                  ? `${String(wizard.estate_value).trim()} ${(wizard.currency || "").trim() ? String(wizard.currency).trim().toUpperCase() : ""}`.trim()
                   : "no definido"
               }</li>
             </ul>
@@ -242,27 +254,54 @@ export function wireWizard(store){
         ...s,
         wizard: {
           ...s.wizard,
-          estate: {
-            ...(s.wizard.estate || { value: "", currency: "MAD" }),
-            value: raw,
+          estate_value: raw,
+        },
+      }));
+    });
+  }
+
+  const currencyEl = document.getElementById("wizard-currency");
+  if (currencyEl){
+    currencyEl.addEventListener("input", (ev) => {
+      const raw = String(ev.target.value ?? "");
+      const upper = raw.toUpperCase();
+      ev.target.value = upper;
+      store.setState((s) => ({
+        ...s,
+        wizard: {
+          ...s.wizard,
+          currency: upper,
+        },
+      }));
+    });
+  }
+
+  const flagAudit = document.getElementById("wizard-flag-audit");
+  if (flagAudit){
+    flagAudit.addEventListener("change", (ev) => {
+      store.setState((s) => ({
+        ...s,
+        wizard: {
+          ...s.wizard,
+          flags: {
+            ...(s.wizard.flags || {}),
+            audit: ev.target.checked,
           },
         },
       }));
     });
   }
 
-  const estateCurrencyEl = document.getElementById("wizard-estate-currency");
-  if (estateCurrencyEl){
-    estateCurrencyEl.addEventListener("input", (ev) => {
-      const raw = String(ev.target.value ?? "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
-      ev.target.value = raw;
+  const flagExplain = document.getElementById("wizard-flag-explain");
+  if (flagExplain){
+    flagExplain.addEventListener("change", (ev) => {
       store.setState((s) => ({
         ...s,
         wizard: {
           ...s.wizard,
-          estate: {
-            ...(s.wizard.estate || { value: "", currency: "MAD" }),
-            currency: raw,
+          flags: {
+            ...(s.wizard.flags || {}),
+            explain: ev.target.checked,
           },
         },
       }));
