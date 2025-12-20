@@ -10,52 +10,58 @@ function cloneHeirs(list){
     .filter((item) => item.role && item.count !== null);
 }
 
-function normalizeEstateValue(raw){
-  if (raw === null || raw === undefined) return null;
-  let s = String(raw).trim();
-  if (!s) return null;
+function normalizeEstateValue(input){
+  const raw = String(input ?? "").trim();
+  if (raw === "") return { value: null, error: null };
 
-  // remove spaces
-  s = s.replace(/\s+/g, "");
-
-  // If both separators exist, assume comma is thousands separator and remove it.
-  if (s.includes(".") && s.includes(",")){
-    s = s.replace(/,/g, "");
-  } else if (!s.includes(".") && s.includes(",")){
-    // If only comma exists, treat it as decimal separator.
-    s = s.replace(/,/g, ".");
+  let normalized = raw;
+  if (!normalized.includes(".") && normalized.includes(",")){
+    normalized = normalized.replace(/,/g, ".");
   }
 
-  return s;
+  if (!/^[0-9]{1,18}(\.[0-9]{1,6})?$/.test(normalized)){
+    return { value: null, error: "Patrimonio inválido. Usa un número con hasta 6 decimales." };
+  }
+
+  return { value: normalized, error: null };
 }
 
-function normalizeCurrency(raw){
-  if (raw === null || raw === undefined) return null;
-  const s = String(raw).trim().toUpperCase();
-  if (!s) return null;
-  return /^[A-Z]{3}$/.test(s) ? s : null;
+function normalizeCurrency(input){
+  const raw = String(input ?? "").trim().toUpperCase();
+  if (raw === "") return { value: null, error: null };
+  if (!/^[A-Z]{3}$/.test(raw)){
+    return { value: null, error: "Moneda inválida. Usa 3 letras, ej. MAD, EUR, USD." };
+  }
+  return { value: raw, error: null };
 }
 
 export function buildCalcPayload(state){
   const preview = state?.builder?.payloadPreview;
-  if (!preview || !Array.isArray(preview.heirs)) return null;
+  if (!preview || !Array.isArray(preview.heirs)) return { ok: false, error: "Completa builder primero" };
 
   const heirs = cloneHeirs(preview.heirs);
-  if (!heirs.length) return null;
+  if (!heirs.length) return { ok: false, error: "Agrega al menos un heredero" };
+
+  const estateResult = normalizeEstateValue(state?.wizard?.estate_value);
+  if (estateResult.error) return { ok: false, error: estateResult.error };
+
+  const currencyResult = normalizeCurrency(state?.wizard?.currency);
+  if (currencyResult.error) return { ok: false, error: currencyResult.error };
+
+  const wizardFlags = state?.wizard?.flags || {};
+  const audit = typeof wizardFlags.audit === "boolean" ? wizardFlags.audit : true;
+  const explain = typeof wizardFlags.explain === "boolean" ? wizardFlags.explain : true;
+  if (!audit && !explain){
+    return { ok: false, error: "Activa Audit o Explain, al menos uno." };
+  }
 
   const payload = { heirs };
 
-  const estateRaw = state?.wizard?.estate?.value ?? null;
-  const currencyRaw = state?.wizard?.estate?.currency ?? null;
-
-  const estateValue = normalizeEstateValue(estateRaw);
-  const currency = normalizeCurrency(currencyRaw);
-
-  if (estateValue){
-    payload.estate_value = estateValue;
+  if (estateResult.value !== null){
+    payload.estate_value = estateResult.value;
   }
-  if (currency){
-    payload.currency = currency;
+  if (currencyResult.value !== null){
+    payload.currency = currencyResult.value;
   }
 
   const sex = state?.wizard?.deceased_sex === "male" || state?.wizard?.deceased_sex === "female"
@@ -67,22 +73,25 @@ export function buildCalcPayload(state){
     source: "ui-vanilla",
   };
 
-  payload.cli_flags = ["--audit", "--explain"];
+  const cliFlags = [];
+  if (audit) cliFlags.push("--audit");
+  if (explain) cliFlags.push("--explain");
+  payload.cli_flags = cliFlags;
 
-  return payload;
+  return { ok: true, payload };
 }
 
 export async function runCalc(store){
   const startedAt = Date.now();
-  const payload = buildCalcPayload(store.getState());
+  const built = buildCalcPayload(store.getState());
 
-  if (!payload){
+  if (!built.ok){
     store.setState((s) => ({
       ...s,
       results: {
         ...s.results,
         status: "error",
-        error: "Completa builder primero",
+        error: built.error || "Completa builder primero",
         response: null,
         lastRunAt: startedAt,
       },
@@ -101,7 +110,7 @@ export async function runCalc(store){
     },
   }));
 
-  const res = await postCalc(payload);
+  const res = await postCalc(built.payload);
   const finishedAt = Date.now();
 
   if (res.ok){

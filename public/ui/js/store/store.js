@@ -35,9 +35,11 @@ function clampRoleCount(role, value){
 function makeDefaultWizard(){
   return {
     deceased_sex: null,
-    estate: {
-      value: "",
-      currency: "MAD",
+    estate_value: "",
+    currency: "MAD",
+    flags: {
+      audit: true,
+      explain: true,
     },
     spouse: {
       enabled: false,
@@ -132,16 +134,20 @@ function sanitize(candidate){
   };
 
   const wizard = safe?.wizard && typeof safe.wizard === "object" ? safe.wizard : {};
-  const estate = wizard.estate && typeof wizard.estate === "object" ? wizard.estate : {};
+  const legacyEstate = wizard.estate && typeof wizard.estate === "object" ? wizard.estate : {};
   let estateValue = "";
-  if (typeof estate.value === "string") estateValue = estate.value;
-  else if (typeof estate.value === "number" && Number.isFinite(estate.value)) estateValue = String(estate.value);
-  estateValue = String(estateValue || "").trim();
+  if (typeof wizard.estate_value === "string") estateValue = wizard.estate_value;
+  else if (typeof legacyEstate.value === "string") estateValue = legacyEstate.value;
+  else if (typeof legacyEstate.value === "number" && Number.isFinite(legacyEstate.value)) estateValue = String(legacyEstate.value);
 
-  let currency = "";
-  if (typeof estate.currency === "string") currency = estate.currency;
-  currency = String(currency || "").trim().toUpperCase();
-  if (currency !== "" && !/^[A-Z]{3}$/.test(currency)) currency = "MAD";
+  let currency = "MAD";
+  if (typeof wizard.currency === "string") currency = wizard.currency;
+  else if (typeof legacyEstate.currency === "string") currency = legacyEstate.currency;
+
+  const wizardFlags = wizard.flags && typeof wizard.flags === "object" ? wizard.flags : {};
+  const audit = typeof wizardFlags.audit === "boolean" ? wizardFlags.audit : true;
+  const explain = typeof wizardFlags.explain === "boolean" ? wizardFlags.explain : true;
+
   const deceasedSex = wizard.deceased_sex === "male" || wizard.deceased_sex === "female" ? wizard.deceased_sex : null;
   const spouse = wizard.spouse && typeof wizard.spouse === "object" ? wizard.spouse : {};
   const spouseEnabled = spouse.enabled === true;
@@ -159,9 +165,11 @@ function sanitize(candidate){
 
   out.wizard = {
     deceased_sex: deceasedSex,
-    estate: {
-      value: estateValue,
-      currency,
+    estate_value: typeof estateValue === "string" ? estateValue : "",
+    currency: typeof currency === "string" ? currency : "MAD",
+    flags: {
+      audit,
+      explain,
     },
     spouse: {
       enabled: spouseEnabled,
