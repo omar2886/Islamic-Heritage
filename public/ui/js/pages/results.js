@@ -395,6 +395,7 @@ function collectGuardList(source, key){
     source?.[key],
     source?.audit?.[key],
     source?.trace?.[key],
+    source?.traces?.[key],
   ];
   const merged = [];
   buckets.forEach((bucket) => {
@@ -452,6 +453,12 @@ function collectBlocksApplied(source){
     }
     return String(x);
   }).filter(Boolean);
+}
+
+function collectAssertionsFailed(source){
+  if (!source || typeof source !== "object") return [];
+  const bucket = source?.meta?.assertions_failed;
+  return normalizeListEntries(bucket);
 }
 
 function renderExplainSteps(source){
@@ -552,6 +559,7 @@ export function renderResults(state){
   const blocksList = collectGuardList(source, "blocks");
   const invariantsList = collectInvariants(source);
   const blocksAppliedList = collectBlocksApplied(source);
+  const assertionsFailedList = collectAssertionsFailed(source);
 
   // FIX: usar explainData (output OR response)
   const explainBlock = renderExplainSteps(explainData);
@@ -607,8 +615,9 @@ export function renderResults(state){
                 ${response ? `<pre class="codebox">${escapeHtml(JSON.stringify(response, null, 2))}</pre>` : ""}
               </div>
             `}
-            ${renderGuardSection("Invariants", invariantsList)}
+            ${renderGuardSection("Invariantes", invariantsList)}
             ${renderGuardSection("Bloqueos aplicados", blocksAppliedList)}
+            ${renderGuardSection("Asserciones fallidas", assertionsFailedList)}
             ${explainBlock}
             ${renderGuardSection("Exclusiones", exclusionsList)}
             ${renderGuardSection("Bloqueos", blocksList)}
