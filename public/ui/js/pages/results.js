@@ -389,12 +389,12 @@ function normalizeListEntries(list){
   }).filter((item) => typeof item === "string" && item.trim().length);
 }
 
-function collectGuardList(output, key){
-  if (!output || typeof output !== "object") return [];
+function collectGuardList(source, key){
+  if (!source || typeof source !== "object") return [];
   const buckets = [
-    output?.[key],
-    output?.audit?.[key],
-    output?.trace?.[key],
+    source?.[key],
+    source?.audit?.[key],
+    source?.trace?.[key],
   ];
   const merged = [];
   buckets.forEach((bucket) => {
@@ -404,9 +404,9 @@ function collectGuardList(output, key){
   return merged;
 }
 
-function collectInvariants(output){
-  if (!output || typeof output !== "object") return [];
-  const inv = output.invariants;
+function collectInvariants(source){
+  if (!source || typeof source !== "object") return [];
+  const inv = source.invariants;
 
   if (!inv) return [];
 
@@ -431,9 +431,9 @@ function collectInvariants(output){
   return [String(inv)];
 }
 
-function collectBlocksApplied(output){
-  if (!output || typeof output !== "object") return [];
-  const arr = output?.audit?.blocks_applied;
+function collectBlocksApplied(source){
+  if (!source || typeof source !== "object") return [];
+  const arr = source?.audit?.blocks_applied;
 
   if (!arr) return [];
   if (!Array.isArray(arr)) return [String(arr)];
@@ -454,7 +454,8 @@ function collectBlocksApplied(output){
   }).filter(Boolean);
 }
 
-function renderExplainSteps(explain){
+function renderExplainSteps(source){
+  const explain = source && typeof source === "object" ? source : null;
   const steps = explain && typeof explain === "object" ? explain.steps : null;
   if (!Array.isArray(steps) || !steps.length) return "";
 
@@ -531,22 +532,30 @@ export function renderResults(state){
   const builderReady = Boolean(state.builder?.payloadPreview);
   const response = results.response && typeof results.response === "object" ? results.response : null;
   const normalized = response ? normalizeCalcResponse(response) : null;
+
   const shareRows = results.status === "ok" && builderReady ? normalized?.sharesByRole || [] : [];
-  const output = normalized?.output || null;
-  const auditBlock = output?.audit || response?.audit || null;
-  const traceBlock = output?.trace || output?.traces || response?.trace || response?.traces || null;
-  const explainData = output?.explain || response?.explain || null;
+  const output = normalized?.output && typeof normalized.output === "object" ? normalized.output : null;
+
+  // Fuente única para diagnósticos: a veces vienen en output, a veces en raíz.
+  const source = output || response;
+
+  const auditBlock = source?.audit || null;
+  const traceBlock = source?.trace || source?.traces || null;
+  const explainData = source?.explain || null;
   const errorsList = normalized?.errors || [];
   const warningsList = normalized?.warnings || [];
   const rawResponseError = response && typeof response.error === "string" ? response.error : null;
   const hasAmounts = Boolean(normalized?.hasAmounts);
   const estateValue = normalized?.estateValue ?? null;
   const currency = normalized?.currency ?? null;
-  const exclusionsList = collectGuardList(output, "exclusions");
-  const blocksList = collectGuardList(output, "blocks");
-  const invariantsList = collectInvariants(output);
-  const blocksAppliedList = collectBlocksApplied(output);
-  const explainBlock = renderExplainSteps(output?.explain);
+  const exclusionsList = collectGuardList(source, "exclusions");
+  const blocksList = collectGuardList(source, "blocks");
+  const invariantsList = collectInvariants(source);
+  const blocksAppliedList = collectBlocksApplied(source);
+
+  // FIX: usar explainData (output OR response)
+  const explainBlock = renderExplainSteps(explainData);
+  const explainDetails = explainBlock ? "" : renderJsonDetails("Explain", explainData || null);
 
   const statusBadge = results.status === "running" ? `<span class="badge">Calculando...</span>` : "";
 
@@ -598,7 +607,7 @@ export function renderResults(state){
                 ${response ? `<pre class="codebox">${escapeHtml(JSON.stringify(response, null, 2))}</pre>` : ""}
               </div>
             `}
-            ${renderGuardSection("Invariantes", invariantsList)}
+            ${renderGuardSection("Invariants", invariantsList)}
             ${renderGuardSection("Bloqueos aplicados", blocksAppliedList)}
             ${explainBlock}
             ${renderGuardSection("Exclusiones", exclusionsList)}
@@ -606,7 +615,7 @@ export function renderResults(state){
             ${renderJsonDetails("JSON completo", normalized?.raw)}
             ${renderJsonDetails("Audit", auditBlock || null)}
             ${renderJsonDetails("Trace", traceBlock || null)}
-            ${renderJsonDetails("Explain", explainData || null)}
+            ${explainDetails}
           </section>
         ` : `
           <section class="card card-pad stack">
