@@ -404,6 +404,103 @@ function collectGuardList(output, key){
   return merged;
 }
 
+function collectInvariants(output){
+  if (!output || typeof output !== "object") return [];
+  const inv = output.invariants;
+
+  if (!inv) return [];
+
+  // Caso A: objeto { key: boolean|string|number }
+  if (typeof inv === "object" && !Array.isArray(inv)){
+    return Object.entries(inv).map(([k, v]) => {
+      const val = (v === true) ? "true" : (v === false) ? "false" : String(v);
+      return `${k}: ${val}`;
+    });
+  }
+
+  // Caso B: array
+  if (Array.isArray(inv)){
+    return inv.map((x) => {
+      if (x === null || x === undefined) return null;
+      if (typeof x === "string" && x.trim()) return x.trim();
+      try { return JSON.stringify(x); } catch (e) { return String(x); }
+    }).filter(Boolean);
+  }
+
+  // Caso C: scalar
+  return [String(inv)];
+}
+
+function collectBlocksApplied(output){
+  if (!output || typeof output !== "object") return [];
+  const arr = output?.audit?.blocks_applied;
+
+  if (!arr) return [];
+  if (!Array.isArray(arr)) return [String(arr)];
+
+  return arr.map((x) => {
+    if (x === null || x === undefined) return null;
+    if (typeof x === "string" && x.trim()) return x.trim();
+    if (typeof x === "object"){
+      // Prioriza fields comunes si existen
+      const code = typeof x.code === "string" ? x.code.trim() : "";
+      const msg = typeof x.message === "string" ? x.message.trim() : "";
+      if (code && msg) return `${code}: ${msg}`;
+      if (code) return code;
+      if (msg) return msg;
+      try { return JSON.stringify(x); } catch (e) { return null; }
+    }
+    return String(x);
+  }).filter(Boolean);
+}
+
+function renderExplainSteps(explain){
+  const steps = explain && typeof explain === "object" ? explain.steps : null;
+  if (!Array.isArray(steps) || !steps.length) return "";
+
+  const rows = steps.map((st, idx) => {
+    const stage = st && typeof st.stage === "string" ? st.stage : "";
+    const rule  = st && typeof st.rule === "string" ? st.rule : "";
+    const note  = st && typeof st.note === "string" ? st.note : "";
+
+    const changesObj = st && typeof st.changes === "object" && st.changes ? st.changes : null;
+    const changes = changesObj && !Array.isArray(changesObj) ? Object.entries(changesObj) : [];
+    const changesHtml = changes.length ? `
+      <ul class="wizard-list" style="margin-top:6px;">
+        ${changes.map(([k, v]) => {
+          const before = v && typeof v === "object" && v.before !== undefined ? String(v.before) : "";
+          const after  = v && typeof v === "object" && v.after  !== undefined ? String(v.after)  : "";
+          const line = (before || after) ? `${k}: ${before} -> ${after}` : `${k}: ${formatCell(v)}`;
+          return `<li>${formatCell(line)}</li>`;
+        }).join("")}
+      </ul>
+    ` : "";
+
+    return `
+      <li>
+        <div class="row" style="justify-content:space-between; gap:10px; flex-wrap:wrap;">
+          <strong>${escapeHtml(stage || `STEP ${idx + 1}`)}</strong>
+          <span class="badge">${escapeHtml(rule || "")}</span>
+        </div>
+        ${note ? `<div class="wizard-hint" style="margin-top:6px;">${escapeHtml(note)}</div>` : ""}
+        ${changesHtml}
+      </li>
+    `;
+  }).join("");
+
+  return `
+    <section class="card card-pad stack">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <strong>Explicación</strong>
+        <span class="badge">${steps.length}</span>
+      </div>
+      <ul class="wizard-list">
+        ${rows}
+      </ul>
+    </section>
+  `;
+}
+
 function renderGuardSection(title, items){
   if (!items || !items.length) return "";
   return `
@@ -438,7 +535,7 @@ export function renderResults(state){
   const output = normalized?.output || null;
   const auditBlock = output?.audit || response?.audit || null;
   const traceBlock = output?.trace || output?.traces || response?.trace || response?.traces || null;
-  const explainBlock = output?.explain || response?.explain || null;
+  const explainData = output?.explain || response?.explain || null;
   const errorsList = normalized?.errors || [];
   const warningsList = normalized?.warnings || [];
   const rawResponseError = response && typeof response.error === "string" ? response.error : null;
@@ -447,6 +544,9 @@ export function renderResults(state){
   const currency = normalized?.currency ?? null;
   const exclusionsList = collectGuardList(output, "exclusions");
   const blocksList = collectGuardList(output, "blocks");
+  const invariantsList = collectInvariants(output);
+  const blocksAppliedList = collectBlocksApplied(output);
+  const explainBlock = renderExplainSteps(output?.explain);
 
   const statusBadge = results.status === "running" ? `<span class="badge">Calculando...</span>` : "";
 
@@ -498,12 +598,15 @@ export function renderResults(state){
                 ${response ? `<pre class="codebox">${escapeHtml(JSON.stringify(response, null, 2))}</pre>` : ""}
               </div>
             `}
+            ${renderGuardSection("Invariantes", invariantsList)}
+            ${renderGuardSection("Bloqueos aplicados", blocksAppliedList)}
+            ${explainBlock}
             ${renderGuardSection("Exclusiones", exclusionsList)}
             ${renderGuardSection("Bloqueos", blocksList)}
             ${renderJsonDetails("JSON completo", normalized?.raw)}
             ${renderJsonDetails("Audit", auditBlock || null)}
             ${renderJsonDetails("Trace", traceBlock || null)}
-            ${renderJsonDetails("Explain", explainBlock || null)}
+            ${renderJsonDetails("Explain", explainData || null)}
           </section>
         ` : `
           <section class="card card-pad stack">
