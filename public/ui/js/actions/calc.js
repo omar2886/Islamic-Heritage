@@ -11,19 +11,25 @@ function cloneHeirs(list){
 }
 
 function normalizeEstateValue(input){
-  const raw = String(input ?? "").trim();
+  let raw = String(input ?? "").trim();
   if (raw === "") return { value: null, error: null };
 
-  let normalized = raw;
-  if (!normalized.includes(".") && normalized.includes(",")){
-    normalized = normalized.replace(/,/g, ".");
+  // remove spaces
+  raw = raw.replace(/\s+/g, "");
+
+  // If both separators exist, assume comma is thousands separator and remove it.
+  if (raw.includes(".") && raw.includes(",")){
+    raw = raw.replace(/,/g, "");
+  } else if (!raw.includes(".") && raw.includes(",")){
+    // If only comma exists, treat it as decimal separator.
+    raw = raw.replace(/,/g, ".");
   }
 
-  if (!/^[0-9]{1,18}(\.[0-9]{1,6})?$/.test(normalized)){
+  if (!/^[0-9]{1,18}(\.[0-9]{1,6})?$/.test(raw)){
     return { value: null, error: "Patrimonio inválido. Usa un número con hasta 6 decimales." };
   }
 
-  return { value: normalized, error: null };
+  return { value: raw, error: null };
 }
 
 function normalizeCurrency(input){
