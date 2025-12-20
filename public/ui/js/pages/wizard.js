@@ -264,13 +264,13 @@ export function wireWizard(store){
   if (currencyEl){
     currencyEl.addEventListener("input", (ev) => {
       const raw = String(ev.target.value ?? "");
-      const upper = raw.toUpperCase();
-      ev.target.value = upper;
+      const cleaned = raw.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
+      ev.target.value = cleaned;
       store.setState((s) => ({
         ...s,
         wizard: {
           ...s.wizard,
-          currency: upper,
+          currency: cleaned,
         },
       }));
     });
