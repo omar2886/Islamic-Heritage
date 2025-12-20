@@ -35,6 +35,10 @@ function clampRoleCount(role, value){
 function makeDefaultWizard(){
   return {
     deceased_sex: null,
+    estate: {
+      value: "",
+      currency: "MAD",
+    },
     spouse: {
       enabled: false,
       wives_count: 0,
@@ -128,6 +132,16 @@ function sanitize(candidate){
   };
 
   const wizard = safe?.wizard && typeof safe.wizard === "object" ? safe.wizard : {};
+  const estate = wizard.estate && typeof wizard.estate === "object" ? wizard.estate : {};
+  let estateValue = "";
+  if (typeof estate.value === "string") estateValue = estate.value;
+  else if (typeof estate.value === "number" && Number.isFinite(estate.value)) estateValue = String(estate.value);
+  estateValue = String(estateValue || "").trim();
+
+  let currency = "";
+  if (typeof estate.currency === "string") currency = estate.currency;
+  currency = String(currency || "").trim().toUpperCase();
+  if (currency !== "" && !/^[A-Z]{3}$/.test(currency)) currency = "MAD";
   const deceasedSex = wizard.deceased_sex === "male" || wizard.deceased_sex === "female" ? wizard.deceased_sex : null;
   const spouse = wizard.spouse && typeof wizard.spouse === "object" ? wizard.spouse : {};
   const spouseEnabled = spouse.enabled === true;
@@ -145,6 +159,10 @@ function sanitize(candidate){
 
   out.wizard = {
     deceased_sex: deceasedSex,
+    estate: {
+      value: estateValue,
+      currency,
+    },
     spouse: {
       enabled: spouseEnabled,
       wives_count: wivesCount,

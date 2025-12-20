@@ -10,6 +10,32 @@ function cloneHeirs(list){
     .filter((item) => item.role && item.count !== null);
 }
 
+function normalizeEstateValue(raw){
+  if (raw === null || raw === undefined) return null;
+  let s = String(raw).trim();
+  if (!s) return null;
+
+  // remove spaces
+  s = s.replace(/\s+/g, "");
+
+  // If both separators exist, assume comma is thousands separator and remove it.
+  if (s.includes(".") && s.includes(",")){
+    s = s.replace(/,/g, "");
+  } else if (!s.includes(".") && s.includes(",")){
+    // If only comma exists, treat it as decimal separator.
+    s = s.replace(/,/g, ".");
+  }
+
+  return s;
+}
+
+function normalizeCurrency(raw){
+  if (raw === null || raw === undefined) return null;
+  const s = String(raw).trim().toUpperCase();
+  if (!s) return null;
+  return /^[A-Z]{3}$/.test(s) ? s : null;
+}
+
 export function buildCalcPayload(state){
   const preview = state?.builder?.payloadPreview;
   if (!preview || !Array.isArray(preview.heirs)) return null;
@@ -17,7 +43,33 @@ export function buildCalcPayload(state){
   const heirs = cloneHeirs(preview.heirs);
   if (!heirs.length) return null;
 
-  return { heirs };
+  const payload = { heirs };
+
+  const estateRaw = state?.wizard?.estate?.value ?? null;
+  const currencyRaw = state?.wizard?.estate?.currency ?? null;
+
+  const estateValue = normalizeEstateValue(estateRaw);
+  const currency = normalizeCurrency(currencyRaw);
+
+  if (estateValue){
+    payload.estate_value = estateValue;
+  }
+  if (currency){
+    payload.currency = currency;
+  }
+
+  const sex = state?.wizard?.deceased_sex === "male" || state?.wizard?.deceased_sex === "female"
+    ? state.wizard.deceased_sex
+    : "unknown";
+
+  payload.ui_meta = {
+    sex,
+    source: "ui-vanilla",
+  };
+
+  payload.cli_flags = ["--audit", "--explain"];
+
+  return payload;
 }
 
 export async function runCalc(store){

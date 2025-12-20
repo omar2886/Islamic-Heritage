@@ -98,6 +98,44 @@ export function renderWizard(state){
           </div>
 
           <div class="card card-pad stack">
+            <h2 style="margin:0;">Patrimonio</h2>
+            <div class="wizard-fields">
+              <label class="stack">
+                <span>Valor de la herencia (opcional)</span>
+                <input
+                  class="input"
+                  id="wizard-estate-value"
+                  type="text"
+                  inputmode="decimal"
+                  placeholder="Ej: 250000 o 250000.50"
+                  value="${wizard.estate?.value ?? ""}"
+                />
+                <p class="wizard-hint">Si se indica un valor, el cálculo mostrará importes por heredero. Se acepta coma o punto decimal.</p>
+              </label>
+
+              <label class="stack">
+                <span>Moneda (3 letras, opcional)</span>
+                <input
+                  class="input"
+                  id="wizard-estate-currency"
+                  type="text"
+                  maxlength="3"
+                  placeholder="MAD"
+                  value="${wizard.estate?.currency ?? "MAD"}"
+                  list="currency-list"
+                />
+                <datalist id="currency-list">
+                  <option value="MAD"></option>
+                  <option value="EUR"></option>
+                  <option value="USD"></option>
+                  <option value="SAR"></option>
+                </datalist>
+                <p class="wizard-hint">Código ISO 4217. Si lo dejas vacío y envías un valor, el backend aplicará su moneda por defecto.</p>
+              </label>
+            </div>
+          </div>
+
+          <div class="card card-pad stack">
             <div class="row" style="justify-content:space-between; align-items:center;">
               <h2 style="margin:0;">Cónyuge sobreviviente</h2>
               <label class="row" style="gap:8px;">
@@ -155,6 +193,11 @@ export function renderWizard(state){
               <li>Descendencia directa: ${formatDesc(wizard.descendants.son, "hijo", "hijos")} · ${formatDesc(wizard.descendants.daughter, "hija", "hijas")}</li>
               <li>Nietos por hijo: ${formatDesc(wizard.descendants.sons_son, "nieto", "nietos")} · ${formatDesc(wizard.descendants.sons_daughter, "nieta", "nietas")}</li>
               <li>Padre: ${wizard.parents.father ? "vivo" : "ausente"} · Madre: ${wizard.parents.mother ? "viva" : "ausente"}</li>
+              <li>Patrimonio: ${
+                (wizard.estate?.value && String(wizard.estate.value).trim())
+                  ? `${String(wizard.estate.value).trim()} ${(wizard.estate?.currency || "").trim() ? String(wizard.estate.currency).trim().toUpperCase() : ""}`.trim()
+                  : "no definido"
+              }</li>
             </ul>
             ${warnings.length ? `
               <div class="wizard-alert">
@@ -190,6 +233,41 @@ export function wireWizard(store){
       }));
     });
   });
+
+  const estateValueEl = document.getElementById("wizard-estate-value");
+  if (estateValueEl){
+    estateValueEl.addEventListener("input", (ev) => {
+      const raw = String(ev.target.value ?? "");
+      store.setState((s) => ({
+        ...s,
+        wizard: {
+          ...s.wizard,
+          estate: {
+            ...(s.wizard.estate || { value: "", currency: "MAD" }),
+            value: raw,
+          },
+        },
+      }));
+    });
+  }
+
+  const estateCurrencyEl = document.getElementById("wizard-estate-currency");
+  if (estateCurrencyEl){
+    estateCurrencyEl.addEventListener("input", (ev) => {
+      const raw = String(ev.target.value ?? "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
+      ev.target.value = raw;
+      store.setState((s) => ({
+        ...s,
+        wizard: {
+          ...s.wizard,
+          estate: {
+            ...(s.wizard.estate || { value: "", currency: "MAD" }),
+            currency: raw,
+          },
+        },
+      }));
+    });
+  }
 
   const spouseEnabled = document.getElementById("wizard-spouse-enabled");
   if (spouseEnabled){
