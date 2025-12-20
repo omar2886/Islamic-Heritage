@@ -19,13 +19,6 @@ let lastFocus = { key: null };
 let bootAbort = null;
 let lastRoute = store.getDerived().route;
 
-function isBuilderInput(el){
-  if (!el || !el.tagName) return false;
-  const tag = el.tagName.toLowerCase();
-  if (tag !== "input" && tag !== "textarea" && tag !== "select") return false;
-  return Boolean(el.closest(".builder-grid"));
-}
-
 function wireUi(){
   const btnToast = document.getElementById("btn-toast");
   if (btnToast){
@@ -61,11 +54,11 @@ function wireUi(){
 function render(){
   const prevRoute = lastRoute;
   const prevScrollY = window.scrollY;
-  const activeElement = document.activeElement;
   lastFocus = captureFocus();
 
   const state = store.getState();
   const derived = store.getDerived();
+  const sameRoute = prevRoute === derived.route;
 
   mount(root, renderLayout(state, derived));
 
@@ -82,7 +75,7 @@ function render(){
     wireResults(store);
   }
 
-  if (prevRoute === derived.route && isBuilderInput(activeElement)){
+  if (sameRoute){
     requestAnimationFrame(() => {
       window.scrollTo(0, prevScrollY);
     });

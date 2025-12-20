@@ -54,9 +54,83 @@ function normalizeFractionValue(value){
 
 function formatMoney(value, currency){
   if (value === null || value === undefined) return null;
+  if (typeof value === "object"){
+    if (value.formatted) return String(value.formatted).trim();
+    if (Object.prototype.hasOwnProperty.call(value, "value")) return formatMoney(value.value, value.currency || currency);
+    if (Object.prototype.hasOwnProperty.call(value, "amount")) return formatMoney(value.amount, value.currency || currency);
+  }
   const base = String(value).trim();
   if (!base) return null;
   return currency ? `${base} ${currency}` : base;
+}
+
+function hasAmountValue(value){
+  if (value === null || value === undefined) return false;
+  if (typeof value === "number") return true;
+  if (typeof value === "object"){
+    const nested = extractAmountValue(value);
+    if (nested !== null && nested !== undefined) return hasAmountValue(nested);
+    return false;
+  }
+  return String(value).trim() !== "";
+}
+
+function extractAmountValue(entry){
+  if (!entry || typeof entry !== "object") return null;
+  if (Object.prototype.hasOwnProperty.call(entry, "amount")) return entry.amount;
+  if (Object.prototype.hasOwnProperty.call(entry, "value")) return entry.value;
+  if (Object.prototype.hasOwnProperty.call(entry, "money")) return entry.money;
+  return null;
+}
+
+function aggregateAmountFromEntries(entries){
+  const list = Array.isArray(entries) ? entries : [entries];
+  const collected = [];
+
+  list.forEach((entry) => {
+    const target = entry && typeof entry === "object" && entry.share ? entry.share : entry;
+    const amountVal = extractAmountValue(target);
+    if (amountVal !== null && amountVal !== undefined) collected.push(amountVal);
+  });
+
+  if (!collected.length) return null;
+
+  const numeric = collected.map((val) => Number(val)).filter((num) => Number.isFinite(num));
+  if (numeric.length === collected.length && numeric.length > 0){
+    return numeric.reduce((acc, num) => acc + num, 0);
+  }
+
+  return collected[0];
+}
+
+function hasAnyAmountInCollection(map){
+  if (!map || typeof map !== "object") return false;
+  return Object.values(map).some((val) => {
+    if (Array.isArray(val)) return val.some((item) => hasAmountValue(item));
+    return hasAmountValue(val);
+  });
+}
+
+function pickAmountsByRole(output){
+  const candidates = [
+    safeObject(output?.amounts_by_role),
+    safeObject(output?.amounts?.amounts_by_role),
+    safeObject(output?.shares?.amounts_by_role),
+  ];
+
+  for (const candidate of candidates){
+    if (candidate && Object.keys(candidate).length) return candidate;
+  }
+
+  return null;
+}
+
+function pickEstateValue(output){
+  if (!output || typeof output !== "object") return null;
+  if (Object.prototype.hasOwnProperty.call(output, "estate_value")) return output.estate_value;
+  if (Object.prototype.hasOwnProperty.call(output?.amounts || {}, "estate_value")) return output.amounts.estate_value;
+  if (Object.prototype.hasOwnProperty.call(output?.meta || {}, "estate_value")) return output.meta.estate_value;
+  return null;
 }
 
 function collectMessages(containers, keys){
@@ -138,37 +212,50 @@ function buildShare(role, fraction, amountRaw, ctx){
 }
 
 function buildSharesByRole(output, raw){
-  if (!output || typeof output !== "object") return [];
+  if (!output || typeof output !== "object"){
+    return { shares: [], hasAmountColumn: false, estateValue: null, currency: null };
+  }
+
   const currency = output.currency ?? raw?.currency ?? null;
   const peopleByRole = safeObject(output.people_by_role) || {};
   const individualShares = safeObject(output.individual_shares) || null;
-  const amountsByIndividual = safeObject(output.amounts_by_individual) || safeObject(output?.amounts?.amounts_by_individual) || null;
-  const amountsByRole = safeObject(output.amounts_by_role) || safeObject(output?.amounts?.amounts_by_role) || null;
+  const amountsByIndividual =
+    safeObject(output.amounts_by_individual) ||
+    safeObject(output?.amounts?.amounts_by_individual) ||
+    safeObject(output?.shares?.amounts_by_individual) ||
+    null;
+  const amountsByRole = pickAmountsByRole(output);
+  const estateValue = pickEstateValue(output);
 
   const ctx = { currency, peopleByRole, individualShares, amountsByIndividual };
   const shares = [];
+  let hasAmountData = hasAnyAmountInCollection(amountsByRole) || hasAnyAmountInCollection(amountsByIndividual);
 
   const groupShares = safeObject(output.group_shares);
   if (groupShares && Object.keys(groupShares).length){
     Object.entries(groupShares).forEach(([role, fraction]) => {
       const normalizedFraction = normalizeFractionValue(fraction);
-      const amount = amountsByRole ? amountsByRole[role] : null;
+      const amountFromShare = aggregateAmountFromEntries(fraction);
+      const amount = amountsByRole && Object.prototype.hasOwnProperty.call(amountsByRole, role) ? amountsByRole[role] : amountFromShare;
+      if (hasAmountValue(amount)) hasAmountData = true;
       shares.push(buildShare(role, normalizedFraction, amount, ctx));
     });
-    if (shares.length) return shares;
+    if (shares.length) return { shares, hasAmountColumn: hasAmountData, estateValue, currency };
   }
 
   const shareGroups = safeObject(output.shares?.final?.groups);
   if (shareGroups && Object.keys(shareGroups).length){
     Object.entries(shareGroups).forEach(([role, fractions]) => {
       const fraction = aggregateFractions(fractions);
-      const amount = amountsByRole ? amountsByRole[role] : null;
+      const shareAmount = aggregateAmountFromEntries(fractions);
+      const amount = amountsByRole && Object.prototype.hasOwnProperty.call(amountsByRole, role) ? amountsByRole[role] : shareAmount;
+      if (hasAmountValue(amount)) hasAmountData = true;
       shares.push(buildShare(role, fraction, amount, ctx));
     });
-    if (shares.length) return shares;
+    if (shares.length) return { shares, hasAmountColumn: hasAmountData, estateValue, currency };
   }
 
-  return [];
+  return { shares: [], hasAmountColumn: hasAmountData, estateValue, currency };
 }
 
 export function normalizeCalcResponse(response){
@@ -177,7 +264,7 @@ export function normalizeCalcResponse(response){
   const containers = [raw, output];
   const errors = collectMessages(containers, ["errors", "error"]);
   const warnings = collectMessages(containers, ["warnings", "warning"]);
-  const sharesByRole = buildSharesByRole(output, raw);
+  const shareResult = buildSharesByRole(output, raw);
   const ok = typeof raw?.ok === "boolean" ? raw.ok : raw?.status === "ok" ? true : errors.length === 0;
 
   return {
@@ -185,7 +272,10 @@ export function normalizeCalcResponse(response){
     output,
     errors,
     warnings,
-    sharesByRole,
+    sharesByRole: shareResult.shares,
+    hasAmounts: shareResult.hasAmountColumn,
+    estateValue: shareResult.estateValue,
+    currency: shareResult.currency,
     raw,
   };
 }
@@ -240,8 +330,9 @@ function renderIndividualsBlock(individuals, hasAmountColumn){
   `;
 }
 
-function renderShareTable(shares, hasAmountColumn){
+function renderShareTable(shares, hasAmountColumn, estateValue, currency){
   if (!shares || !shares.length) return "";
+  const estateValueDisplay = formatMoney(estateValue, currency);
   const header = `
     <tr>
       <th>Rol</th>
@@ -269,11 +360,62 @@ function renderShareTable(shares, hasAmountColumn){
   return `
     <div class="stack">
       <h3 style="margin:0;">Distribución</h3>
+      ${estateValueDisplay ? `<p class="wizard-hint" style="margin:0;">Valor de la herencia: <strong>${formatCell(estateValueDisplay)}</strong></p>` : ""}
       <table class="results-table">
         <thead>${header}</thead>
         <tbody>${body}</tbody>
       </table>
     </div>
+  `;
+}
+
+function normalizeListEntries(list){
+  if (!Array.isArray(list) || !list.length) return [];
+  return list.map((item) => {
+    if (item === null || item === undefined) return null;
+    if (typeof item === "string") return item.trim() || null;
+    if (typeof item === "number" || typeof item === "boolean") return String(item);
+    if (typeof item === "object"){
+      if (typeof item.label === "string" && item.label.trim()) return item.label.trim();
+      if (typeof item.reason === "string" && item.reason.trim()) return item.reason.trim();
+      if (typeof item.message === "string" && item.message.trim()) return item.message.trim();
+      try{
+        return JSON.stringify(item);
+      }catch(err){
+        return null;
+      }
+    }
+    return String(item);
+  }).filter((item) => typeof item === "string" && item.trim().length);
+}
+
+function collectGuardList(output, key){
+  if (!output || typeof output !== "object") return [];
+  const buckets = [
+    output?.[key],
+    output?.audit?.[key],
+    output?.trace?.[key],
+  ];
+  const merged = [];
+  buckets.forEach((bucket) => {
+    const normalized = normalizeListEntries(bucket);
+    if (normalized.length) merged.push(...normalized);
+  });
+  return merged;
+}
+
+function renderGuardSection(title, items){
+  if (!items || !items.length) return "";
+  return `
+    <section class="card card-pad stack">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <strong>${escapeHtml(title)}</strong>
+        <span class="badge">${items.length}</span>
+      </div>
+      <ul class="wizard-list">
+        ${items.map((item) => `<li>${formatCell(item)}</li>`).join("")}
+      </ul>
+    </section>
   `;
 }
 
@@ -300,7 +442,11 @@ export function renderResults(state){
   const errorsList = normalized?.errors || [];
   const warningsList = normalized?.warnings || [];
   const rawResponseError = response && typeof response.error === "string" ? response.error : null;
-  const hasAmounts = Boolean(output && Object.prototype.hasOwnProperty.call(output, "estate_value"));
+  const hasAmounts = Boolean(normalized?.hasAmounts);
+  const estateValue = normalized?.estateValue ?? null;
+  const currency = normalized?.currency ?? null;
+  const exclusionsList = collectGuardList(output, "exclusions");
+  const blocksList = collectGuardList(output, "blocks");
 
   const statusBadge = results.status === "running" ? `<span class="badge">Calculando...</span>` : "";
 
@@ -346,12 +492,14 @@ export function renderResults(state){
             </div>
             ${renderMessageBlock("Errores reportados", errorsList, "error")}
             ${renderMessageBlock("Avisos", warningsList, "warn")}
-            ${shareRows && shareRows.length ? renderShareTable(shareRows, hasAmounts) : `
+            ${shareRows && shareRows.length ? renderShareTable(shareRows, hasAmounts, estateValue, currency) : `
               <div class="stack">
                 <p class="wizard-hint" style="margin:0;">No se detectó una tabla de shares. Se muestra la respuesta cruda.</p>
                 ${response ? `<pre class="codebox">${escapeHtml(JSON.stringify(response, null, 2))}</pre>` : ""}
               </div>
             `}
+            ${renderGuardSection("Exclusiones", exclusionsList)}
+            ${renderGuardSection("Bloqueos", blocksList)}
             ${renderJsonDetails("JSON completo", normalized?.raw)}
             ${renderJsonDetails("Audit", auditBlock || null)}
             ${renderJsonDetails("Trace", traceBlock || null)}

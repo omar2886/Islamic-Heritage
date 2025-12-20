@@ -73,7 +73,7 @@ function renderRoleRow(role, value){
         <div class="builder-role-sub">${role}</div>
       </div>
       <div class="builder-input">
-        <input class="input" type="number" min="0" max="${max}" value="${value}" data-role-input="${role}" />
+        <input class="input" type="number" min="0" max="${max}" value="${value}" data-role-input="${role}" id="builder-role-${role}" data-focus-key="builder:${role}" />
       </div>
       <div class="builder-meta">${badge}</div>
     </div>
