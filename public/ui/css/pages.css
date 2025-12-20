@@ -120,6 +120,10 @@
   line-height:1.35;
 }
 
+.wizard-list ul.wizard-list{
+  margin-left:14px;
+}
+
 .wizard-summary{
   position:sticky;
   top:16px;
