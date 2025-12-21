@@ -1,5 +1,5 @@
 import { ROLE_GROUPS, labelForRole } from "../domain/roles.js";
-import { pushToast } from "../ui/toast.js";
+import { renderBuilderTree, wireBuilderTree, ensureTreeInitialized } from "./builder_tree.js";
 
 const ROLE_LIMITS = {
   husband: 1,
@@ -165,46 +165,6 @@ function clone(value){
   return JSON.parse(JSON.stringify(value));
 }
 
-function ensureFamily(f){
-  const fam = f && typeof f === "object" ? f : {};
-  if (!fam.people || typeof fam.people !== "object") fam.people = {};
-  if (!Array.isArray(fam.order)) fam.order = [];
-  if (!Number.isFinite(Number(fam.nextSeq))) fam.nextSeq = 2;
-
-  if (!fam.people.P1){
-    fam.people.P1 = {
-      id: "P1",
-      label: "Causante",
-      sex: "unknown",
-      alive: false,
-      fatherId: null,
-      motherId: null,
-      spouseIds: [],
-    };
-    if (!fam.order.includes("P1")) fam.order.unshift("P1");
-  }
-  if (!fam.order.includes("P1")) fam.order.unshift("P1");
-  return fam;
-}
-
-function createPerson(fam, partial = {}){
-  const next = Number(fam.nextSeq || 2);
-  const id = `P${next}`;
-  fam.nextSeq = next + 1;
-
-  fam.people[id] = {
-    id,
-    label: partial.label || id,
-    sex: partial.sex || "unknown",
-    alive: partial.alive === true,
-    fatherId: partial.fatherId || null,
-    motherId: partial.motherId || null,
-    spouseIds: Array.isArray(partial.spouseIds) ? partial.spouseIds.slice() : [],
-  };
-  fam.order = Array.from(new Set([...(fam.order || []), id]));
-  return id;
-}
-
 function renderRoleRow(role, value){
   const max = maxForRole(role);
   const badge = max < 100 ? `<span class="badge">0 a ${max}</span>` : `<span class="badge">0 a 100</span>`;
@@ -290,229 +250,26 @@ function renderGuards(builder, wizard){
   `;
 }
 
-function renderModeSwitcher(mode){
-  const isTree = mode === "tree";
-  const btnTree = isTree ? "btn" : "btn btn-secondary";
-  const btnRoles = !isTree ? "btn" : "btn btn-secondary";
-
-  return `
-    <div class="card card-pad stack" style="gap:10px;">
-      <div class="row" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <div class="stack" style="gap:2px;">
-          <strong>Modo de builder</strong>
-          <span class="wizard-hint">Roles (legacy) o Árbol (experimental PR14).</span>
-        </div>
-        <div class="row" style="gap:8px; flex-wrap:wrap;">
-          <button class="${btnRoles}" type="button" id="builder-mode-roles">Roles</button>
-          <button class="${btnTree}" type="button" id="builder-mode-tree">Árbol</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
 export function renderBuilder(state){
   const wizard = state.wizard;
   const builder = state.builder;
   const wizardHash = computeWizardHash(wizard);
+  const mode = state.builder.mode || "roles";
 
-  const mode = (builder && builder.mode === "tree") ? "tree" : "roles";
-  const switcher = renderModeSwitcher(mode);
+  const modeBar = `
+  <div class="card card-pad">
+    <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div class="row" style="gap:8px; flex-wrap:wrap;">
+        <button class="btn ${mode==="roles" ? "" : "btn-ghost"}" type="button" id="builder-mode-roles">Modo Roles</button>
+        <button class="btn ${mode==="tree" ? "" : "btn-ghost"}" type="button" id="builder-mode-tree">Modo Árbol</button>
+      </div>
+      <span class="badge">MVP</span>
+    </div>
+  </div>
+`;
 
   if (mode === "tree"){
-    const fam = ensureFamily(clone(builder.family || {}));
-    const decedentId = builder.decedentId && fam.people[builder.decedentId] ? builder.decedentId : "P1";
-    const selectedId = builder.selectedId && fam.people[builder.selectedId] ? builder.selectedId : decedentId;
-
-    const decedentOptions = fam.order.map((id) => {
-      const p = fam.people[id];
-      const label = escapeHtml((p?.label || id) + ` (${id})`);
-      return `<option value="${escapeHtml(id)}" ${id === decedentId ? "selected" : ""}>${label}</option>`;
-    }).join("");
-
-    const listItems = fam.order.map((id) => {
-      const p = fam.people[id];
-      const active = id === selectedId ? "style=\"border:1px solid var(--border-strong);\"" : "";
-      const badge = (id === decedentId) ? `<span class="badge">Causante</span>` : "";
-      const sex = p?.sex === "male" ? "♂" : (p?.sex === "female" ? "♀" : "?");
-      const alive = p?.alive ? "vivo" : "fallecido";
-      return `
-        <button class="card card-pad row" type="button" data-tree-select="${escapeHtml(id)}" ${active}
-          style="justify-content:space-between; align-items:center; gap:10px; text-align:left;">
-          <span class="row" style="gap:8px; align-items:center;">
-            <span class="badge">${sex}</span>
-            <span>${escapeHtml(p?.label || id)}</span>
-          </span>
-          <span class="row" style="gap:8px; align-items:center;">
-            <span class="wizard-hint" style="margin:0;">${alive}</span>
-            ${badge}
-          </span>
-        </button>
-      `;
-    }).join("");
-
-    const sel = fam.people[selectedId] || fam.people.P1;
-
-    const spouseList = (sel.spouseIds || []).map((sid) => {
-      const sp = fam.people[sid];
-      if (!sp) return "";
-      return `<button class="btn btn-secondary" type="button" data-tree-select="${escapeHtml(sp.id)}">${escapeHtml(sp.label || sp.id)}</button>`;
-    }).join(" ");
-
-    // children (by links)
-    const children = [];
-    for (const p of Object.values(fam.people)){
-      if (!p || !p.id) continue;
-      if (p.fatherId === sel.id || p.motherId === sel.id) children.push(p);
-    }
-    children.sort((a,b) => String(a.id).localeCompare(String(b.id)));
-    const childList = children.map((c) => `<button class="btn btn-secondary" type="button" data-tree-select="${escapeHtml(c.id)}">${escapeHtml(c.label || c.id)}</button>`).join(" ");
-
-    const payload = builder.payloadPreview ? JSON.stringify(builder.payloadPreview, null, 2) : "{ \"heirs\": [] }";
-    const derived = builder.derived || {};
-    const issues = Array.isArray(derived.issues) ? derived.issues : [];
-    const unsupported = Array.isArray(derived.unsupported) ? derived.unsupported : [];
-    const wizardChangedTree = builder.dirty && builder.wizardHashAppliedTree && wizardHash !== builder.wizardHashAppliedTree;
-
-    return `
-      <section class="stack" aria-label="Family builder tree">
-        <div class="card card-pad stack">
-          <div class="row" style="justify-content:space-between; align-items:flex-start;">
-            <div class="stack">
-              <h1 style="margin:0;">Family Builder — Árbol</h1>
-              <p style="margin:0;">Modo experimental (PR14). El payload se deriva automáticamente del árbol.</p>
-            </div>
-            <span class="badge">Guardado local</span>
-          </div>
-        </div>
-
-        ${switcher}
-
-        ${wizardChangedTree ? `
-          <div class="notice warn" id="tree-wizard-banner" style="margin-bottom:12px;">
-            <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
-              <div>
-                <strong>El Wizard cambió. El Builder está editado manualmente.</strong><br>
-                <span>Reaplicar Wizard sobrescribirá los campos derivados.</span>
-              </div>
-              <div style="display:flex;gap:8px;">
-                <button class="btn" id="tree-apply-wizard" type="button">Aplicar al árbol</button>
-              </div>
-            </div>
-          </div>
-        ` : ""}
-
-        <div class="card card-pad stack" style="gap:10px;">
-          <label class="stack">
-            <span><strong>Causante (decedent)</strong></span>
-            <select class="input" id="tree-decedent-select">
-              ${decedentOptions}
-            </select>
-            <p class="wizard-hint">El payload se calcula para este causante.</p>
-          </label>
-        </div>
-
-        <div style="display:grid; grid-template-columns: 320px 1fr; gap:12px;">
-          <div class="stack" style="gap:10px;">
-            <div class="card card-pad stack" style="gap:10px;">
-              <strong>Personas</strong>
-              <div class="stack" style="gap:8px;">
-                ${listItems || "<p class=\"wizard-hint\">No hay personas</p>"}
-              </div>
-              <button class="btn btn-secondary" type="button" id="tree-add-standalone">Añadir persona (sin vínculo)</button>
-              <p class="wizard-hint">Para MVP: crea nodos y luego enlaza usando padre/madre/cónyuge/hijos.</p>
-            </div>
-          </div>
-
-          <div class="stack" style="gap:10px;">
-            <div class="card card-pad stack" style="gap:10px;">
-              <div class="row" style="justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-                <strong>Editar: ${escapeHtml(sel.label || sel.id)} (${escapeHtml(sel.id)})</strong>
-                <span class="wizard-hint" style="margin:0;">Seleccionado</span>
-              </div>
-
-              <label class="stack">
-                <span>Nombre / etiqueta</span>
-                <input class="input" id="tree-person-label" data-focus-key="tree-person-label" value="${escapeHtml(sel.label || "")}" />
-              </label>
-
-              <div class="row" style="gap:10px; flex-wrap:wrap;">
-                <label class="stack" style="min-width:220px;">
-                  <span>Sexo</span>
-                  <select class="input" id="tree-person-sex">
-                    <option value="unknown" ${sel.sex !== "male" && sel.sex !== "female" ? "selected" : ""}>Desconocido</option>
-                    <option value="male" ${sel.sex === "male" ? "selected" : ""}>Hombre</option>
-                    <option value="female" ${sel.sex === "female" ? "selected" : ""}>Mujer</option>
-                  </select>
-                </label>
-
-                <label class="row" style="gap:8px; align-items:center; margin-top:22px;">
-                  <input type="checkbox" id="tree-person-alive" ${sel.alive ? "checked" : ""} />
-                  <span>Vivo</span>
-                </label>
-              </div>
-
-              <div class="card card-pad stack" style="gap:10px;">
-                <strong>Vínculos inmediatos</strong>
-
-                <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-                  <span class="badge">Padre</span>
-                  <span class="wizard-hint" style="margin:0;">${sel.fatherId && fam.people[sel.fatherId] ? escapeHtml(fam.people[sel.fatherId].label || sel.fatherId) : "—"}</span>
-                  <button class="btn btn-secondary" type="button" id="tree-create-father">Crear y asignar padre</button>
-                </div>
-
-                <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-                  <span class="badge">Madre</span>
-                  <span class="wizard-hint" style="margin:0;">${sel.motherId && fam.people[sel.motherId] ? escapeHtml(fam.people[sel.motherId].label || sel.motherId) : "—"}</span>
-                  <button class="btn btn-secondary" type="button" id="tree-create-mother">Crear y asignar madre</button>
-                </div>
-
-                <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-                  <span class="badge">Cónyuge(s)</span>
-                  <span class="row" style="gap:8px; flex-wrap:wrap;">${spouseList || "<span class=\"wizard-hint\" style=\"margin:0;\">—</span>"}</span>
-                  <button class="btn btn-secondary" type="button" id="tree-add-spouse">Añadir cónyuge</button>
-                </div>
-
-                <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-                  <span class="badge">Hijos</span>
-                  <span class="row" style="gap:8px; flex-wrap:wrap;">${childList || "<span class=\"wizard-hint\" style=\"margin:0;\">—</span>"}</span>
-                  <button class="btn btn-secondary" type="button" id="tree-add-child">Añadir hijo/a</button>
-                </div>
-              </div>
-            </div>
-
-            <div class="card card-pad stack" style="gap:10px;">
-              <strong>Payload derivado (heirs)</strong>
-              <pre class="pre" style="white-space:pre-wrap;">${escapeHtml(payload)}</pre>
-              <p class="wizard-hint">runCalc seguirá usando este payload desde Results.</p>
-            </div>
-
-            <div class="card card-pad stack" style="gap:10px;">
-              <strong>Issues / Debug</strong>
-              ${issues.length ? `
-                <div class="stack" style="gap:6px;">
-                  ${issues.map((it) => `<div class="wizard-alert"><div><strong>${escapeHtml(it.code || "issue")}</strong></div><div>${escapeHtml(it.message || "")}</div></div>`).join("")}
-                </div>
-              ` : `<p class="wizard-hint">Sin issues.</p>`}
-
-              ${unsupported.length ? `
-                <details>
-                  <summary>Personas conectadas no mapeadas (${unsupported.length})</summary>
-                  <div class="stack" style="gap:6px; margin-top:8px;">
-                    ${unsupported.map((u) => `<div class="row" style="justify-content:space-between;"><span>${escapeHtml(u.label || u.id)}</span><span class="badge">${escapeHtml(u.id)}</span></div>`).join("")}
-                  </div>
-                </details>
-              ` : ``}
-            </div>
-          </div>
-        </div>
-
-        <div class="card card-pad row" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-          <a class="btn btn-secondary" href="#/wizard">Volver al wizard</a>
-          <a class="btn" href="#/results">Ir a resultados</a>
-        </div>
-      </section>
-    `;
+    return `${modeBar}${renderBuilderTree(state)}`;
   }
 
   // legacy roles builder: keep existing UI, only add switcher under header
@@ -532,7 +289,7 @@ export function renderBuilder(state){
         </div>
       </div>
 
-      ${switcher}
+      ${modeBar}
 
       ${wizardChanged ? `
         <div class="card card-pad builder-banner">
@@ -881,11 +638,29 @@ export function applyWizardSync(store){
 }
 
 export function wireBuilder(store){
-  wireModeSwitcher(store);
+  const modeRolesBtn = document.getElementById("builder-mode-roles");
+  const modeTreeBtn = document.getElementById("builder-mode-tree");
+
+  if (modeRolesBtn){
+    modeRolesBtn.addEventListener("click", () => {
+      store.setState((s)=>({ ...s, builder: { ...s.builder, mode:"roles" } }));
+    });
+  }
+  if (modeTreeBtn){
+    modeTreeBtn.addEventListener("click", () => {
+      store.setState((s)=>({ ...s, builder: { ...s.builder, mode:"tree" } }));
+    });
+  }
 
   let state = store.getState();
   let builder = state.builder || {};
   const mode = (builder && builder.mode === "tree") ? "tree" : "roles";
+
+  if (mode === "tree"){
+    ensureTreeInitialized(store);
+    wireBuilderTree(store);
+    return;
+  }
 
   if (builder.pendingWizardSync){
     const wizard = state.wizard || {};
@@ -1000,282 +775,6 @@ export function wireBuilder(store){
           },
         },
       }), { persist: false });
-    });
-  }
-}
-
-function wireModeSwitcher(store){
-  const btnRoles = document.getElementById("builder-mode-roles");
-  const btnTree = document.getElementById("builder-mode-tree");
-
-  if (btnRoles){
-    btnRoles.addEventListener("click", () => {
-      store.setState((s) => ({
-        ...s,
-        builder: { ...s.builder, mode: "roles" },
-      }));
-    });
-  }
-
-  if (btnTree){
-    btnTree.addEventListener("click", () => {
-      store.setState((s) => ({
-        ...s,
-        builder: { ...s.builder, mode: "tree" },
-      }));
-    });
-  }
-}
-
-function wireBuilderTree(store){
-  const state = store.getState();
-  const builder = state.builder || {};
-  const fam = ensureFamily(clone(builder.family || {}));
-  const decedentId = builder.decedentId && fam.people[builder.decedentId] ? builder.decedentId : "P1";
-  const selectedId = builder.selectedId && fam.people[builder.selectedId] ? builder.selectedId : decedentId;
-
-  // decedent selector
-  const decSel = document.getElementById("tree-decedent-select");
-  if (decSel){
-    decSel.addEventListener("change", (ev) => {
-      const id = String(ev.target.value || "").trim();
-      store.setState((s) => {
-        const f = ensureFamily(clone(s.builder.family || {}));
-        const did = f.people[id] ? id : "P1";
-        const sid = f.people[s.builder.selectedId] ? s.builder.selectedId : did;
-        return {
-          ...s,
-          builder: { ...s.builder, mode: "tree", family: f, decedentId: did, selectedId: sid, dirty: true },
-        };
-      });
-    });
-  }
-
-  // select person
-  const selects = document.querySelectorAll("[data-tree-select]");
-  selects.forEach((el) => {
-    el.addEventListener("click", () => {
-      const id = String(el.getAttribute("data-tree-select") || "").trim();
-      if (!id) return;
-      store.setState((s) => {
-        const f = ensureFamily(clone(s.builder.family || {}));
-        if (!f.people[id]) return s;
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f, selectedId: id } };
-      });
-    });
-  });
-
-  // add standalone person
-  const addStandalone = document.getElementById("tree-add-standalone");
-  if (addStandalone){
-    addStandalone.addEventListener("click", () => {
-      store.setState((s) => {
-        const f = ensureFamily(clone(s.builder.family || {}));
-        const id = createPerson(f, { label: "Nueva persona", sex: "unknown", alive: true });
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f, selectedId: id, dirty: true } };
-      });
-    });
-  }
-
-  const applyBtn = document.getElementById("tree-apply-wizard");
-  if (applyBtn){
-    applyBtn.addEventListener("click", () => {
-      let toastMsg = null;
-      store.setState((s) => {
-        const builder = s.builder || {};
-        const wizard = s.wizard || {};
-        const out = applyWizardToTreeFamily(builder.family, builder, wizard);
-        if (!out.changed){
-          toastMsg = "Nada que aplicar (árbol ya consistente con wizard).";
-          return {
-            ...s,
-            builder: {
-              ...builder,
-              family: out.family,
-              wizardHashAppliedTree: out.wizardHash,
-              fromWizardApplied: true,
-              pendingWizardSync: false,
-              dirty: false,
-            },
-          };
-        }
-        toastMsg = "Wizard aplicado al árbol.";
-        return {
-          ...s,
-          builder: {
-            ...builder,
-            family: out.family,
-            selectedId: builder.decedentId || "P1",
-            wizardHashAppliedTree: out.wizardHash,
-            fromWizardApplied: true,
-            pendingWizardSync: false,
-            dirty: false,
-          },
-        };
-      });
-      if (toastMsg) pushToast(store, toastMsg);
-    });
-  }
-
-  const labelInput = document.getElementById("tree-person-label");
-  if (labelInput){
-    labelInput.addEventListener("input", (ev) => {
-      const value = String(ev.target.value || "");
-      store.setState((s) => {
-        const f = ensureFamily(clone(s.builder.family || {}));
-        const sid = s.builder.selectedId;
-        if (!sid || !f.people[sid]) return s;
-        f.people[sid].label = value;
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f, dirty: true } };
-      });
-    });
-  }
-
-  const sexSel = document.getElementById("tree-person-sex");
-  if (sexSel){
-    sexSel.addEventListener("change", (ev) => {
-      const value = String(ev.target.value || "unknown");
-      const sex = (value === "male" || value === "female") ? value : "unknown";
-      store.setState((s) => {
-        const f = ensureFamily(clone(s.builder.family || {}));
-        const sid = s.builder.selectedId;
-        if (!sid || !f.people[sid]) return s;
-        f.people[sid].sex = sex;
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f, dirty: true } };
-      });
-    });
-  }
-
-  const aliveCb = document.getElementById("tree-person-alive");
-  if (aliveCb){
-    aliveCb.addEventListener("change", (ev) => {
-      const checked = !!ev.target.checked;
-      store.setState((s) => {
-        const f = ensureFamily(clone(s.builder.family || {}));
-        const sid = s.builder.selectedId;
-        if (!sid || !f.people[sid]) return s;
-        f.people[sid].alive = checked;
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f, dirty: true } };
-      });
-    });
-  }
-
-  const btnFather = document.getElementById("tree-create-father");
-  if (btnFather){
-    btnFather.addEventListener("click", () => {
-      store.setState((s) => {
-        const f = ensureFamily(clone(s.builder.family || {}));
-        const sid = s.builder.selectedId;
-        if (!sid || !f.people[sid]) return s;
-        const pid = createPerson(f, { label: "Padre", sex: "male", alive: true });
-        f.people[sid].fatherId = pid;
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f, selectedId: pid, dirty: true } };
-      });
-    });
-  }
-
-  const btnMother = document.getElementById("tree-create-mother");
-  if (btnMother){
-    btnMother.addEventListener("click", () => {
-      store.setState((s) => {
-        const f = ensureFamily(clone(s.builder.family || {}));
-        const sid = s.builder.selectedId;
-        if (!sid || !f.people[sid]) return s;
-        const pid = createPerson(f, { label: "Madre", sex: "female", alive: true });
-        f.people[sid].motherId = pid;
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f, selectedId: pid, dirty: true } };
-      });
-    });
-  }
-
-  const btnSpouse = document.getElementById("tree-add-spouse");
-  if (btnSpouse){
-    btnSpouse.addEventListener("click", () => {
-      const cur = fam.people[selectedId];
-      store.setState((s) => {
-        const f = ensureFamily(clone(s.builder.family || {}));
-        const sid = s.builder.selectedId;
-        const cur2 = sid && f.people[sid] ? f.people[sid] : null;
-        if (!cur2) return s;
-
-        const inferredSex =
-          cur2.sex === "male" ? "female" :
-          cur2.sex === "female" ? "male" :
-          "unknown";
-
-        const pid = createPerson(f, { label: "Cónyuge", sex: inferredSex, alive: true });
-        linkSpouses(f, sid, pid);
-
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f, selectedId: pid, dirty: true } };
-      });
-
-      if (!cur || cur.sex === "unknown"){
-        pushToast(store, "Tip: define el sexo para clasificar cónyuge/hijos correctamente.");
-      }
-    });
-  }
-
-  const btnChild = document.getElementById("tree-add-child");
-  if (btnChild){
-    btnChild.addEventListener("click", () => {
-      let toastMsg = null;
-
-      store.setState((s) => {
-        const builder = s.builder || {};
-        const family = ensureFamilyShape(builder.family);
-        const people = family.people;
-
-        const selectedId = builder.selectedId || builder.decedentId || "P1";
-        const parent = people[selectedId];
-
-        if (!parent){
-          toastMsg = "Selecciona una persona válida.";
-          return s;
-        }
-
-        if (parent.sex !== "male" && parent.sex !== "female"){
-          toastMsg = "Define el sexo de la persona seleccionada antes de añadir hijos.";
-          return s;
-        }
-
-        // 1) progenitor seleccionado
-        let fatherId = parent.sex === "male" ? selectedId : null;
-        let motherId = parent.sex === "female" ? selectedId : null;
-
-        // 2) intenta inferir el otro progenitor si hay exactamente 1 cónyuge con sexo complementario
-        const spouseId = uniqueValidSpouseId(family, selectedId);
-        if (spouseId){
-          const spouse = people[spouseId];
-          if (spouse && (spouse.sex === "male" || spouse.sex === "female") && spouse.sex !== parent.sex){
-            if (parent.sex === "male") motherId = spouseId;
-            if (parent.sex === "female") fatherId = spouseId;
-          }
-        }
-
-        const childId = allocPersonId(people);
-        people[childId] = ensurePersonShape({
-          alive: true,
-          sex: null,
-          fatherId,
-          motherId,
-          label: "",
-          spouseIds: [],
-        }, childId);
-        if (!family.order.includes(childId)) family.order.push(childId);
-        bumpNextSeq(family, childId);
-
-        return {
-          ...s,
-          builder: {
-            ...builder,
-            family,
-            selectedId: childId,
-            dirty: true,
-          },
-        };
-      });
-
-      if (toastMsg) pushToast(store, toastMsg);
     });
   }
 }
