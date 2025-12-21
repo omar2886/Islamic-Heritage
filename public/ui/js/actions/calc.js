@@ -1,13 +1,34 @@
 import { postCalc } from "../api/client.js";
 
+const ROLE_ALIASES = Object.freeze({
+  wives: "wife",
+  husbands: "husband",
+});
+
+function canonicalRoleId(roleId){
+  const raw = (roleId === null || roleId === undefined) ? "" : String(roleId);
+  const key = raw.trim();
+  if (!key) return null;
+  return ROLE_ALIASES[key] || key;
+}
+
 function cloneHeirs(list){
   if (!Array.isArray(list)) return [];
-  return list
-    .map((item) => ({
-      role: item?.role ?? null,
-      count: item?.count ?? null,
-    }))
-    .filter((item) => item.role && item.count !== null);
+
+  const merged = Object.create(null);
+
+  for (const item of list){
+    const role = canonicalRoleId(item?.role);
+    if (!role) continue;
+
+    const rawCount = item?.count;
+    const count = Number.isFinite(rawCount) ? rawCount : Number.parseInt(String(rawCount ?? "").trim(), 10);
+    if (!Number.isFinite(count) || count <= 0) continue;
+
+    merged[role] = (merged[role] || 0) + count;
+  }
+
+  return Object.entries(merged).map(([role, count]) => ({ role, count }));
 }
 
 function normalizeEstateValue(input){
