@@ -32,7 +32,7 @@ function canonicalRoleId(roleId){
 }
 
 function canonicalizeRoleMap(map, { mergeArrays = false } = {}){
-  if (!map || typeof map !== "object") return null;
+  if (!map || typeof map !== "object" || Array.isArray(map)) return null;
   const out = {};
   for (const [k, v] of Object.entries(map)){
     const ck = canonicalRoleId(k);
@@ -327,10 +327,12 @@ function buildSharesByRole(output, raw){
     if (shares.length) return { shares, hasAmountColumn: hasAmountData, estateValue, currency };
   }
 
-  const shareGroups = canonicalizeRoleMap(safeObject(output.shares?.final?.groups), { mergeArrays: true });
+  const shareGroups = canonicalizeRoleMap(safeObject(output.shares?.final?.groups));
   if (shareGroups && Object.keys(shareGroups).length){
     Object.entries(shareGroups).forEach(([role, fractions]) => {
-      const fraction = aggregateFractions(fractions);
+      const fraction = Array.isArray(fractions)
+        ? aggregateFractions(fractions)
+        : normalizeFractionValue(fractions);
       const shareAmount = aggregateAmountFromEntries(fractions);
       const amount = amountsByRole && Object.prototype.hasOwnProperty.call(amountsByRole, role) ? amountsByRole[role] : shareAmount;
       if (hasAmountValue(amount)) hasAmountData = true;
