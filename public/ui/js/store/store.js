@@ -2,7 +2,7 @@ import { CURRENT_SCHEMA_VERSION, loadState, saveState, clearPersistedState } fro
 import { deriveState, normalizeRoute } from "./derive.js";
 import { EXPECTED_ROLES } from "../api/contract.js";
 import { ROLE_GROUPS } from "../domain/roles.js";
-import { sanitizeFamily, makeEmptyFamily, deriveHeirsFromFamily } from "../domain/familyTree.js";
+import { sanitizeTree, ensureTree, deriveHeirsByRoleFromTree } from "../domain/familyTree.js";
 
 function clone(value){
   if (typeof structuredClone === "function") return structuredClone(value);
@@ -62,23 +62,14 @@ function makeDefaultWizard(){
 
 function makeDefaultBuilder(){
   return {
-    mode: "roles",
-    family: null,
-    decedentId: "P1",
-    selectedId: "P1",
-    pendingWizardSync: false,
-    dirty: false,
+    mode: "tree",          // "tree" | "roles"
+    tree: null,
+    treeSelectedId: null,
+
     fromWizardApplied: false,
-    wizardHashApplied: null,
-    wizardHashAppliedTree: null,
     heirsByRole: {},
+    wizardHashApplied: null,
     payloadPreview: null,
-    derived: {
-      heirsByRole: null,
-      heirs: [],
-      issues: [],
-      unsupported: [],
-    },
   };
 }
 
@@ -204,87 +195,57 @@ function sanitize(candidate){
 
   // builder
   const builder = safe?.builder && typeof safe.builder === "object" ? safe.builder : {};
-  const mode = (builder.mode === "tree" || builder.mode === "roles") ? builder.mode : "roles";
-  const pendingWizardSync = builder.pendingWizardSync === true;
-  const dirty = builder.dirty === true;
+  let mode = "tree";
+  if (builder.mode === "tree" || builder.mode === "roles"){
+    mode = builder.mode;
+  } else {
+    const hasRoles = builder.heirsByRole && Object.values(builder.heirsByRole).some((v) => Number(v) > 0);
+    mode = hasRoles ? "roles" : "tree";
+  }
+
+  const tree = ensureTree(sanitizeTree(builder.tree), out.wizard);
+
+  let rawHeirs = {};
+  if (mode === "tree"){
+    rawHeirs = deriveHeirsByRoleFromTree(tree).heirsByRole;
+  } else {
+    rawHeirs = builder.heirsByRole || {};
+  }
 
   const heirsByRole = {};
   EXPECTED_ROLES.forEach((role) => {
-    heirsByRole[role] = clampRoleCount(role, builder?.heirsByRole?.[role] ?? 0);
+    heirsByRole[role] = clampRoleCount(role, rawHeirs?.[role] ?? 0);
   });
 
-  let fam = null;
-  let decedentId = "P1";
-  let selectedId = "P1";
-  let payloadPreview = null;
-  let derived = { heirsByRole: null, heirs: [], issues: [], unsupported: [] };
-
-  if (mode === "tree"){
-    fam = sanitizeFamily(builder.family || makeEmptyFamily());
-    decedentId = fam.decedentId;
-    selectedId = fam.selectedId;
-
-    const mapping = deriveHeirsFromFamily(fam);
-    const scoped = new Set(["husband","wife","father","mother","son","daughter","sons_son","sons_daughter"]);
-    scoped.forEach((r) => { if (heirsByRole[r] != null) heirsByRole[r] = 0; });
-    Object.values(mapping.mappedById).forEach((role) => {
-      if (scoped.has(role) && heirsByRole[role] != null) heirsByRole[role] += 1;
-    });
-
-    payloadPreview = {
-      heirs: ROLE_GROUPS.flatMap((group) => group.roles.map((role) => ({
-        role,
-        count: Number(heirsByRole[role] || 0),
-      })).filter((item) => item.count > 0)),
-    };
-
-    derived = {
-      heirsByRole: mapping.heirsByRole || null,
-      heirs: Array.isArray(payloadPreview.heirs) ? payloadPreview.heirs : [],
-      issues: [],
-      unsupported: [],
-      mapping,
-    };
-  } else {
-    if (!out.wizard?.spouse?.enabled){
-      heirsByRole.husband = 0;
-      heirsByRole.wife = 0;
-    }
-    if (out.wizard?.deceased_sex === "male"){
-      heirsByRole.husband = 0;
-    }else if (out.wizard?.deceased_sex === "female"){
-      heirsByRole.wife = 0;
-    }else{
-      heirsByRole.husband = 0;
-      heirsByRole.wife = 0;
-    }
-
-    payloadPreview = {
-      heirs: ROLE_GROUPS.flatMap((group) => group.roles.map((role) => ({
-        role,
-        count: Number(heirsByRole[role] || 0),
-      })).filter((item) => item.count > 0)),
-    };
+  if (!out.wizard?.spouse?.enabled){
+    heirsByRole.husband = 0;
+    heirsByRole.wife = 0;
+  }
+  if (out.wizard?.deceased_sex === "male"){
+    heirsByRole.husband = 0;
+  }else if (out.wizard?.deceased_sex === "female"){
+    heirsByRole.wife = 0;
+  }else{
+    heirsByRole.husband = 0;
+    heirsByRole.wife = 0;
   }
 
-  if (!payloadPreview){
-    payloadPreview = { heirs: [] };
-  }
+  const payloadPreview = {
+    heirs: ROLE_GROUPS.flatMap((group) => group.roles.map((role) => ({
+      role,
+      count: Number(heirsByRole[role] || 0),
+    })).filter((item) => item.count > 0)),
+  };
 
   out.builder = {
     ...makeDefaultBuilder(),
     mode,
-    pendingWizardSync,
-    dirty,
     fromWizardApplied: !!builder.fromWizardApplied,
     wizardHashApplied: builder.wizardHashApplied ? String(builder.wizardHashApplied) : null,
-    wizardHashAppliedTree: builder.wizardHashAppliedTree ? String(builder.wizardHashAppliedTree) : null,
     heirsByRole,
-    payloadPreview,
-    family: mode === "tree" ? fam : builder.family ?? null,
-    decedentId: mode === "tree" ? decedentId : "P1",
-    selectedId: mode === "tree" ? selectedId : "P1",
-    derived,
+    payloadPreview: payloadPreview || { heirs: [] },
+    tree,
+    treeSelectedId: typeof builder.treeSelectedId === "string" ? builder.treeSelectedId : null,
   };
 
   const results = safe?.results && typeof safe.results === "object" ? safe.results : {};
