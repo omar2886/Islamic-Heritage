@@ -86,6 +86,7 @@ function makeDefaultBuilder(){
     // legacy sync flags
     fromWizardApplied: false,
     wizardHashApplied: null,
+    wizardHashAppliedTree: null,
 
     // legacy model (roles)
     heirsByRole: {},
@@ -368,6 +369,7 @@ function sanitize(candidate){
       // keep legacy flags present but irrelevant in tree mode
       fromWizardApplied: !!builder.fromWizardApplied,
       wizardHashApplied: builder.wizardHashApplied ? String(builder.wizardHashApplied) : null,
+      wizardHashAppliedTree: builder.wizardHashAppliedTree ? String(builder.wizardHashAppliedTree) : null,
     };
   }else{
     // LEGACY roles builder (existing behavior)
@@ -405,6 +407,7 @@ function sanitize(candidate){
       mode: "roles",
       fromWizardApplied: !!builder.fromWizardApplied,
       wizardHashApplied: builder.wizardHashApplied ? String(builder.wizardHashApplied) : null,
+      wizardHashAppliedTree: builder.wizardHashAppliedTree ? String(builder.wizardHashAppliedTree) : null,
       heirsByRole,
       payloadPreview: { heirs: payloadHeirs },
       // keep tree fields but default
