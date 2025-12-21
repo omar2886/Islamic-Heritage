@@ -340,3 +340,83 @@
   padding:10px;
   background: rgba(15,22,32,.35);
 }
+
+/* Builder mode tabs */
+.segmented{
+  display:inline-flex;
+  border:1px solid var(--border);
+  border-radius:999px;
+  overflow:hidden;
+}
+.segmented-btn{
+  appearance:none;
+  border:0;
+  background:transparent;
+  padding:8px 12px;
+  cursor:pointer;
+  color:var(--text);
+}
+.segmented-btn.is-active{
+  background:var(--panel-2);
+  font-weight:600;
+}
+
+/* Tree builder */
+.tree-list{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  max-height:520px;
+  overflow:auto;
+}
+.tree-person{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  width:100%;
+  text-align:left;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:var(--panel);
+}
+.tree-person.is-selected{
+  outline:2px solid var(--accent);
+  border-color:var(--accent);
+}
+.tree-person-name{ font-weight:600; }
+.tree-person-meta{ display:flex; gap:8px; align-items:center; }
+
+/* Small helpers used by builder_tree */
+.pill{
+  display:inline-block;
+  padding:2px 8px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  font-size:12px;
+}
+.pill-dark{
+  background:var(--panel-2);
+}
+.mini-list{
+  margin:0;
+  padding-left:16px;
+}
+.notice{
+  border:1px solid var(--border);
+  background:var(--panel);
+  border-radius:12px;
+  padding:12px;
+}
+.notice-title{ font-weight:700; margin-bottom:6px; }
+.notice.warn{ border-color:var(--warn, #d8a11e); }
+
+.table-wrap{ overflow:auto; }
+.table{
+  width:100%;
+  border-collapse:collapse;
+}
+.table th, .table td{
+  border-bottom:1px solid var(--border);
+  padding:8px 10px;
+}

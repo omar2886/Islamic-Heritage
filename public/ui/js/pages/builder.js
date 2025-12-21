@@ -1,5 +1,5 @@
 import { ROLE_GROUPS, labelForRole } from "../domain/roles.js";
-import { renderBuilderTree, wireBuilderTree, ensureTreeInitialized } from "./builder_tree.js";
+import { renderBuilderTree, wireBuilderTree, applyWizardSyncTree } from "./builder_tree.js";
 
 const ROLE_LIMITS = {
   husband: 1,
@@ -250,30 +250,12 @@ function renderGuards(builder, wizard){
   `;
 }
 
-export function renderBuilder(state){
+function renderBuilderRoles(state){
   const wizard = state.wizard;
   const builder = state.builder;
   const wizardHash = computeWizardHash(wizard);
-  const mode = state.builder.mode || "roles";
 
-  const modeBar = `
-  <div class="card card-pad">
-    <div class="row" style="justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-      <div class="row" style="gap:8px; flex-wrap:wrap;">
-        <button class="btn ${mode==="roles" ? "" : "btn-ghost"}" type="button" id="builder-mode-roles">Modo Roles</button>
-        <button class="btn ${mode==="tree" ? "" : "btn-ghost"}" type="button" id="builder-mode-tree">Modo Árbol</button>
-      </div>
-      <span class="badge">MVP</span>
-    </div>
-  </div>
-`;
-
-  if (mode === "tree"){
-    return `${modeBar}${renderBuilderTree(state)}`;
-  }
-
-  // legacy roles builder: keep existing UI, only add switcher under header
-  const wizardChanged = builder.dirty && builder.fromWizardApplied && builder.wizardHashApplied && builder.wizardHashApplied !== wizardHash;
+  const wizardChanged = builder.fromWizardApplied && builder.wizardHashApplied && builder.wizardHashApplied !== wizardHash;
   const blocks = hardBlocks(builder, wizard);
   const payloadHtml = buildPayloadPreview(builder);
 
@@ -284,12 +266,14 @@ export function renderBuilder(state){
           <div class="stack">
             <h1 style="margin:0;">Family Structure Builder (MVP)</h1>
             <p class="wizard-hint" style="margin:0;">Define roles y conteos antes de enviar al cálculo (no se envía nada en PR4).</p>
+            <div class="segmented" role="tablist" aria-label="Modo de builder">
+              <button class="segmented-btn" id="builder-mode-tree" type="button">Árbol</button>
+              <button class="segmented-btn is-active" id="builder-mode-roles" type="button">Roles</button>
+            </div>
           </div>
           <span class="badge">Local only</span>
         </div>
       </div>
-
-      ${modeBar}
 
       ${wizardChanged ? `
         <div class="card card-pad builder-banner">
@@ -550,49 +534,10 @@ function applyWizardToTreeFamily(existingFamily, builder, wizard){
   return { family, wizardHash, changed };
 }
 
-function prefillFromWizard(store, mode){
+function prefillFromWizard(store){
   const state = store.getState();
   const wizard = state.wizard || {};
   const wizardHash = computeWizardHash(wizard);
-
-  if (mode === "tree"){
-    const builder = state.builder || {};
-    const wizard = state.wizard || {};
-    const wizardHash = computeWizardHash(wizard);
-
-    // Solo auto-prefill si el árbol está esencialmente vacío (nuevo caso).
-    const family0 = builder.family;
-    const emptyTree = !family0
-      || !family0.people
-      || (Object.keys(family0.people).length === 0)
-      || (Object.keys(family0.people).length === 1 && family0.people.P1);
-
-    if (!builder.fromWizardApplied && emptyTree){
-      const out = applyWizardToTreeFamily(family0, builder, wizard);
-      store.setState((s) => ({
-        ...s,
-        builder: {
-          ...s.builder,
-          family: out.family,
-          decedentId: s.builder.decedentId || "P1",
-          selectedId: s.builder.decedentId || "P1",
-          fromWizardApplied: true,
-          wizardHashAppliedTree: out.wizardHash,
-        },
-      }));
-      return true;
-    }
-
-    // Si ya hubo prefill, pero no se registró hash tree, registrarlo
-    if (!builder.wizardHashAppliedTree){
-      store.setState((s) => ({
-        ...s,
-        builder: { ...s.builder, wizardHashAppliedTree: wizardHash },
-      }));
-    }
-
-    return false;
-  }
 
   if (!state.builder.fromWizardApplied){
     const heirs = applyWizardRoles({ ...state.builder.heirsByRole }, wizard);
@@ -618,7 +563,7 @@ function prefillFromWizard(store, mode){
   return false;
 }
 
-export function applyWizardSync(store){
+function applyWizardSyncRoles(store){
   const state = store.getState();
   const wizard = state.wizard || {};
   const wizardHash = computeWizardHash(wizard);
@@ -631,85 +576,12 @@ export function applyWizardSync(store){
       heirsByRole: { ...s.builder.heirsByRole, ...heirs },
       fromWizardApplied: true,
       wizardHashApplied: wizardHash,
-      pendingWizardSync: false,
-      dirty: false,
     },
   }));
 }
 
-export function wireBuilder(store){
-  const modeRolesBtn = document.getElementById("builder-mode-roles");
-  const modeTreeBtn = document.getElementById("builder-mode-tree");
-
-  if (modeRolesBtn){
-    modeRolesBtn.addEventListener("click", () => {
-      store.setState((s)=>({ ...s, builder: { ...s.builder, mode:"roles" } }));
-    });
-  }
-  if (modeTreeBtn){
-    modeTreeBtn.addEventListener("click", () => {
-      store.setState((s)=>({ ...s, builder: { ...s.builder, mode:"tree" } }));
-    });
-  }
-
-  let state = store.getState();
-  let builder = state.builder || {};
-  const mode = (builder && builder.mode === "tree") ? "tree" : "roles";
-
-  if (mode === "tree"){
-    ensureTreeInitialized(store);
-    wireBuilderTree(store);
-    return;
-  }
-
-  if (builder.pendingWizardSync){
-    const wizard = state.wizard || {};
-    const wizardHash = computeWizardHash(wizard);
-    if (builder.dirty){
-      store.setState((s) => ({
-        ...s,
-        builder: { ...s.builder, pendingWizardSync: false },
-      }));
-    } else if (mode === "tree"){
-      const out = applyWizardToTreeFamily(builder.family, builder, wizard);
-      store.setState((s) => ({
-        ...s,
-        builder: {
-          ...s.builder,
-          family: out.family,
-          decedentId: s.builder.decedentId || "P1",
-          selectedId: s.builder.decedentId || "P1",
-          fromWizardApplied: true,
-          wizardHashAppliedTree: out.wizardHash,
-          pendingWizardSync: false,
-          dirty: false,
-        },
-      }));
-    } else {
-      const heirs = applyWizardRoles({ ...builder.heirsByRole }, wizard);
-      store.setState((s) => ({
-        ...s,
-        builder: {
-          ...s.builder,
-          heirsByRole: { ...s.builder.heirsByRole, ...heirs },
-          fromWizardApplied: true,
-          wizardHashApplied: wizardHash,
-          pendingWizardSync: false,
-          dirty: false,
-        },
-      }));
-    }
-
-    state = store.getState();
-    builder = state.builder || {};
-  }
-
-  prefillFromWizard(store, mode);
-
-  if (mode === "tree"){
-    wireBuilderTree(store);
-    return;
-  }
+function wireBuilderRoles(store){
+  prefillFromWizard(store);
 
   const inputs = document.querySelectorAll("[data-role-input]");
   inputs.forEach((el) => {
@@ -724,7 +596,6 @@ export function wireBuilder(store){
         builder: {
           ...s.builder,
           heirsByRole: { ...s.builder.heirsByRole, [role]: value },
-          dirty: true,
         },
       }));
     });
@@ -777,4 +648,44 @@ export function wireBuilder(store){
       }), { persist: false });
     });
   }
+}
+
+function getBuilderMode(state){
+  const m = state?.builder?.mode;
+  return (m === "tree" || m === "roles") ? m : "tree";
+}
+
+function wireBuilderModeToggle(store){
+  const treeBtn = document.getElementById("builder-mode-tree");
+  const rolesBtn = document.getElementById("builder-mode-roles");
+
+  const setMode = (mode) => {
+    const s = store.getState();
+    if (s.builder?.mode === mode) return;
+    store.setState({ builder: { ...s.builder, mode } });
+  };
+
+  if (treeBtn) treeBtn.addEventListener("click", () => setMode("tree"));
+  if (rolesBtn) rolesBtn.addEventListener("click", () => setMode("roles"));
+}
+
+export function renderBuilder(state, derived){
+  const mode = getBuilderMode(state);
+  if (mode === "tree") return renderBuilderTree(state, derived);
+  return renderBuilderRoles(state, derived);
+}
+
+export function wireBuilder(store){
+  // always wire the mode toggle (exists in both renderers)
+  wireBuilderModeToggle(store);
+
+  const mode = getBuilderMode(store.getState());
+  if (mode === "tree") return wireBuilderTree(store);
+  return wireBuilderRoles(store);
+}
+
+export function applyWizardSync(store){
+  const mode = getBuilderMode(store.getState());
+  if (mode === "tree") return applyWizardSyncTree(store);
+  return applyWizardSyncRoles(store);
 }
