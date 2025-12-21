@@ -98,19 +98,26 @@ export function buildCalcPayload(state){
     payload.currency = currencyResult.value;
   }
 
-  const sex = state?.wizard?.deceased_sex === "male" || state?.wizard?.deceased_sex === "female"
-    ? state.wizard.deceased_sex
-    : "unknown";
-
-  payload.ui_meta = {
-    sex,
-    source: "ui-vanilla",
-  };
-
   const cliFlags = [];
   if (audit) cliFlags.push("--audit");
   if (explain) cliFlags.push("--explain");
   payload.cli_flags = cliFlags;
+
+  const wizard = state?.wizard || {};
+  if (wizard.estate_value && String(wizard.estate_value).trim() !== ""){
+    payload.estate_value = String(wizard.estate_value).trim();
+  }
+  if (wizard.currency && String(wizard.currency).trim() !== ""){
+    payload.currency = String(wizard.currency).trim().toUpperCase();
+  }
+  const flags = wizard.flags || {};
+  if (flags.audit) payload.audit = true;
+  if (flags.explain) payload.explain = true;
+
+  payload.ui_meta = {
+    sex: wizard.deceased_sex || null,
+    source: "ui-vanilla",
+  };
 
   return { ok: true, payload };
 }

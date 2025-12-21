@@ -405,6 +405,14 @@ export function wireWizard(store){
   if (continueBtn){
     continueBtn.addEventListener("click", () => {
       if (continueBtn.disabled) return;
+      store.setState((s) => ({
+        ...s,
+        builder: {
+          ...s.builder,
+          pendingWizardSync: true,
+          dirty: false,
+        },
+      }));
       location.hash = "#/builder";
     });
   }

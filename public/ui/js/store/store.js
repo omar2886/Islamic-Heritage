@@ -83,6 +83,10 @@ function makeDefaultBuilder(){
     // "roles" (legacy) | "tree" (experimental PR14)
     mode: "roles",
 
+    // sync flags
+    pendingWizardSync: false,
+    dirty: false,
+
     // legacy sync flags
     fromWizardApplied: false,
     wizardHashApplied: null,
@@ -231,6 +235,8 @@ function sanitize(candidate){
   const builder = safe?.builder && typeof safe.builder === "object" ? safe.builder : {};
   const modeRaw = String(builder.mode || "roles").trim().toLowerCase();
   const mode = (modeRaw === "tree") ? "tree" : "roles";
+  const pendingWizardSync = builder.pendingWizardSync === true;
+  const dirty = builder.dirty === true;
 
   if (mode === "tree"){
     // sanitize family
@@ -355,6 +361,8 @@ function sanitize(candidate){
     out.builder = {
       ...makeDefaultBuilder(),
       mode: "tree",
+      pendingWizardSync,
+      dirty,
       family: fam,
       decedentId,
       selectedId,
@@ -405,6 +413,8 @@ function sanitize(candidate){
     out.builder = {
       ...makeDefaultBuilder(),
       mode: "roles",
+      pendingWizardSync,
+      dirty,
       fromWizardApplied: !!builder.fromWizardApplied,
       wizardHashApplied: builder.wizardHashApplied ? String(builder.wizardHashApplied) : null,
       wizardHashAppliedTree: builder.wizardHashAppliedTree ? String(builder.wizardHashAppliedTree) : null,

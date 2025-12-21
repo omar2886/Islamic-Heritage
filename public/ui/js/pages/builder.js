@@ -372,7 +372,7 @@ export function renderBuilder(state){
     const derived = builder.derived || {};
     const issues = Array.isArray(derived.issues) ? derived.issues : [];
     const unsupported = Array.isArray(derived.unsupported) ? derived.unsupported : [];
-    const wizardChangedTree = wizardHash !== builder.wizardHashAppliedTree;
+    const wizardChangedTree = builder.dirty && builder.wizardHashAppliedTree && wizardHash !== builder.wizardHashAppliedTree;
 
     return `
       <section class="stack" aria-label="Family builder tree">
@@ -392,8 +392,8 @@ export function renderBuilder(state){
           <div class="notice warn" id="tree-wizard-banner" style="margin-bottom:12px;">
             <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
               <div>
-                <strong>Wizard actualizado</strong><br>
-                <span>Quieres aplicar estos cambios al árbol actual?</span>
+                <strong>El Wizard cambió. El Builder está editado manualmente.</strong><br>
+                <span>Reaplicar Wizard sobrescribirá los campos derivados.</span>
               </div>
               <div style="display:flex;gap:8px;">
                 <button class="btn" id="tree-apply-wizard" type="button">Aplicar al árbol</button>
@@ -516,7 +516,7 @@ export function renderBuilder(state){
   }
 
   // legacy roles builder: keep existing UI, only add switcher under header
-  const wizardChanged = builder.fromWizardApplied && builder.wizardHashApplied && builder.wizardHashApplied !== wizardHash;
+  const wizardChanged = builder.dirty && builder.fromWizardApplied && builder.wizardHashApplied && builder.wizardHashApplied !== wizardHash;
   const blocks = hardBlocks(builder, wizard);
   const payloadHtml = buildPayloadPreview(builder);
 
@@ -874,6 +874,8 @@ export function applyWizardSync(store){
       heirsByRole: { ...s.builder.heirsByRole, ...heirs },
       fromWizardApplied: true,
       wizardHashApplied: wizardHash,
+      pendingWizardSync: false,
+      dirty: false,
     },
   }));
 }
@@ -881,7 +883,52 @@ export function applyWizardSync(store){
 export function wireBuilder(store){
   wireModeSwitcher(store);
 
-  const mode = (store.getState().builder && store.getState().builder.mode === "tree") ? "tree" : "roles";
+  let state = store.getState();
+  let builder = state.builder || {};
+  const mode = (builder && builder.mode === "tree") ? "tree" : "roles";
+
+  if (builder.pendingWizardSync){
+    const wizard = state.wizard || {};
+    const wizardHash = computeWizardHash(wizard);
+    if (builder.dirty){
+      store.setState((s) => ({
+        ...s,
+        builder: { ...s.builder, pendingWizardSync: false },
+      }));
+    } else if (mode === "tree"){
+      const out = applyWizardToTreeFamily(builder.family, builder, wizard);
+      store.setState((s) => ({
+        ...s,
+        builder: {
+          ...s.builder,
+          family: out.family,
+          decedentId: s.builder.decedentId || "P1",
+          selectedId: s.builder.decedentId || "P1",
+          fromWizardApplied: true,
+          wizardHashAppliedTree: out.wizardHash,
+          pendingWizardSync: false,
+          dirty: false,
+        },
+      }));
+    } else {
+      const heirs = applyWizardRoles({ ...builder.heirsByRole }, wizard);
+      store.setState((s) => ({
+        ...s,
+        builder: {
+          ...s.builder,
+          heirsByRole: { ...s.builder.heirsByRole, ...heirs },
+          fromWizardApplied: true,
+          wizardHashApplied: wizardHash,
+          pendingWizardSync: false,
+          dirty: false,
+        },
+      }));
+    }
+
+    state = store.getState();
+    builder = state.builder || {};
+  }
+
   prefillFromWizard(store, mode);
 
   if (mode === "tree"){
@@ -902,6 +949,7 @@ export function wireBuilder(store){
         builder: {
           ...s.builder,
           heirsByRole: { ...s.builder.heirsByRole, [role]: value },
+          dirty: true,
         },
       }));
     });
@@ -997,7 +1045,7 @@ function wireBuilderTree(store){
         const sid = f.people[s.builder.selectedId] ? s.builder.selectedId : did;
         return {
           ...s,
-          builder: { ...s.builder, mode: "tree", family: f, decedentId: did, selectedId: sid },
+          builder: { ...s.builder, mode: "tree", family: f, decedentId: did, selectedId: sid, dirty: true },
         };
       });
     });
@@ -1024,7 +1072,7 @@ function wireBuilderTree(store){
       store.setState((s) => {
         const f = ensureFamily(clone(s.builder.family || {}));
         const id = createPerson(f, { label: "Nueva persona", sex: "unknown", alive: true });
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f, selectedId: id } };
+        return { ...s, builder: { ...s.builder, mode: "tree", family: f, selectedId: id, dirty: true } };
       });
     });
   }
@@ -1039,7 +1087,17 @@ function wireBuilderTree(store){
         const out = applyWizardToTreeFamily(builder.family, builder, wizard);
         if (!out.changed){
           toastMsg = "Nada que aplicar (árbol ya consistente con wizard).";
-          return s;
+          return {
+            ...s,
+            builder: {
+              ...builder,
+              family: out.family,
+              wizardHashAppliedTree: out.wizardHash,
+              fromWizardApplied: true,
+              pendingWizardSync: false,
+              dirty: false,
+            },
+          };
         }
         toastMsg = "Wizard aplicado al árbol.";
         return {
@@ -1050,6 +1108,8 @@ function wireBuilderTree(store){
             selectedId: builder.decedentId || "P1",
             wizardHashAppliedTree: out.wizardHash,
             fromWizardApplied: true,
+            pendingWizardSync: false,
+            dirty: false,
           },
         };
       });
@@ -1066,7 +1126,7 @@ function wireBuilderTree(store){
         const sid = s.builder.selectedId;
         if (!sid || !f.people[sid]) return s;
         f.people[sid].label = value;
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f } };
+        return { ...s, builder: { ...s.builder, mode: "tree", family: f, dirty: true } };
       });
     });
   }
@@ -1081,7 +1141,7 @@ function wireBuilderTree(store){
         const sid = s.builder.selectedId;
         if (!sid || !f.people[sid]) return s;
         f.people[sid].sex = sex;
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f } };
+        return { ...s, builder: { ...s.builder, mode: "tree", family: f, dirty: true } };
       });
     });
   }
@@ -1095,7 +1155,7 @@ function wireBuilderTree(store){
         const sid = s.builder.selectedId;
         if (!sid || !f.people[sid]) return s;
         f.people[sid].alive = checked;
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f } };
+        return { ...s, builder: { ...s.builder, mode: "tree", family: f, dirty: true } };
       });
     });
   }
@@ -1109,7 +1169,7 @@ function wireBuilderTree(store){
         if (!sid || !f.people[sid]) return s;
         const pid = createPerson(f, { label: "Padre", sex: "male", alive: true });
         f.people[sid].fatherId = pid;
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f, selectedId: pid } };
+        return { ...s, builder: { ...s.builder, mode: "tree", family: f, selectedId: pid, dirty: true } };
       });
     });
   }
@@ -1123,7 +1183,7 @@ function wireBuilderTree(store){
         if (!sid || !f.people[sid]) return s;
         const pid = createPerson(f, { label: "Madre", sex: "female", alive: true });
         f.people[sid].motherId = pid;
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f, selectedId: pid } };
+        return { ...s, builder: { ...s.builder, mode: "tree", family: f, selectedId: pid, dirty: true } };
       });
     });
   }
@@ -1146,7 +1206,7 @@ function wireBuilderTree(store){
         const pid = createPerson(f, { label: "Cónyuge", sex: inferredSex, alive: true });
         linkSpouses(f, sid, pid);
 
-        return { ...s, builder: { ...s.builder, mode: "tree", family: f, selectedId: pid } };
+        return { ...s, builder: { ...s.builder, mode: "tree", family: f, selectedId: pid, dirty: true } };
       });
 
       if (!cur || cur.sex === "unknown"){
@@ -1210,6 +1270,7 @@ function wireBuilderTree(store){
             ...builder,
             family,
             selectedId: childId,
+            dirty: true,
           },
         };
       });
