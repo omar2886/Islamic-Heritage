@@ -18,6 +18,72 @@ function safeObject(candidate){
   return candidate && typeof candidate === "object" ? candidate : null;
 }
 
+const ROLE_ALIASES = Object.freeze({
+  wives: "wife",
+  // deja preparado por si el motor usa otras variantes
+  husbands: "husband",
+});
+
+function canonicalRoleId(roleId){
+  const raw = (roleId === null || roleId === undefined) ? "" : String(roleId);
+  const key = raw.trim();
+  if (!key) return "";
+  return ROLE_ALIASES[key] || key;
+}
+
+function canonicalizeRoleMap(map, { mergeArrays = false } = {}){
+  if (!map || typeof map !== "object") return null;
+  const out = {};
+  for (const [k, v] of Object.entries(map)){
+    const ck = canonicalRoleId(k);
+    if (!ck) continue;
+
+    if (!Object.prototype.hasOwnProperty.call(out, ck)){
+      out[ck] = v;
+      continue;
+    }
+
+    // merge por si vienen duplicados (wife + wives)
+    const prev = out[ck];
+    if (mergeArrays){
+      const a = Array.isArray(prev) ? prev : (prev == null ? [] : [prev]);
+      const b = Array.isArray(v) ? v : (v == null ? [] : [v]);
+      out[ck] = [...a, ...b].filter((x) => x !== null && x !== undefined && String(x).trim() !== "");
+    }else{
+      // preferir valor "más informativo"
+      const prevStr = prev == null ? "" : String(prev).trim();
+      const nextStr = v == null ? "" : String(v).trim();
+      out[ck] = nextStr && !prevStr ? v : prev;
+    }
+  }
+  return out;
+}
+
+function mergeCanonicalRoleMaps(base, addition, options){
+  const canonicalAddition = canonicalizeRoleMap(addition, options);
+  if (!canonicalAddition || !Object.keys(canonicalAddition).length) return base || null;
+  const target = base ? { ...base } : {};
+
+  Object.entries(canonicalAddition).forEach(([k, v]) => {
+    if (!Object.prototype.hasOwnProperty.call(target, k)){
+      target[k] = v;
+      return;
+    }
+    const prev = target[k];
+    if (options?.mergeArrays){
+      const a = Array.isArray(prev) ? prev : (prev == null ? [] : [prev]);
+      const b = Array.isArray(v) ? v : (v == null ? [] : [v]);
+      target[k] = [...a, ...b].filter((x) => x !== null && x !== undefined && String(x).trim() !== "");
+    }else{
+      const prevStr = prev == null ? "" : String(prev).trim();
+      const nextStr = v == null ? "" : String(v).trim();
+      target[k] = nextStr && !prevStr ? v : prev;
+    }
+  });
+
+  return target;
+}
+
 function parseFractionToNumber(fracStr){
   if (fracStr === null || fracStr === undefined) return null;
   if (typeof fracStr === "number" && Number.isFinite(fracStr)) return fracStr;
@@ -125,6 +191,25 @@ function pickAmountsByRole(output){
   return null;
 }
 
+function pickAmountsByIndividual(output){
+  const candidates = [
+    safeObject(output?.amounts_by_individual),
+    safeObject(output?.amounts?.amounts_by_individual),
+    safeObject(output?.shares?.amounts_by_individual),
+    safeObject(output?.amounts?.individual_amounts_by_role),
+    safeObject(output?.amounts?.individual_amounts),
+  ];
+
+  let merged = null;
+  candidates.forEach((candidate) => {
+    if (candidate && Object.keys(candidate).length){
+      merged = mergeCanonicalRoleMaps(merged, candidate, { mergeArrays: true });
+    }
+  });
+
+  return merged;
+}
+
 function pickEstateValue(output){
   if (!output || typeof output !== "object") return null;
   if (Object.prototype.hasOwnProperty.call(output, "estate_value")) return output.estate_value;
@@ -200,10 +285,12 @@ function buildIndividuals(role, peopleByRole, individualShares, amountsByIndivid
 
 function buildShare(role, fraction, amountRaw, ctx){
   const { currency, peopleByRole, individualShares, amountsByIndividual } = ctx;
-  const individuals = buildIndividuals(role, peopleByRole, individualShares, amountsByIndividual, currency);
+  const canonicalRole = canonicalRoleId(role);
+  if (!canonicalRole) return null;
+  const individuals = buildIndividuals(canonicalRole, peopleByRole, individualShares, amountsByIndividual, currency);
   return {
-    role,
-    count: roleCount(role, peopleByRole, individualShares),
+    role: canonicalRole,
+    count: roleCount(canonicalRole, peopleByRole, individualShares),
     groupFraction: fraction ?? null,
     groupPercent: fractionToPercentString(fraction),
     groupAmount: formatMoney(amountRaw, currency),
@@ -217,40 +304,38 @@ function buildSharesByRole(output, raw){
   }
 
   const currency = output.currency ?? raw?.currency ?? null;
-  const peopleByRole = safeObject(output.people_by_role) || {};
-  const individualShares = safeObject(output.individual_shares) || null;
-  const amountsByIndividual =
-    safeObject(output.amounts_by_individual) ||
-    safeObject(output?.amounts?.amounts_by_individual) ||
-    safeObject(output?.shares?.amounts_by_individual) ||
-    null;
-  const amountsByRole = pickAmountsByRole(output);
+  const peopleByRole = canonicalizeRoleMap(safeObject(output.people_by_role), { mergeArrays: true }) || {};
+  const individualShares = canonicalizeRoleMap(safeObject(output.individual_shares), { mergeArrays: true }) || null;
+  const amountsByIndividual = pickAmountsByIndividual(output);
+  const amountsByRole = canonicalizeRoleMap(pickAmountsByRole(output)) || null;
   const estateValue = pickEstateValue(output);
 
   const ctx = { currency, peopleByRole, individualShares, amountsByIndividual };
   const shares = [];
   let hasAmountData = hasAnyAmountInCollection(amountsByRole) || hasAnyAmountInCollection(amountsByIndividual);
 
-  const groupShares = safeObject(output.group_shares);
+  const groupShares = canonicalizeRoleMap(safeObject(output.group_shares));
   if (groupShares && Object.keys(groupShares).length){
     Object.entries(groupShares).forEach(([role, fraction]) => {
       const normalizedFraction = normalizeFractionValue(fraction);
       const amountFromShare = aggregateAmountFromEntries(fraction);
       const amount = amountsByRole && Object.prototype.hasOwnProperty.call(amountsByRole, role) ? amountsByRole[role] : amountFromShare;
       if (hasAmountValue(amount)) hasAmountData = true;
-      shares.push(buildShare(role, normalizedFraction, amount, ctx));
+      const shareEntry = buildShare(role, normalizedFraction, amount, ctx);
+      if (shareEntry) shares.push(shareEntry);
     });
     if (shares.length) return { shares, hasAmountColumn: hasAmountData, estateValue, currency };
   }
 
-  const shareGroups = safeObject(output.shares?.final?.groups);
+  const shareGroups = canonicalizeRoleMap(safeObject(output.shares?.final?.groups), { mergeArrays: true });
   if (shareGroups && Object.keys(shareGroups).length){
     Object.entries(shareGroups).forEach(([role, fractions]) => {
       const fraction = aggregateFractions(fractions);
       const shareAmount = aggregateAmountFromEntries(fractions);
       const amount = amountsByRole && Object.prototype.hasOwnProperty.call(amountsByRole, role) ? amountsByRole[role] : shareAmount;
       if (hasAmountValue(amount)) hasAmountData = true;
-      shares.push(buildShare(role, fraction, amount, ctx));
+      const shareEntry = buildShare(role, fraction, amount, ctx);
+      if (shareEntry) shares.push(shareEntry);
     });
     if (shares.length) return { shares, hasAmountColumn: hasAmountData, estateValue, currency };
   }
@@ -476,9 +561,11 @@ function renderExplainSteps(source){
     const changesHtml = changes.length ? `
       <ul class="wizard-list" style="margin-top:6px;">
         ${changes.map(([k, v]) => {
+          const roleId = canonicalRoleId(k);
           const before = v && typeof v === "object" && v.before !== undefined ? String(v.before) : "";
           const after  = v && typeof v === "object" && v.after  !== undefined ? String(v.after)  : "";
-          const line = (before || after) ? `${k}: ${before} -> ${after}` : `${k}: ${formatCell(v)}`;
+          const label = roleId || k;
+          const line = (before || after) ? `${label}: ${before} -> ${after}` : `${label}: ${formatCell(v)}`;
           return `<li>${formatCell(line)}</li>`;
         }).join("")}
       </ul>
