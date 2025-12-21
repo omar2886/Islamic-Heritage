@@ -8,6 +8,7 @@ import { openModal, closeModal } from "./ui/modal.js";
 import { wireWizard } from "./pages/wizard.js";
 import { wireBuilder, applyWizardSync } from "./pages/builder.js";
 import { wireResults } from "./pages/results.js";
+import { importWizardToTree } from "./pages/builder_tree.js";
 
 import { fetchRoles } from "./api/client.js";
 import { EXPECTED_ROLES, diffRoles } from "./api/contract.js";
@@ -136,5 +137,22 @@ function handleModalConfirm(action){
   if (action === "builder-apply-wizard"){
     closeModal(store);
     applyWizardSync(store);
+  }
+  if (action === "builder-tree-import-wizard"){
+    closeModal(store);
+    importWizardToTree(store);
+    return;
+  }
+  if (action === "builder-tree-reset"){
+    closeModal(store);
+    store.setState((s)=>({
+      ...s,
+      builder:{
+        ...s.builder,
+        mode:"tree",
+        family: null
+      }
+    }));
+    return;
   }
 }
