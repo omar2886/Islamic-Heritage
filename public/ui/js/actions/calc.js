@@ -22,8 +22,15 @@ function cloneHeirs(list){
     if (!role) continue;
 
     const rawCount = item?.count;
-    const count = Number.isFinite(rawCount) ? rawCount : Number.parseInt(String(rawCount ?? "").trim(), 10);
-    if (!Number.isFinite(count) || count <= 0) continue;
+
+    let count = null;
+    if (typeof rawCount === "number") {
+      count = rawCount;
+    } else {
+      count = Number.parseInt(String(rawCount ?? "").trim(), 10);
+    }
+
+    if (!Number.isInteger(count) || count <= 0) continue;
 
     merged[role] = (merged[role] || 0) + count;
   }
