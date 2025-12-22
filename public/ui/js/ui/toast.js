@@ -1,44 +1,56 @@
-function uid(){
-  return Math.random().toString(16).slice(2) + Date.now().toString(16);
-}
-
-export function renderToast(state){
-  const toasts = (state?.ui?.toasts && Array.isArray(state.ui.toasts)) ? state.ui.toasts : [];
-  if (!toasts.length) return "";
-  const items = toasts.map((t) => `<div class="toast" role="status">${escapeHtml(t.message)}</div>`).join("");
-  return `<div class="toast-wrap">${items}</div>`;
-}
-
-export function wireToast(){
-  // No DOM listeners required; lifecycle handled via pushToast timeouts.
-}
-
-export function pushToast(store, message){
+// public/ui/js/ui/toast.js
+export function pushToast(store, message, kind = "info", ttlMs = 2600){
+  const id = Math.random().toString(36).slice(2);
   const toast = {
-    id: uid(),
-    message: String(message || "").trim() || "OK",
-    createdAt: Date.now(),
-    ttlMs: 3500,
+    id,
+    kind,
+    message: String(message || ""),
+    expiresAt: Date.now() + ttlMs,
   };
 
   store.setState((s) => ({
     ...s,
-    ui: { ...s.ui, toasts: [...(s.ui?.toasts || []), toast] },
-  }));
+    ui: {
+      ...(s.ui || {}),
+      toasts: [ ...(s.ui?.toasts || []), toast ],
+    },
+  }), { persist: false });
 
   window.setTimeout(() => {
     store.setState((s) => ({
       ...s,
-      ui: { ...s.ui, toasts: (s.ui?.toasts || []).filter((t) => t.id !== toast.id) },
-    }));
-  }, toast.ttlMs);
+      ui: {
+        ...(s.ui || {}),
+        toasts: (s.ui?.toasts || []).filter((t) => t.id !== id),
+      },
+    }), { persist: false });
+  }, ttlMs + 30);
+}
+
+export function renderToast(state){
+  const toasts = state?.ui?.toasts || [];
+  if (!toasts.length) return "";
+
+  const now = Date.now();
+  const alive = toasts.filter((t) => !t.expiresAt || t.expiresAt > now);
+  if (!alive.length) return "";
+
+  return `
+    <div class="toast-stack" aria-live="polite" aria-atomic="true">
+      ${alive.map((t) => `
+        <div class="toast ${t.kind || "info"}">
+          <div class="toast__msg">${escapeHtml(t.message || "")}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function escapeHtml(s){
   return String(s)
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"','&quot;')
-    .replaceAll("'","&#039;");
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
