@@ -45,10 +45,14 @@ function normalizeSex(sex){
   return sex === "male" || sex === "female" ? sex : "male";
 }
 
-function ensureSpouseSymmetry(spouses, people){
+function ensureSpouseSymmetry(spousesOrTree, peopleMaybe){
+  const isTreeLike = spousesOrTree && typeof spousesOrTree === "object" && !Array.isArray(spousesOrTree) && spousesOrTree.people;
+  const people = isTreeLike ? (spousesOrTree.people || {}) : (peopleMaybe || {});
+  const spousesRaw = isTreeLike ? spousesOrTree.spouses : spousesOrTree;
+
   const out = {};
   const ids = Object.keys(people || {});
-  const s = spouses && typeof spouses === "object" ? spouses : {};
+  const s = spousesRaw && typeof spousesRaw === "object" ? spousesRaw : {};
   for (const id of ids){
     const arr = Array.isArray(s[id]) ? s[id].filter((x) => typeof x === "string") : [];
     out[id] = Array.from(new Set(arr.filter((x) => people[x] && x !== id)));
@@ -60,42 +64,40 @@ function ensureSpouseSymmetry(spouses, people){
       if (!out[b].includes(a)) out[b].push(a);
     }
   }
+
+  if (isTreeLike){
+    return { ...spousesOrTree, spouses: out };
+  }
   return out;
 }
 
-export function ensureTree(tree) {
-  // Ensure we always have a valid deceased node.
-  const out = tree && typeof tree === "object" ? tree : null;
+export function ensureTree(tree){
+  const safe = sanitizeTree(tree);
 
-  // Tree is the source of truth. Wizard must not force sex or other attributes here.
-  if (!out || !out.people || typeof out.people !== "object" || Object.keys(out.people).length === 0) {
+  if (!safe.people || Object.keys(safe.people).length === 0){
     return makeDefaultTree("male");
   }
 
-  // If deceasedId missing or invalid, pick first person and mark as deceased.
-  let deceasedId = out.deceasedId;
-  if (!deceasedId || !out.people[deceasedId]) {
-    deceasedId = Object.keys(out.people)[0];
+  let deceasedId = typeof safe.deceasedId === "string" ? safe.deceasedId : "p1";
+  const people = { ...safe.people };
+
+  if (!people[deceasedId]){
+    deceasedId = "p1";
+  }
+  if (!people[deceasedId]){
+    people[deceasedId] = { id: deceasedId, name: "Causante", sex: "male", alive: false };
   }
 
-  // Ensure deceased is flagged as not alive (he is not an heir).
-  const people = { ...out.people };
-  const deceased = people[deceasedId] || null;
-  if (deceased) {
-    people[deceasedId] = { ...deceased, alive: false };
-  }
-
-  // Ensure spouse symmetry.
-  const spouses = ensureSpouseSymmetry(out.spouses || {}, people);
-
-  return {
-    version: 1,
-    deceasedId,
-    nextId: (typeof out.nextId === "number" && out.nextId >= 2) ? out.nextId : 2,
-    people,
-    parents: out.parents || {},
-    spouses,
+  const d = people[deceasedId];
+  people[deceasedId] = {
+    ...d,
+    name: d?.name ? d.name : "Causante",
+    sex: (d?.sex === "male" || d?.sex === "female") ? d.sex : "male",
+    alive: false,
   };
+
+  const out = ensureSpouseSymmetry({ ...safe, deceasedId, people });
+  return out;
 }
 
 export function makeDefaultTree(deceasedSex = "male"){

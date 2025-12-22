@@ -1,496 +1,331 @@
 // public/ui/js/pages/builder_tree.js
+import { sanitizeTree, ensureTree } from "../domain/familyTree.js";
 import { openModal } from "../ui/modal.js";
-import {
-  addPerson,
-  ensureTree,
-  getChildren,
-  getParents,
-  getSpouses,
-  linkSpouses,
-  sanitizeTree,
-  setParents,
-  updatePerson,
-} from "../domain/familyTree.js";
 
-function escapeHtml(s){
-  return String(s)
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"','&quot;')
-    .replaceAll("'","&#039;");
+/**
+ * PR16b: Nuevo Tree Builder por generaciones (BFS desde deceasedId),
+ * acciones inline por nodo, y edición en modal local (sin commits por tecla).
+ *
+ * Notas:
+ * - Tree es la fuente de verdad.
+ * - El Wizard solo se importa al árbol por acción explícita (botón "Importar del Wizard").
+ * - NO se toca el core (public/app/).
+ */
+
+/* =========================
+   Helpers
+========================= */
+
+function escapeHtml(str){
+  return String(str ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-function computeWizardHash(wizard){
-  const safeWizard = wizard || {};
-  const payload = {
-    deceased_sex: safeWizard.deceased_sex || null,
-    spouse: {
-      enabled: safeWizard.spouse?.enabled === true,
-      wives_count: Number(safeWizard.spouse?.wives_count ?? 0),
-      husband_present: safeWizard.spouse?.husband_present === true,
-    },
-    descendants: {
-      enabled: safeWizard.descendants?.enabled === true,
-      sons_count: Number(safeWizard.descendants?.son ?? 0),
-      daughters_count: Number(safeWizard.descendants?.daughter ?? 0),
-    },
-    parents: {
-      enabled: safeWizard.parents?.enabled === true,
-      father_alive: safeWizard.parents?.father === true,
-      mother_alive: safeWizard.parents?.mother === true,
-    },
+function personLabel(p){
+  const name = p?.name ? String(p.name) : "(sin nombre)";
+  return `${name} (${p?.id || "?"})`;
+}
+
+function normalizeTreeUi(treeUi){
+  const safe = treeUi && typeof treeUi === "object" ? treeUi : {};
+  const collapsed = safe.collapsed && typeof safe.collapsed === "object" ? safe.collapsed : {};
+  return {
+    search: typeof safe.search === "string" ? safe.search : "",
+    collapsed,
+    modal: safe.modal && typeof safe.modal === "object" ? safe.modal : null,
   };
-  return JSON.stringify(payload);
 }
 
-function oppositeSex(sex){
-  return sex === "male" ? "female" : "male";
+function makeChildrenIndex(tree){
+  const idx = {};
+  const parents = tree.parents && typeof tree.parents === "object" ? tree.parents : {};
+  for (const [childId, rel] of Object.entries(parents)){
+    if (!rel || typeof rel !== "object") continue;
+    const f = rel.fatherId;
+    const m = rel.motherId;
+    if (typeof f === "string"){
+      if (!idx[f]) idx[f] = [];
+      idx[f].push(childId);
+    }
+    if (typeof m === "string"){
+      if (!idx[m]) idx[m] = [];
+      idx[m].push(childId);
+    }
+  }
+  return idx;
 }
 
-function stablePersonLabel(p){
-  const name = (p?.name || "").trim();
-  if (name) return name;
-  return p?.id || "persona";
+function getParentsOf(tree, personId){
+  const rel = (tree.parents && typeof tree.parents === "object") ? tree.parents[personId] : null;
+  const fatherId = rel && typeof rel.fatherId === "string" ? rel.fatherId : null;
+  const motherId = rel && typeof rel.motherId === "string" ? rel.motherId : null;
+  return { fatherId, motherId };
 }
 
-function buildLevelIndex(tree){
-  const t = ensureTree(sanitizeTree(tree));
-  const levelById = {};
-  const q = [];
+function getSpousesOf(tree, personId){
+  const spouses = (tree.spouses && typeof tree.spouses === "object") ? tree.spouses[personId] : null;
+  if (!Array.isArray(spouses)) return [];
+  return spouses.filter((id) => typeof id === "string");
+}
 
-  const seed = t.deceasedId;
-  levelById[seed] = 0;
-  q.push(seed);
+function computeGenerations(tree, rootId){
+  const people = tree.people || {};
+  const childrenIdx = makeChildrenIndex(tree);
 
-  for (let i = 0; i < q.length; i++){
-    const id = q[i];
-    const level = levelById[id];
+  const genById = {};
+  const visited = new Set();
 
-    // spouses keep same level
-    for (const sid of getSpouses(t, id)){
-      if (levelById[sid] === undefined){
-        levelById[sid] = level;
-        q.push(sid);
+  if (!people[rootId]) return { genById: {}, groups: [], visitedIds: [], disconnectedIds: Object.keys(people) };
+
+  const queue = [rootId];
+  genById[rootId] = 0;
+  visited.add(rootId);
+
+  while (queue.length){
+    const cur = queue.shift();
+    const g = genById[cur];
+
+    // spouses at same generation
+    for (const sid of getSpousesOf(tree, cur)){
+      if (!people[sid]) continue;
+      if (!(sid in genById)){
+        genById[sid] = g;
+        queue.push(sid);
+        visited.add(sid);
       }
     }
 
-    // parents are one level up
-    const parents = getParents(t, id);
-    for (const pid of [parents.fatherId, parents.motherId]){
-      if (!pid) continue;
-      if (levelById[pid] === undefined){
-        levelById[pid] = level - 1;
-        q.push(pid);
+    // parents are generation -1
+    const { fatherId, motherId } = getParentsOf(tree, cur);
+    for (const pid of [fatherId, motherId]){
+      if (!pid || !people[pid]) continue;
+      if (!(pid in genById)){
+        genById[pid] = g - 1;
+        queue.push(pid);
+        visited.add(pid);
       }
     }
 
-    // children are one level down
-    for (const cid of getChildren(t, id)){
-      if (levelById[cid] === undefined){
-        levelById[cid] = level + 1;
-        q.push(cid);
+    // children are generation +1
+    const children = Array.isArray(childrenIdx[cur]) ? childrenIdx[cur] : [];
+    for (const cid of children){
+      if (!people[cid]) continue;
+      if (!(cid in genById)){
+        genById[cid] = g + 1;
+        queue.push(cid);
+        visited.add(cid);
       }
     }
   }
 
-  const groups = new Map();
-  for (const [id, level] of Object.entries(levelById)){
-    if (!groups.has(level)) groups.set(level, []);
-    groups.get(level).push(id);
+  // build sorted groups
+  const byGen = new Map();
+  for (const [id, gen] of Object.entries(genById)){
+    if (!byGen.has(gen)) byGen.set(gen, []);
+    byGen.get(gen).push(id);
   }
 
-  // stable sort by label then id
-  for (const [level, ids] of groups.entries()){
+  const gens = Array.from(byGen.keys()).sort((a, b) => a - b);
+  const groups = gens.map((gen) => {
+    const ids = byGen.get(gen);
     ids.sort((a, b) => {
-      const pa = t.people[a];
-      const pb = t.people[b];
-      const la = stablePersonLabel(pa).toLowerCase();
-      const lb = stablePersonLabel(pb).toLowerCase();
-      if (la < lb) return -1;
-      if (la > lb) return 1;
-      return String(a).localeCompare(String(b));
+      const pa = people[a];
+      const pb = people[b];
+      const na = (pa?.name || "").toLowerCase();
+      const nb = (pb?.name || "").toLowerCase();
+      if (na < nb) return -1;
+      if (na > nb) return 1;
+      return a.localeCompare(b);
     });
-    groups.set(level, ids);
+    return { gen, ids };
+  });
+
+  const visitedIds = Array.from(visited);
+  visitedIds.sort();
+
+  const disconnectedIds = Object.keys(people).filter((id) => !visited.has(id));
+  disconnectedIds.sort();
+
+  return { genById, groups, visitedIds, disconnectedIds };
+}
+
+function nextPersonId(tree){
+  let nextId = (typeof tree.nextId === "number" && tree.nextId >= 2) ? tree.nextId : 2;
+  while (tree.people && tree.people[`p${nextId}`]) nextId += 1;
+  return nextId;
+}
+
+function addPerson(tree, fields){
+  const nextId = nextPersonId(tree);
+  const id = `p${nextId}`;
+  const people = { ...(tree.people || {}) };
+  people[id] = {
+    id,
+    name: typeof fields.name === "string" ? fields.name : "",
+    sex: (fields.sex === "male" || fields.sex === "female") ? fields.sex : "male",
+    alive: fields.alive === false ? false : true,
+  };
+  return { ...tree, nextId: nextId + 1, people };
+}
+
+function updatePerson(tree, personId, patch){
+  const p = tree.people?.[personId];
+  if (!p) return tree;
+  const next = { ...p };
+  if (typeof patch.name === "string") next.name = patch.name;
+  if (patch.sex === "male" || patch.sex === "female") next.sex = patch.sex;
+  if (typeof patch.alive === "boolean") next.alive = patch.alive;
+  const people = { ...tree.people, [personId]: next };
+  return { ...tree, people };
+}
+
+function setDeceased(tree, personId){
+  if (!tree.people?.[personId]) return tree;
+  const people = { ...tree.people };
+  for (const [id, p] of Object.entries(people)){
+    if (id === personId){
+      people[id] = { ...p, alive: false, name: p.name || "Causante" };
+    } else {
+      people[id] = { ...p };
+    }
   }
-
-  const allIds = Object.keys(t.people || {});
-  const connected = new Set(Object.keys(levelById));
-  const disconnected = allIds.filter((id) => !connected.has(id));
-  disconnected.sort((a, b) => stablePersonLabel(t.people[a]).localeCompare(stablePersonLabel(t.people[b])));
-
-  const levels = Array.from(groups.keys()).sort((a, b) => a - b);
-
-  return { tree: t, groups, levels, disconnected };
+  return { ...tree, deceasedId: personId, people };
 }
 
-function levelLabel(level){
-  if (level === 0) return "Nucleo (0)";
-  if (level < 0) return `Ascendientes (${level})`;
-  return `Descendientes (+${level})`;
+function linkSpouses(tree, aId, bId){
+  if (aId === bId) return tree;
+  if (!tree.people?.[aId] || !tree.people?.[bId]) return tree;
+
+  const spouses = { ...(tree.spouses || {}) };
+  const a = Array.isArray(spouses[aId]) ? spouses[aId].slice() : [];
+  const b = Array.isArray(spouses[bId]) ? spouses[bId].slice() : [];
+
+  if (!a.includes(bId)) a.push(bId);
+  if (!b.includes(aId)) b.push(aId);
+
+  spouses[aId] = a;
+  spouses[bId] = b;
+
+  return { ...tree, spouses };
 }
 
-function renderPill(text, tone){
-  const cls = tone ? `pill pill-${tone}` : "pill";
-  return `<span class="${cls}">${escapeHtml(text)}</span>`;
+function setParentRelation(tree, childId, parentId){
+  const child = tree.people?.[childId];
+  const parent = tree.people?.[parentId];
+  if (!child || !parent) return tree;
+
+  const parents = { ...(tree.parents || {}) };
+  const rel = parents[childId] && typeof parents[childId] === "object" ? { ...parents[childId] } : {};
+  if (parent.sex === "male") rel.fatherId = parentId;
+  if (parent.sex === "female") rel.motherId = parentId;
+  parents[childId] = rel;
+
+  return { ...tree, parents };
 }
 
-function renderNode(tree, id){
-  const p = tree.people[id];
-  if (!p) return "";
-  const isDeceased = id === tree.deceasedId;
+function setOtherParent(tree, childId, otherParentId){
+  const child = tree.people?.[childId];
+  const p = tree.people?.[otherParentId];
+  if (!child || !p) return tree;
 
-  const sexLabel = p.sex === "male" ? "Hombre" : "Mujer";
-  const aliveLabel = p.alive ? "Vivo" : "Fallecido";
+  const parents = { ...(tree.parents || {}) };
+  const rel = parents[childId] && typeof parents[childId] === "object" ? { ...parents[childId] } : {};
 
-  const title = escapeHtml(stablePersonLabel(p));
-  const meta = [
-    renderPill(sexLabel, "neutral"),
-    renderPill(aliveLabel, p.alive ? "ok" : "warn"),
-    isDeceased ? renderPill("Causante", "accent") : "",
-  ].filter(Boolean).join(" ");
+  if (p.sex === "male") rel.fatherId = otherParentId;
+  if (p.sex === "female") rel.motherId = otherParentId;
 
-  const actions = `
-    <div class="tree-actions">
-      <button class="btn btn-xs" type="button" data-tree-action="open-modal|add-child|${escapeHtml(id)}|male">+ Hijo</button>
-      <button class="btn btn-xs" type="button" data-tree-action="open-modal|add-child|${escapeHtml(id)}|female">+ Hija</button>
-      <button class="btn btn-xs" type="button" data-tree-action="open-modal|add-spouse|${escapeHtml(id)}">+ Conyuge</button>
-      <button class="btn btn-xs" type="button" data-tree-action="open-modal|edit-person|${escapeHtml(id)}">Editar</button>
-      ${isDeceased ? "" : `<button class="btn btn-xs" type="button" data-tree-action="set-deceased|${escapeHtml(id)}">Set causante</button>`}
-    </div>
-  `;
-
-  return `
-    <div class="tree-node" data-person-id="${escapeHtml(id)}">
-      <div class="tree-node-main">
-        <div class="tree-node-title">
-          <strong class="tree-node-name">${title}</strong>
-        </div>
-        <div class="tree-node-meta">${meta}</div>
-      </div>
-      ${actions}
-    </div>
-  `;
+  parents[childId] = rel;
+  return { ...tree, parents };
 }
 
-function renderGeneration(tree, level, ids, collapsed){
-  const header = `
-    <div class="tree-gen-header">
-      <div class="row" style="gap:10px;">
-        <button class="btn btn-xs" type="button" data-tree-action="toggle-level|${level}">
-          ${collapsed ? "Expandir" : "Plegar"}
-        </button>
-        <strong>${escapeHtml(levelLabel(level))}</strong>
-        <span style="color:var(--muted); font-size:13px;">${ids.length} nodo(s)</span>
-      </div>
-    </div>
-  `;
-
-  const body = collapsed ? "" : `
-    <div class="tree-gen-body">
-      ${ids.map((id) => renderNode(tree, id)).join("")}
-    </div>
-  `;
-
-  return `<section class="tree-gen card">${header}${body}</section>`;
-}
-
-function renderModal(state, tree){
-  const modal = state?.builder?.treeUi?.modal || null;
-  if (!modal) return "";
-
-  const type = modal.type;
-
-  if (type === "edit-person"){
-    const id = modal.personId;
-    const p = tree.people[id];
-    if (!p) return "";
-
-    const parents = getParents(tree, id);
-    const fatherId = parents.fatherId || "";
-    const motherId = parents.motherId || "";
-
-    const all = Object.values(tree.people || {});
-    const fatherOptions = all.filter((x) => x && x.id !== id && x.sex === "male");
-    const motherOptions = all.filter((x) => x && x.id !== id && x.sex === "female");
-
-    const sexMaleSel = p.sex === "male" ? "selected" : "";
-    const sexFemaleSel = p.sex === "female" ? "selected" : "";
-
-    const aliveYesSel = p.alive ? "selected" : "";
-    const aliveNoSel = !p.alive ? "selected" : "";
-
-    const aliveDisabled = (id === tree.deceasedId) ? "disabled" : "";
-
-    return `
-      <div class="tree-modal-backdrop" role="dialog" aria-modal="true">
-        <div class="tree-modal card card-pad">
-          <div class="row" style="justify-content:space-between;">
-            <strong>Editar persona</strong>
-            <button class="btn btn-xs" type="button" data-tree-action="modal-cancel">Cerrar</button>
-          </div>
-
-          <div class="tree-form">
-            <div>
-              <label class="label">Nombre</label>
-              <input class="input" id="tree-modal-name" type="text" value="${escapeHtml(p.name || "")}" placeholder="Opcional" />
-            </div>
-
-            <div class="row" style="gap:12px; align-items:flex-end; flex-wrap:wrap;">
-              <div style="flex:1; min-width:220px;">
-                <label class="label">Sexo</label>
-                <select class="input" id="tree-modal-sex">
-                  <option value="male" ${sexMaleSel}>Hombre</option>
-                  <option value="female" ${sexFemaleSel}>Mujer</option>
-                </select>
-              </div>
-
-              <div style="flex:1; min-width:220px;">
-                <label class="label">Estado</label>
-                <select class="input" id="tree-modal-alive" ${aliveDisabled}>
-                  <option value="true" ${aliveYesSel}>Vivo</option>
-                  <option value="false" ${aliveNoSel}>Fallecido</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="row" style="gap:12px; align-items:flex-end; flex-wrap:wrap;">
-              <div style="flex:1; min-width:220px;">
-                <label class="label">Padre (opcional)</label>
-                <select class="input" id="tree-modal-father">
-                  <option value="">Sin asignar</option>
-                  ${fatherOptions.map((x) => `<option value="${escapeHtml(x.id)}" ${x.id === fatherId ? "selected" : ""}>${escapeHtml(stablePersonLabel(x))}</option>`).join("")}
-                </select>
-              </div>
-
-              <div style="flex:1; min-width:220px;">
-                <label class="label">Madre (opcional)</label>
-                <select class="input" id="tree-modal-mother">
-                  <option value="">Sin asignar</option>
-                  ${motherOptions.map((x) => `<option value="${escapeHtml(x.id)}" ${x.id === motherId ? "selected" : ""}>${escapeHtml(stablePersonLabel(x))}</option>`).join("")}
-                </select>
-              </div>
-            </div>
-
-            <div class="row" style="justify-content:flex-end; gap:10px; flex-wrap:wrap;">
-              <button class="btn" type="button" data-tree-action="modal-save-edit|${escapeHtml(id)}">Guardar</button>
-              <button class="btn" type="button" data-tree-action="modal-cancel">Cancelar</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  if (type === "add-child"){
-    const parentId = modal.parentId;
-    const parent = tree.people[parentId];
-    if (!parent) return "";
-    const sex = (modal.sex === "male" || modal.sex === "female") ? modal.sex : "male";
-    const defaultName = sex === "male" ? "Hijo" : "Hija";
-
-    const parentLabel = stablePersonLabel(parent);
-
-    const candidates = Object.values(tree.people || {}).filter((x) => x && x.id !== parentId);
-    const existingChildren = new Set(getChildren(tree, parentId));
-    const reuseCandidates = candidates.filter((x) => !existingChildren.has(x.id));
-
-    return `
-      <div class="tree-modal-backdrop" role="dialog" aria-modal="true">
-        <div class="tree-modal card card-pad">
-          <div class="row" style="justify-content:space-between;">
-            <strong>Agregar ${sex === "male" ? "hijo" : "hija"}</strong>
-            <button class="btn btn-xs" type="button" data-tree-action="modal-cancel">Cerrar</button>
-          </div>
-
-          <p style="color:var(--muted); margin:10px 0 0; line-height:1.4;">
-            Progenitor: <strong>${escapeHtml(parentLabel)}</strong>
-          </p>
-
-          <div class="tree-form">
-            <div class="card card-pad" style="background:rgba(255,255,255,.02);">
-              <strong>Crear nuevo</strong>
-              <div style="height:10px;"></div>
-              <label class="label">Nombre (opcional)</label>
-              <input class="input" id="tree-modal-new-child-name" type="text" value="${escapeHtml(defaultName)}" />
-              <div class="row" style="justify-content:flex-end; margin-top:12px;">
-                <button class="btn" type="button" data-tree-action="modal-add-child-create|${escapeHtml(parentId)}|${sex}">Crear y vincular</button>
-              </div>
-            </div>
-
-            <div class="card card-pad" style="background:rgba(255,255,255,.02);">
-              <strong>Vincular existente</strong>
-              <div style="height:10px;"></div>
-              <label class="label">Persona existente</label>
-              <select class="input" id="tree-modal-existing-child">
-                <option value="">Selecciona...</option>
-                ${reuseCandidates.map((x) => `<option value="${escapeHtml(x.id)}">${escapeHtml(stablePersonLabel(x))}</option>`).join("")}
-              </select>
-              <div class="row" style="justify-content:flex-end; margin-top:12px;">
-                <button class="btn" type="button" data-tree-action="modal-add-child-link|${escapeHtml(parentId)}">Vincular</button>
-              </div>
-            </div>
-
-            <div class="row" style="justify-content:flex-end; gap:10px; flex-wrap:wrap;">
-              <button class="btn" type="button" data-tree-action="modal-cancel">Cancelar</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  if (type === "add-spouse"){
-    const personId = modal.personId;
-    const p = tree.people[personId];
-    if (!p) return "";
-
-    const targetSex = oppositeSex(p.sex);
-
-    const candidates = Object.values(tree.people || {}).filter((x) => x && x.id !== personId);
-    const existingSpouses = new Set(getSpouses(tree, personId));
-    const reuseCandidates = candidates.filter((x) => !existingSpouses.has(x.id));
-
-    return `
-      <div class="tree-modal-backdrop" role="dialog" aria-modal="true">
-        <div class="tree-modal card card-pad">
-          <div class="row" style="justify-content:space-between;">
-            <strong>Agregar conyuge</strong>
-            <button class="btn btn-xs" type="button" data-tree-action="modal-cancel">Cerrar</button>
-          </div>
-
-          <p style="color:var(--muted); margin:10px 0 0; line-height:1.4;">
-            Persona: <strong>${escapeHtml(stablePersonLabel(p))}</strong>
-          </p>
-
-          <div class="tree-form">
-            <div class="card card-pad" style="background:rgba(255,255,255,.02);">
-              <strong>Crear nuevo</strong>
-              <div style="height:10px;"></div>
-              <label class="label">Nombre (opcional)</label>
-              <input class="input" id="tree-modal-new-spouse-name" type="text" value="Conyuge" />
-              <div class="row" style="justify-content:flex-end; margin-top:12px;">
-                <button class="btn" type="button" data-tree-action="modal-add-spouse-create|${escapeHtml(personId)}|${targetSex}">Crear y vincular</button>
-              </div>
-            </div>
-
-            <div class="card card-pad" style="background:rgba(255,255,255,.02);">
-              <strong>Vincular existente</strong>
-              <div style="height:10px;"></div>
-              <label class="label">Persona existente</label>
-              <select class="input" id="tree-modal-existing-spouse">
-                <option value="">Selecciona...</option>
-                ${reuseCandidates.map((x) => `<option value="${escapeHtml(x.id)}">${escapeHtml(stablePersonLabel(x))}</option>`).join("")}
-              </select>
-              <div class="row" style="justify-content:flex-end; margin-top:12px;">
-                <button class="btn" type="button" data-tree-action="modal-add-spouse-link|${escapeHtml(personId)}">Vincular</button>
-              </div>
-            </div>
-
-            <div class="row" style="justify-content:flex-end; gap:10px; flex-wrap:wrap;">
-              <button class="btn" type="button" data-tree-action="modal-cancel">Cancelar</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  return "";
-}
+/* =========================
+   Page render
+========================= */
 
 export function renderBuilderTree(state){
   const builder = state.builder || {};
-  const wizard = state.wizard || {};
-  const treeUi = builder.treeUi || { search: "", collapsed: {}, modal: null };
+  const treeUi = normalizeTreeUi(builder.treeUi);
 
-  const { tree, groups, levels, disconnected } = buildLevelIndex(builder.tree);
+  const tree = ensureTree(sanitizeTree(builder.tree));
+  const deceasedId = tree.deceasedId;
+  const selectedId = (typeof builder.treeSelectedId === "string" && tree.people?.[builder.treeSelectedId]) ? builder.treeSelectedId : deceasedId;
 
-  const wizardHashNow = computeWizardHash(wizard);
-  const wizardChanged = builder.wizardHashApplied && builder.wizardHashApplied !== wizardHashNow;
+  const search = treeUi.search.trim().toLowerCase();
+  const { groups, disconnectedIds } = computeGenerations(tree, deceasedId);
 
-  const search = (treeUi.search || "").trim().toLowerCase();
-  const collapsed = treeUi.collapsed || {};
+  const peopleIds = Object.keys(tree.people || {}).sort((a, b) => a.localeCompare(b));
+  const filteredPeopleIds = search
+    ? peopleIds.filter((id) => {
+      const p = tree.people[id];
+      const hay = `${p?.name || ""} ${id}`.toLowerCase();
+      return hay.includes(search);
+    })
+    : peopleIds;
 
-  const renderLevels = [];
-  for (const level of levels){
-    const ids = groups.get(level) || [];
-    const filtered = search
-      ? ids.filter((id) => {
-          if (id === tree.deceasedId) return true;
-          const p = tree.people[id];
-          return stablePersonLabel(p).toLowerCase().includes(search);
-        })
-      : ids;
-
-    if (filtered.length === 0) continue;
-
-    renderLevels.push(renderGeneration(tree, level, filtered, collapsed[String(level)] === true));
-  }
-
-  let others = "";
-  if (disconnected.length){
-    const filtered = search
-      ? disconnected.filter((id) => stablePersonLabel(tree.people[id]).toLowerCase().includes(search))
-      : disconnected;
-
-    if (filtered.length){
-      const key = "disconnected";
-      const isCollapsed = collapsed[key] === true;
-      others = `
-        <section class="tree-gen card">
-          <div class="tree-gen-header">
-            <div class="row" style="gap:10px;">
-              <button class="btn btn-xs" type="button" data-tree-action="toggle-level|${escapeHtml(key)}">
-                ${isCollapsed ? "Expandir" : "Plegar"}
-              </button>
-              <strong>Otros (no conectados)</strong>
-              <span style="color:var(--muted); font-size:13px;">${filtered.length} nodo(s)</span>
-            </div>
-          </div>
-          ${isCollapsed ? "" : `
-            <div class="tree-gen-body">
-              ${filtered.map((id) => renderNode(tree, id)).join("")}
-            </div>
-          `}
-        </section>
-      `;
-    }
-  }
-
-  const modalHtml = renderModal(state, tree);
+  const modalHtml = renderLocalModal(treeUi.modal, tree);
 
   return `
-    <div class="stack" style="gap:16px;">
-      <section class="card card-pad stack" style="gap:12px;">
-        <div class="row" style="justify-content:space-between; flex-wrap:wrap;">
-          <div class="row" style="gap:10px; flex-wrap:wrap;">
-            <strong>Builder (Tree)</strong>
-            ${wizardChanged ? renderPill("Wizard cambiado", "warn") : ""}
+    <div id="page-builder-tree" class="builder-grid">
+      <div class="card card-pad">
+        <div class="row" style="justify-content:space-between; flex-wrap:wrap; gap:10px;">
+          <div>
+            <div style="font-weight:800; font-size:18px;">Tree Builder</div>
+            <div style="color:var(--muted); margin-top:4px;">Fuente de verdad: árbol relacional (padre/madre, cónyuge).</div>
           </div>
-          <div class="segmented">
-            <button class="btn segmented-btn is-active" type="button" id="builder-mode-tree">Tree</button>
-            <button class="btn segmented-btn" type="button" id="builder-mode-roles">Roles</button>
+
+          <div class="row" style="flex-wrap:wrap;">
+            <button class="btn" type="button" data-tree-action="create-person">Añadir persona</button>
+            <button class="btn" type="button" data-tree-action="import-wizard">Importar del Wizard</button>
+            <button class="btn" type="button" data-tree-action="reset">Reset</button>
           </div>
         </div>
 
-        <div class="row" style="justify-content:space-between; gap:12px; flex-wrap:wrap;">
-          <div class="row" style="gap:10px; flex-wrap:wrap;">
-            <button class="btn" type="button" id="builder-tree-add-person" data-tree-action="add-disconnected">+ Persona</button>
-            <button class="btn" type="button" id="builder-tree-import-wizard">Importar del wizard</button>
-            <button class="btn" type="button" id="builder-tree-reset">Reset tree</button>
-          </div>
-
-          <div class="row" style="gap:10px; align-items:center; flex-wrap:wrap;">
-            <label class="label" for="builder-tree-search" style="margin:0;">Buscar</label>
-            <input class="input" id="builder-tree-search" type="search" value="${escapeHtml(treeUi.search || "")}" placeholder="Nombre o id..." />
-          </div>
+        <div class="row" style="margin-top:12px; flex-wrap:wrap;">
+          <input class="input" id="tree-search" type="search" placeholder="Buscar por nombre o id (p12)..." value="${escapeHtml(treeUi.search)}" style="min-width:260px; flex:1;">
+          <div class="pill pill-dark">Causante: <strong>${escapeHtml(personLabel(tree.people[deceasedId]))}</strong></div>
+          <div class="pill pill-dark">Seleccionado: <strong>${escapeHtml(personLabel(tree.people[selectedId]))}</strong></div>
         </div>
-      </section>
+      </div>
 
-      <div id="builder-tree-root" class="stack" style="gap:12px;">
-        ${renderLevels.join("")}
-        ${others}
+      <div class="card card-pad builder-list">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <strong>Personas</strong>
+          <span style="color:var(--muted); font-size:12px;">${filteredPeopleIds.length}/${peopleIds.length}</span>
+        </div>
+        <div class="tree-list" style="margin-top:10px;">
+          ${filteredPeopleIds.map((id) => renderPersonListRow(tree, id, selectedId, deceasedId, disconnectedIds.includes(id))).join("")}
+        </div>
+      </div>
+
+      <div class="card card-pad builder-right">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <strong>Vista por generaciones</strong>
+          <span style="color:var(--muted); font-size:12px;">BFS desde el causante</span>
+        </div>
+
+        ${groups.length === 0 ? `
+          <div class="notice warn" style="margin-top:12px;">
+            <div class="notice-title">Árbol vacío o inválido</div>
+            <div>Usa "Añadir persona" o "Importar del Wizard" para empezar.</div>
+          </div>
+        ` : ""}
+
+        <div class="tree-gen-wrap" style="margin-top:12px;">
+          ${groups.map((g) => renderGenerationGroup(tree, g, treeUi, selectedId)).join("")}
+        </div>
+
+        <div class="notice" style="margin-top:12px;">
+          <div class="notice-title">MVP actual</div>
+          <ul class="mini-list">
+            <li>Construcción del árbol relacional (acciones inline por nodo).</li>
+            <li>Importación explícita desde Wizard (no automático).</li>
+            <li>Derivación roles y warnings se aborda en PR16c.</li>
+          </ul>
+        </div>
       </div>
 
       ${modalHtml}
@@ -498,443 +333,738 @@ export function renderBuilderTree(state){
   `;
 }
 
-function setTreeUi(store, patch, { persist = false } = {}){
-  const meta = { persist: persist !== true ? false : true };
-  store.setState((s) => {
-    const prev = s.builder?.treeUi || { search: "", collapsed: {}, modal: null };
-    return {
-      ...s,
-      builder: {
-        ...s.builder,
-        treeUi: { ...prev, ...patch },
-      },
-    };
-  }, meta);
+function renderPersonListRow(tree, id, selectedId, deceasedId, isDisconnected){
+  const p = tree.people[id];
+  const isSelected = id === selectedId;
+  const isDeceased = id === deceasedId;
+  const pills = [
+    `<span class="pill">${escapeHtml(p.sex || "?")}</span>`,
+    `<span class="pill ${p.alive ? "pill-dark" : ""}">${p.alive ? "vivo" : "fallecido"}</span>`,
+    isDeceased ? `<span class="pill pill-dark">causante</span>` : "",
+    isDisconnected ? `<span class="pill">desconectado</span>` : "",
+  ].filter(Boolean).join("");
+
+  return `
+    <button class="tree-person ${isSelected ? "is-selected" : ""}" type="button" data-tree-action="select" data-person-id="${escapeHtml(id)}">
+      <span>
+        <span class="tree-person-name">${escapeHtml(p.name || "(sin nombre)")}</span>
+        <span style="color:var(--muted); font-size:12px; margin-left:6px;">${escapeHtml(id)}</span>
+      </span>
+      <span class="tree-person-meta">${pills}</span>
+    </button>
+  `;
 }
 
-function closeTreeModal(store){
-  setTreeUi(store, { modal: null }, { persist: false });
+function genKey(gen){
+  return `g${gen}`;
 }
 
-function openTreeModal(store, modal){
-  setTreeUi(store, { modal }, { persist: false });
+function genTitle(gen){
+  if (gen === 0) return "Generación 0 (causante y cónyuges)";
+  if (gen < 0) return `Generación ${gen} (ascendientes)`;
+  return `Generación +${gen} (descendientes)`;
 }
 
-function toggleCollapsed(store, key){
-  store.setState((s) => {
-    const prev = s.builder?.treeUi || { search: "", collapsed: {}, modal: null };
-    const collapsed = prev.collapsed && typeof prev.collapsed === "object" ? prev.collapsed : {};
-    const isOn = collapsed[String(key)] === true;
-    const next = { ...collapsed };
-    if (isOn) delete next[String(key)];
-    else next[String(key)] = true;
+function renderGenerationGroup(tree, group, treeUi, selectedId){
+  const g = group.gen;
+  const key = genKey(g);
+  const collapsed = !!treeUi.collapsed?.[key];
 
-    return {
-      ...s,
-      builder: {
-        ...s.builder,
-        treeUi: { ...prev, collapsed: next },
-      },
-    };
-  });
+  return `
+    <div class="tree-gen card card-pad">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <strong>${escapeHtml(genTitle(g))}</strong>
+        <button class="btn" type="button" data-tree-action="toggle-gen" data-gen-key="${escapeHtml(key)}">${collapsed ? "Desplegar" : "Plegar"}</button>
+      </div>
+
+      ${collapsed ? "" : `
+        <div class="tree-nodes">
+          ${group.ids.map((id) => renderNodeCard(tree, id, selectedId)).join("")}
+        </div>
+      `}
+    </div>
+  `;
 }
 
-function addDisconnectedPerson(store){
-  const s = store.getState();
-  const tree = ensureTree(sanitizeTree(s.builder?.tree));
-  const nextId = `p${tree.nextId}`;
-  const nextTree = addPerson(tree, { name: nextId, sex: "male", alive: true });
+function renderNodeCard(tree, id, selectedId){
+  const p = tree.people[id];
+  const isDeceased = id === tree.deceasedId;
+  const isSelected = id === selectedId;
 
-  store.setState((prev) => ({
-    ...prev,
-    builder: {
-      ...prev.builder,
-      mode: "tree",
-      tree: nextTree,
-      treeSelectedId: nextId,
-    },
-  }));
+  const spouses = getSpousesOf(tree, id).filter((sid) => !!tree.people?.[sid]);
+  const { fatherId, motherId } = getParentsOf(tree, id);
+
+  const badges = [
+    `<span class="pill">${escapeHtml(p.sex || "?")}</span>`,
+    `<span class="pill ${p.alive ? "pill-dark" : ""}">${p.alive ? "vivo" : "fallecido"}</span>`,
+    isDeceased ? `<span class="pill pill-dark">causante</span>` : "",
+  ].filter(Boolean).join("");
+
+  const parentsLine = [fatherId, motherId].filter(Boolean).map((pid) => tree.people[pid]?.name ? escapeHtml(tree.people[pid].name) : escapeHtml(pid)).join(" · ");
+  const spousesLine = spouses.map((sid) => tree.people[sid]?.name ? escapeHtml(tree.people[sid].name) : escapeHtml(sid)).join(" · ");
+
+  return `
+    <div class="tree-node ${isSelected ? "is-selected" : ""} ${isDeceased ? "is-deceased" : ""}" data-tree-action="select" data-person-id="${escapeHtml(id)}">
+      <div class="tree-node-main">
+        <div class="row" style="justify-content:space-between; align-items:flex-start; gap:10px;">
+          <div>
+            <div class="tree-node-title">${escapeHtml(p.name || "(sin nombre)")}</div>
+            <div class="tree-node-sub">${escapeHtml(id)}</div>
+          </div>
+          <div class="tree-node-badges">${badges}</div>
+        </div>
+
+        <div class="tree-node-links">
+          ${parentsLine ? `<div><span style="color:var(--muted);">Padres:</span> ${parentsLine}</div>` : ""}
+          ${spousesLine ? `<div><span style="color:var(--muted);">Cónyuges:</span> ${spousesLine}</div>` : ""}
+        </div>
+
+        <div class="tree-node-actions row" style="justify-content:flex-end; flex-wrap:wrap;">
+          <button class="btn" type="button" data-tree-action="add-child" data-person-id="${escapeHtml(id)}">+ hijo/a</button>
+          <button class="btn" type="button" data-tree-action="add-spouse" data-person-id="${escapeHtml(id)}">+ cónyuge</button>
+          <button class="btn" type="button" data-tree-action="edit" data-person-id="${escapeHtml(id)}">Editar</button>
+          ${isDeceased ? "" : `<button class="btn" type="button" data-tree-action="set-deceased" data-person-id="${escapeHtml(id)}">Set causante</button>`}
+        </div>
+      </div>
+    </div>
+  `;
 }
 
-function importWizardMerge(tree, wizard){
-  // Controlled, additive seed only. No overrides on existing nodes except forcing deceased.alive=false.
-  let out = ensureTree(sanitizeTree(tree));
-  const w = wizard || {};
+function renderLocalModal(modal, tree){
+  if (!modal) return "";
+  const type = modal.type;
+  const ctxId = typeof modal.personId === "string" ? modal.personId : null;
+  const title = (type === "edit") ? "Editar persona"
+    : (type === "add-child") ? "Añadir hijo/a"
+    : (type === "add-spouse") ? "Añadir cónyuge"
+    : (type === "create-person") ? "Añadir persona"
+    : "Modal";
 
-  // If tree is basically empty default, allow setting deceased sex from wizard.
-  const deceased = out.people[out.deceasedId];
-  const isDefaultOnly = Object.keys(out.people || {}).length === 1 && deceased && (deceased.name || "").trim() === "Causante";
-  const wSex = (w.deceased_sex === "male" || w.deceased_sex === "female") ? w.deceased_sex : null;
-  if (isDefaultOnly && wSex){
-    out = updatePerson(out, out.deceasedId, { sex: wSex });
-  }
+  const body = (type === "edit" && ctxId) ? renderModalEdit(tree, ctxId)
+    : (type === "add-child" && ctxId) ? renderModalAddChild(tree, ctxId)
+    : (type === "add-spouse" && ctxId) ? renderModalAddSpouse(tree, ctxId)
+    : (type === "create-person") ? renderModalCreatePerson(tree)
+    : `<div style="color:var(--muted);">Modal inválido</div>`;
 
-  const dec = out.people[out.deceasedId];
-
-  // Parents
-  if (w.parents?.enabled === true){
-    const parents = getParents(out, out.deceasedId);
-    if (!parents.fatherId && w.parents?.father === true){
-      const fatherId = `p${out.nextId}`;
-      out = addPerson(out, { name: "Padre", sex: "male", alive: true });
-      out = setParents(out, out.deceasedId, { fatherId, motherId: parents.motherId });
-    }
-    if (!parents.motherId && w.parents?.mother === true){
-      const motherId = `p${out.nextId}`;
-      out = addPerson(out, { name: "Madre", sex: "female", alive: true });
-      const p2 = getParents(out, out.deceasedId);
-      out = setParents(out, out.deceasedId, { fatherId: p2.fatherId, motherId });
-    }
-  }
-
-  // Spouse (single placeholder)
-  let spouseId = null;
-  if (w.spouse?.enabled === true){
-    const spouses = getSpouses(out, out.deceasedId);
-    if (spouses.length === 0){
-      spouseId = `p${out.nextId}`;
-      out = addPerson(out, { name: "Conyuge", sex: oppositeSex(dec.sex), alive: true });
-      out = linkSpouses(out, out.deceasedId, spouseId);
-    }else{
-      spouseId = spouses[0];
-    }
-  }
-
-  // Children (direct only)
-  if (w.descendants?.enabled === true){
-    const sons = Math.max(0, Math.trunc(Number(w.descendants?.son ?? 0)));
-    const daughters = Math.max(0, Math.trunc(Number(w.descendants?.daughter ?? 0)));
-
-    const fatherId = dec.sex === "male" ? out.deceasedId : (spouseId && out.people[spouseId]?.sex === "male" ? spouseId : null);
-    const motherId = dec.sex === "female" ? out.deceasedId : (spouseId && out.people[spouseId]?.sex === "female" ? spouseId : null);
-
-    for (let i = 0; i < sons; i++){
-      const childId = `p${out.nextId}`;
-      out = addPerson(out, { name: `Hijo ${i + 1}`, sex: "male", alive: true });
-      out = setParents(out, childId, { fatherId, motherId });
-    }
-    for (let i = 0; i < daughters; i++){
-      const childId = `p${out.nextId}`;
-      out = addPerson(out, { name: `Hija ${i + 1}`, sex: "female", alive: true });
-      out = setParents(out, childId, { fatherId, motherId });
-    }
-  }
-
-  // Ensure deceased always dead
-  out = updatePerson(out, out.deceasedId, { alive: false });
-
-  return out;
+  return `
+    <div class="tree-modal-backdrop" id="tree-modal-backdrop" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <div class="tree-modal card card-pad">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <strong>${escapeHtml(title)}</strong>
+          <button class="btn" type="button" data-tree-action="modal-cancel">Cerrar</button>
+        </div>
+        <div class="tree-modal-body" style="margin-top:12px;">
+          ${body}
+        </div>
+      </div>
+    </div>
+  `;
 }
 
-export function importWizardToTree(store){
-  const s = store.getState();
-  const wizard = s.wizard || {};
-  const current = ensureTree(sanitizeTree(s.builder?.tree));
-  const merged = importWizardMerge(current, wizard);
-  const wizardHash = computeWizardHash(wizard);
+function renderModalEdit(tree, personId){
+  const p = tree.people[personId];
+  const disabled = personId === tree.deceasedId ? "disabled" : "";
+  return `
+    <div class="grid2">
+      <label class="field">
+        <span class="label">Nombre</span>
+        <input class="input" type="text" id="tree-edit-name" value="${escapeHtml(p.name || "")}">
+      </label>
+      <label class="field">
+        <span class="label">Sexo</span>
+        <select class="input" id="tree-edit-sex" ${disabled}>
+          <option value="male" ${p.sex === "male" ? "selected" : ""}>male</option>
+          <option value="female" ${p.sex === "female" ? "selected" : ""}>female</option>
+        </select>
+      </label>
+      <label class="field">
+        <span class="label">Estado</span>
+        <select class="input" id="tree-edit-alive" ${disabled}>
+          <option value="alive" ${p.alive ? "selected" : ""}>vivo</option>
+          <option value="dead" ${!p.alive ? "selected" : ""}>fallecido</option>
+        </select>
+      </label>
+    </div>
 
-  store.setState((prev) => ({
-    ...prev,
-    builder: {
-      ...prev.builder,
-      mode: "tree",
-      tree: merged,
-      treeSelectedId: merged.deceasedId,
-      fromWizardApplied: true,
-      wizardHashApplied: wizardHash,
-    },
-  }));
+    ${personId === tree.deceasedId ? `<div class="notice warn" style="margin-top:10px;">El causante siempre se marca como fallecido.</div>` : ""}
+
+    <div class="row" style="justify-content:flex-end; margin-top:12px; flex-wrap:wrap;">
+      <button class="btn" type="button" data-tree-action="modal-cancel">Cancelar</button>
+      <button class="btn" type="button" data-tree-action="modal-save-edit" data-person-id="${escapeHtml(personId)}">Guardar</button>
+    </div>
+  `;
 }
 
-export function applyWizardSyncTree(store){
-  // Kept for compatibility with existing app.js action handler.
-  return importWizardToTree(store);
+function renderModalCreatePerson(tree){
+  return `
+    <div class="grid2">
+      <label class="field">
+        <span class="label">Nombre</span>
+        <input class="input" type="text" id="tree-create-name" value="">
+      </label>
+      <label class="field">
+        <span class="label">Sexo</span>
+        <select class="input" id="tree-create-sex">
+          <option value="male" selected>male</option>
+          <option value="female">female</option>
+        </select>
+      </label>
+      <label class="field">
+        <span class="label">Estado</span>
+        <select class="input" id="tree-create-alive">
+          <option value="alive" selected>vivo</option>
+          <option value="dead">fallecido</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="row" style="justify-content:flex-end; margin-top:12px; flex-wrap:wrap;">
+      <button class="btn" type="button" data-tree-action="modal-cancel">Cancelar</button>
+      <button class="btn" type="button" data-tree-action="modal-save-create">Guardar</button>
+    </div>
+  `;
 }
+
+function renderModalAddChild(tree, parentId){
+  const parent = tree.people[parentId];
+  const peopleIds = Object.keys(tree.people || {}).sort((a, b) => a.localeCompare(b));
+
+  const otherParentOptions = peopleIds
+    .filter((id) => id !== parentId)
+    .map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(personLabel(tree.people[id]))}</option>`)
+    .join("");
+
+  const existingOptions = peopleIds
+    .filter((id) => id !== parentId)
+    .map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(personLabel(tree.people[id]))}</option>`)
+    .join("");
+
+  return `
+    <div class="notice" style="margin-bottom:10px;">
+      <div class="notice-title">Progenitor</div>
+      <div>${escapeHtml(personLabel(parent))}</div>
+    </div>
+
+    <div class="grid2">
+      <label class="field">
+        <span class="label">Modo</span>
+        <select class="input" id="tree-child-mode">
+          <option value="create" selected>Crear nuevo hijo/a</option>
+          <option value="link">Vincular hijo/a existente</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span class="label">Otro progenitor (opcional)</span>
+        <select class="input" id="tree-child-other-parent">
+          <option value="">(ninguno)</option>
+          ${otherParentOptions}
+        </select>
+      </label>
+    </div>
+
+    <div id="tree-child-create-fields" style="margin-top:10px;">
+      <div class="grid2">
+        <label class="field">
+          <span class="label">Nombre del hijo/a</span>
+          <input class="input" type="text" id="tree-child-name" value="">
+        </label>
+        <label class="field">
+          <span class="label">Sexo del hijo/a</span>
+          <select class="input" id="tree-child-sex">
+            <option value="male" selected>male</option>
+            <option value="female">female</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="label">Estado</span>
+          <select class="input" id="tree-child-alive">
+            <option value="alive" selected>vivo</option>
+            <option value="dead">fallecido</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div id="tree-child-link-fields" style="margin-top:10px; display:none;">
+      <label class="field">
+        <span class="label">Hijo/a existente</span>
+        <select class="input" id="tree-child-existing">
+          ${existingOptions}
+        </select>
+      </label>
+    </div>
+
+    <div class="row" style="justify-content:flex-end; margin-top:12px; flex-wrap:wrap;">
+      <button class="btn" type="button" data-tree-action="modal-cancel">Cancelar</button>
+      <button class="btn" type="button" data-tree-action="modal-save-add-child" data-person-id="${escapeHtml(parentId)}">Guardar</button>
+    </div>
+  `;
+}
+
+function renderModalAddSpouse(tree, personId){
+  const person = tree.people[personId];
+  const peopleIds = Object.keys(tree.people || {}).sort((a, b) => a.localeCompare(b));
+
+  const existingOptions = peopleIds
+    .filter((id) => id !== personId)
+    .map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(personLabel(tree.people[id]))}</option>`)
+    .join("");
+
+  const defaultSpouseSex = person.sex === "male" ? "female" : "male";
+
+  return `
+    <div class="notice" style="margin-bottom:10px;">
+      <div class="notice-title">Persona</div>
+      <div>${escapeHtml(personLabel(person))}</div>
+    </div>
+
+    <div class="grid2">
+      <label class="field">
+        <span class="label">Modo</span>
+        <select class="input" id="tree-spouse-mode">
+          <option value="create" selected>Crear nuevo cónyuge</option>
+          <option value="link">Vincular cónyuge existente</option>
+        </select>
+      </label>
+    </div>
+
+    <div id="tree-spouse-create-fields" style="margin-top:10px;">
+      <div class="grid2">
+        <label class="field">
+          <span class="label">Nombre del cónyuge</span>
+          <input class="input" type="text" id="tree-spouse-name" value="">
+        </label>
+        <label class="field">
+          <span class="label">Sexo del cónyuge</span>
+          <select class="input" id="tree-spouse-sex">
+            <option value="male" ${defaultSpouseSex === "male" ? "selected" : ""}>male</option>
+            <option value="female" ${defaultSpouseSex === "female" ? "selected" : ""}>female</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="label">Estado</span>
+          <select class="input" id="tree-spouse-alive">
+            <option value="alive" selected>vivo</option>
+            <option value="dead">fallecido</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div id="tree-spouse-link-fields" style="margin-top:10px; display:none;">
+      <label class="field">
+        <span class="label">Cónyuge existente</span>
+        <select class="input" id="tree-spouse-existing">
+          ${existingOptions}
+        </select>
+      </label>
+    </div>
+
+    <div class="row" style="justify-content:flex-end; margin-top:12px; flex-wrap:wrap;">
+      <button class="btn" type="button" data-tree-action="modal-cancel">Cancelar</button>
+      <button class="btn" type="button" data-tree-action="modal-save-add-spouse" data-person-id="${escapeHtml(personId)}">Guardar</button>
+    </div>
+  `;
+}
+
+/* =========================
+   Page wiring
+========================= */
 
 export function wireBuilderTree(store){
-  const importBtn = document.getElementById("builder-tree-import-wizard");
-  if (importBtn){
-    importBtn.addEventListener("click", () => {
-      openModal(store, {
-        title: "Importar del wizard",
-        body: "Esto solo agrega nodos faltantes en el tree. No sobreescribe ediciones existentes.",
-        confirmAction: "builder-tree-import-wizard",
-        confirmLabel: "Importar",
-      });
-    });
-  }
-
-  const resetBtn = document.getElementById("builder-tree-reset");
-  if (resetBtn){
-    resetBtn.addEventListener("click", () => {
-      openModal(store, {
-        title: "Reset tree",
-        body: "Esto borra el arbol actual del builder (no toca el core).",
-        confirmAction: "builder-tree-reset",
-        confirmLabel: "Reset",
-      });
-    });
-  }
-
-  const searchInput = document.getElementById("builder-tree-search");
-  if (searchInput){
-    let t = null;
-    searchInput.addEventListener("input", () => {
-      const value = searchInput.value;
-      if (t) clearTimeout(t);
-      t = setTimeout(() => {
-        setTreeUi(store, { search: value }, { persist: false });
-      }, 120);
-    });
-  }
-
-  const root = document.getElementById("builder-tree-root");
+  const root = document.getElementById("page-builder-tree");
   if (!root) return;
+
+  const toggleChildFields = () => {
+    const modeEl = document.getElementById("tree-child-mode");
+    if (!modeEl) return;
+    const v = modeEl.value;
+    const create = document.getElementById("tree-child-create-fields");
+    const link = document.getElementById("tree-child-link-fields");
+    if (create && link){
+      create.style.display = v === "create" ? "" : "none";
+      link.style.display = v === "link" ? "" : "none";
+    }
+  };
+
+  const toggleSpouseFields = () => {
+    const modeEl = document.getElementById("tree-spouse-mode");
+    if (!modeEl) return;
+    const v = modeEl.value;
+    const create = document.getElementById("tree-spouse-create-fields");
+    const link = document.getElementById("tree-spouse-link-fields");
+    if (create && link){
+      create.style.display = v === "create" ? "" : "none";
+      link.style.display = v === "link" ? "" : "none";
+    }
+  };
+
+  toggleChildFields();
+  toggleSpouseFields();
+
+  const childMode = document.getElementById("tree-child-mode");
+  if (childMode) childMode.addEventListener("change", toggleChildFields);
+  const spouseMode = document.getElementById("tree-spouse-mode");
+  if (spouseMode) spouseMode.addEventListener("change", toggleSpouseFields);
+
+  const searchEl = document.getElementById("tree-search");
+  if (searchEl){
+    searchEl.addEventListener("input", () => {
+      const value = searchEl.value;
+      store.setState((s) => ({
+        ...s,
+        builder: {
+          ...s.builder,
+          treeUi: { ...normalizeTreeUi(s.builder.treeUi), search: value },
+        },
+      }));
+    });
+  }
 
   root.addEventListener("click", (ev) => {
     const btn = ev.target && ev.target.closest ? ev.target.closest("[data-tree-action]") : null;
     if (!btn) return;
 
-    const raw = btn.getAttribute("data-tree-action") || "";
-    const parts = raw.split("|");
-    const action = parts[0] || "";
+    const action = btn.getAttribute("data-tree-action");
+    const personId = btn.getAttribute("data-person-id");
+    const gen = btn.getAttribute("data-gen-key");
 
-    if (action === "toggle-level"){
-      toggleCollapsed(store, parts[1] || "");
+    if (action === "select" && personId){
+      store.setState((s) => ({
+        ...s,
+        builder: { ...s.builder, treeSelectedId: personId },
+      }));
       return;
     }
 
-    if (action === "add-disconnected"){
-      addDisconnectedPerson(store);
+    if (action === "toggle-gen" && gen){
+      store.setState((s) => {
+        const ui = normalizeTreeUi(s.builder.treeUi);
+        const next = { ...ui.collapsed, [gen]: !ui.collapsed?.[gen] };
+        return { ...s, builder: { ...s.builder, treeUi: { ...ui, collapsed: next } } };
+      });
       return;
     }
 
-    if (action === "open-modal"){
-      const kind = parts[1] || "";
-      if (kind === "edit-person"){
-        const personId = parts[2] || "";
-        if (personId) openTreeModal(store, { type: "edit-person", personId });
-        return;
-      }
-      if (kind === "add-child"){
-        const parentId = parts[2] || "";
-        const sex = parts[3] || "male";
-        if (parentId) openTreeModal(store, { type: "add-child", parentId, sex });
-        return;
-      }
-      if (kind === "add-spouse"){
-        const personId = parts[2] || "";
-        if (personId) openTreeModal(store, { type: "add-spouse", personId });
-        return;
-      }
+    if (action === "create-person"){
+      store.setState((s) => ({
+        ...s,
+        builder: { ...s.builder, treeUi: { ...normalizeTreeUi(s.builder.treeUi), modal: { type: "create-person" } } },
+      }), { persist: false });
       return;
     }
 
-    if (action === "set-deceased"){
-      const id = parts[1] || "";
-      if (!id) return;
-      store.setState((prev) => {
-        const tree = ensureTree(sanitizeTree(prev.builder?.tree));
-        if (!tree.people[id]) return prev;
-        let out = { ...tree, deceasedId: id };
-        out = updatePerson(out, id, { alive: false });
+    if (action === "edit" && personId){
+      store.setState((s) => ({
+        ...s,
+        builder: { ...s.builder, treeUi: { ...normalizeTreeUi(s.builder.treeUi), modal: { type: "edit", personId } } },
+      }), { persist: false });
+      return;
+    }
+
+    if (action === "add-child" && personId){
+      store.setState((s) => ({
+        ...s,
+        builder: { ...s.builder, treeUi: { ...normalizeTreeUi(s.builder.treeUi), modal: { type: "add-child", personId } } },
+      }), { persist: false });
+      return;
+    }
+
+    if (action === "add-spouse" && personId){
+      store.setState((s) => ({
+        ...s,
+        builder: { ...s.builder, treeUi: { ...normalizeTreeUi(s.builder.treeUi), modal: { type: "add-spouse", personId } } },
+      }), { persist: false });
+      return;
+    }
+
+    if (action === "set-deceased" && personId){
+      store.setState((s) => {
+        const tree0 = ensureTree(sanitizeTree(s.builder.tree));
+        const tree1 = setDeceased(tree0, personId);
+        return { ...s, builder: { ...s.builder, tree: tree1, treeSelectedId: personId } };
+      });
+      return;
+    }
+
+    if (action === "modal-cancel"){
+      store.setState((s) => ({
+        ...s,
+        builder: { ...s.builder, treeUi: { ...normalizeTreeUi(s.builder.treeUi), modal: null } },
+      }), { persist: false });
+      return;
+    }
+
+    if (action === "modal-save-edit" && personId){
+      const name = document.getElementById("tree-edit-name")?.value ?? "";
+      const sex = document.getElementById("tree-edit-sex")?.value ?? "";
+      const aliveRaw = document.getElementById("tree-edit-alive")?.value ?? "alive";
+      const alive = aliveRaw === "alive";
+
+      store.setState((s) => {
+        const tree0 = ensureTree(sanitizeTree(s.builder.tree));
+        let tree1 = updatePerson(tree0, personId, { name, sex, alive });
+        if (personId === tree1.deceasedId){
+          tree1 = setDeceased(tree1, personId);
+        }
         return {
-          ...prev,
+          ...s,
           builder: {
-            ...prev.builder,
-            mode: "tree",
-            tree: out,
-            treeSelectedId: id,
+            ...s.builder,
+            tree: tree1,
+            treeUi: { ...normalizeTreeUi(s.builder.treeUi), modal: null },
           },
         };
       });
       return;
     }
 
-    if (action === "modal-cancel"){
-      closeTreeModal(store);
+    if (action === "modal-save-create"){
+      const name = document.getElementById("tree-create-name")?.value ?? "";
+      const sex = document.getElementById("tree-create-sex")?.value ?? "male";
+      const aliveRaw = document.getElementById("tree-create-alive")?.value ?? "alive";
+      const alive = aliveRaw === "alive";
+
+      store.setState((s) => {
+        const tree0 = ensureTree(sanitizeTree(s.builder.tree));
+        const nextId = nextPersonId(tree0);
+        const newId = `p${nextId}`;
+        const tree1 = addPerson(tree0, { name, sex, alive });
+        return {
+          ...s,
+          builder: {
+            ...s.builder,
+            tree: tree1,
+            treeSelectedId: newId,
+            treeUi: { ...normalizeTreeUi(s.builder.treeUi), modal: null },
+          },
+        };
+      });
       return;
     }
 
-    if (action === "modal-save-edit"){
-      const id = parts[1] || "";
-      if (!id) return;
+    if (action === "modal-save-add-child" && personId){
+      const mode = document.getElementById("tree-child-mode")?.value ?? "create";
+      const otherParent = document.getElementById("tree-child-other-parent")?.value ?? "";
+      const otherParentId = otherParent && typeof otherParent === "string" ? otherParent : null;
 
-      const s = store.getState();
-      const tree = ensureTree(sanitizeTree(s.builder?.tree));
-      if (!tree.people[id]) return;
+      store.setState((s) => {
+        const tree0 = ensureTree(sanitizeTree(s.builder.tree));
+        let tree1 = tree0;
 
-      const nameEl = document.getElementById("tree-modal-name");
-      const sexEl = document.getElementById("tree-modal-sex");
-      const aliveEl = document.getElementById("tree-modal-alive");
-      const fatherEl = document.getElementById("tree-modal-father");
-      const motherEl = document.getElementById("tree-modal-mother");
+        if (mode === "create"){
+          const name = document.getElementById("tree-child-name")?.value ?? "";
+          const sex = document.getElementById("tree-child-sex")?.value ?? "male";
+          const aliveRaw = document.getElementById("tree-child-alive")?.value ?? "alive";
+          const alive = aliveRaw === "alive";
 
-      const name = nameEl ? String(nameEl.value || "").trim() : "";
-      const sex = sexEl ? String(sexEl.value || "male") : "male";
+          const nextId = nextPersonId(tree1);
+          tree1 = addPerson(tree1, { name, sex, alive });
+          const childId = `p${nextId}`;
+          tree1 = setParentRelation(tree1, childId, personId);
+          if (otherParentId) tree1 = setOtherParent(tree1, childId, otherParentId);
 
-      let alive = aliveEl ? String(aliveEl.value || "true") === "true" : true;
-      if (id === tree.deceasedId) alive = false;
+          return {
+            ...s,
+            builder: {
+              ...s.builder,
+              tree: tree1,
+              treeSelectedId: childId,
+              treeUi: { ...normalizeTreeUi(s.builder.treeUi), modal: null },
+            },
+          };
+        }
 
-      const fatherId = fatherEl ? String(fatherEl.value || "") : "";
-      const motherId = motherEl ? String(motherEl.value || "") : "";
+        const existingId = document.getElementById("tree-child-existing")?.value ?? "";
+        if (existingId && tree1.people?.[existingId]){
+          tree1 = setParentRelation(tree1, existingId, personId);
+          if (otherParentId) tree1 = setOtherParent(tree1, existingId, otherParentId);
+          return {
+            ...s,
+            builder: {
+              ...s.builder,
+              tree: tree1,
+              treeSelectedId: existingId,
+              treeUi: { ...normalizeTreeUi(s.builder.treeUi), modal: null },
+            },
+          };
+        }
 
-      let out = tree;
-      out = updatePerson(out, id, { name, sex, alive });
-      out = setParents(out, id, {
-        fatherId: fatherId || null,
-        motherId: motherId || null,
+        return {
+          ...s,
+          builder: { ...s.builder, treeUi: { ...normalizeTreeUi(s.builder.treeUi), modal: null } },
+        };
       });
 
-      store.setState((prev) => ({
-        ...prev,
-        builder: {
-          ...prev.builder,
-          mode: "tree",
-          tree: out,
-          treeSelectedId: id,
-          treeUi: { ...(prev.builder?.treeUi || {}), modal: null },
-        },
-      }));
       return;
     }
 
-    if (action === "modal-add-child-create"){
-      const parentId = parts[1] || "";
-      const sex = parts[2] || "male";
-      if (!parentId) return;
+    if (action === "modal-save-add-spouse" && personId){
+      const mode = document.getElementById("tree-spouse-mode")?.value ?? "create";
 
-      const s = store.getState();
-      const tree = ensureTree(sanitizeTree(s.builder?.tree));
-      if (!tree.people[parentId]) return;
+      store.setState((s) => {
+        const tree0 = ensureTree(sanitizeTree(s.builder.tree));
+        let tree1 = tree0;
 
-      const nameEl = document.getElementById("tree-modal-new-child-name");
-      const name = nameEl ? String(nameEl.value || "").trim() : "";
+        if (mode === "create"){
+          const name = document.getElementById("tree-spouse-name")?.value ?? "";
+          const sex = document.getElementById("tree-spouse-sex")?.value ?? "female";
+          const aliveRaw = document.getElementById("tree-spouse-alive")?.value ?? "alive";
+          const alive = aliveRaw === "alive";
 
-      const childId = `p${tree.nextId}`;
-      let out = addPerson(tree, { name: name || childId, sex, alive: true });
+          const nextId = nextPersonId(tree1);
+          tree1 = addPerson(tree1, { name, sex, alive });
+          const spouseId = `p${nextId}`;
+          tree1 = linkSpouses(tree1, personId, spouseId);
 
-      const parent = out.people[parentId];
-      const spouses = getSpouses(out, parentId);
+          return {
+            ...s,
+            builder: {
+              ...s.builder,
+              tree: tree1,
+              treeSelectedId: spouseId,
+              treeUi: { ...normalizeTreeUi(s.builder.treeUi), modal: null },
+            },
+          };
+        }
 
-      let fatherId = null;
-      let motherId = null;
+        const existingId = document.getElementById("tree-spouse-existing")?.value ?? "";
+        if (existingId && tree1.people?.[existingId]){
+          tree1 = linkSpouses(tree1, personId, existingId);
+          return {
+            ...s,
+            builder: {
+              ...s.builder,
+              tree: tree1,
+              treeSelectedId: existingId,
+              treeUi: { ...normalizeTreeUi(s.builder.treeUi), modal: null },
+            },
+          };
+        }
 
-      if (parent.sex === "male"){
-        fatherId = parentId;
-        const spouse = spouses.map((id) => out.people[id]).find((x) => x && x.sex === "female");
-        motherId = spouse ? spouse.id : null;
-      }else{
-        motherId = parentId;
-        const spouse = spouses.map((id) => out.people[id]).find((x) => x && x.sex === "male");
-        fatherId = spouse ? spouse.id : null;
-      }
+        return {
+          ...s,
+          builder: { ...s.builder, treeUi: { ...normalizeTreeUi(s.builder.treeUi), modal: null } },
+        };
+      });
 
-      out = setParents(out, childId, { fatherId, motherId });
-
-      store.setState((prev) => ({
-        ...prev,
-        builder: {
-          ...prev.builder,
-          mode: "tree",
-          tree: out,
-          treeSelectedId: childId,
-          treeUi: { ...(prev.builder?.treeUi || {}), modal: null },
-        },
-      }));
       return;
     }
 
-    if (action === "modal-add-child-link"){
-      const parentId = parts[1] || "";
-      if (!parentId) return;
-
-      const existingEl = document.getElementById("tree-modal-existing-child");
-      const childId = existingEl ? String(existingEl.value || "") : "";
-      if (!childId) return;
-
-      const s = store.getState();
-      const tree = ensureTree(sanitizeTree(s.builder?.tree));
-      if (!tree.people[parentId] || !tree.people[childId]) return;
-
-      const parent = tree.people[parentId];
-      const currentParents = getParents(tree, childId);
-
-      let fatherId = currentParents.fatherId;
-      let motherId = currentParents.motherId;
-
-      if (parent.sex === "male") fatherId = parentId;
-      else motherId = parentId;
-
-      const out = setParents(tree, childId, { fatherId, motherId });
-
-      store.setState((prev) => ({
-        ...prev,
-        builder: {
-          ...prev.builder,
-          mode: "tree",
-          tree: out,
-          treeSelectedId: childId,
-          treeUi: { ...(prev.builder?.treeUi || {}), modal: null },
-        },
-      }));
+    if (action === "import-wizard"){
+      openModal(store, {
+        title: "Importar del Wizard",
+        body: "Aplicará un merge controlado Wizard -> Tree. Esto no ocurre automáticamente.",
+        confirmAction: "builder-tree-import-wizard",
+        confirmLabel: "Importar",
+      });
       return;
     }
 
-    if (action === "modal-add-spouse-create"){
-      const personId = parts[1] || "";
-      const sex = parts[2] || "female";
-      if (!personId) return;
-
-      const s = store.getState();
-      const tree = ensureTree(sanitizeTree(s.builder?.tree));
-      if (!tree.people[personId]) return;
-
-      const nameEl = document.getElementById("tree-modal-new-spouse-name");
-      const name = nameEl ? String(nameEl.value || "").trim() : "";
-
-      const spouseId = `p${tree.nextId}`;
-      let out = addPerson(tree, { name: name || spouseId, sex, alive: true });
-      out = linkSpouses(out, personId, spouseId);
-
-      store.setState((prev) => ({
-        ...prev,
-        builder: {
-          ...prev.builder,
-          mode: "tree",
-          tree: out,
-          treeSelectedId: spouseId,
-          treeUi: { ...(prev.builder?.treeUi || {}), modal: null },
-        },
-      }));
-      return;
-    }
-
-    if (action === "modal-add-spouse-link"){
-      const personId = parts[1] || "";
-      if (!personId) return;
-
-      const existingEl = document.getElementById("tree-modal-existing-spouse");
-      const spouseId = existingEl ? String(existingEl.value || "") : "";
-      if (!spouseId) return;
-
-      const s = store.getState();
-      const tree = ensureTree(sanitizeTree(s.builder?.tree));
-      if (!tree.people[personId] || !tree.people[spouseId]) return;
-
-      const out = linkSpouses(tree, personId, spouseId);
-
-      store.setState((prev) => ({
-        ...prev,
-        builder: {
-          ...prev.builder,
-          mode: "tree",
-          tree: out,
-          treeSelectedId: spouseId,
-          treeUi: { ...(prev.builder?.treeUi || {}), modal: null },
-        },
-      }));
+    if (action === "reset"){
+      openModal(store, {
+        title: "Reset del Tree Builder",
+        body: "Esto reinicia el árbol en el Builder. No toca el core. Continuar?",
+        confirmAction: "builder-tree-reset",
+        confirmLabel: "Reset",
+      });
       return;
     }
   });
+}
+
+/* =========================
+   Wizard -> Tree import (explicit only)
+========================= */
+
+export function applyWizardSyncTree(store){
+  store.setState((s) => {
+    const wizard = s.wizard || {};
+    const tree0 = ensureTree(sanitizeTree(s.builder.tree));
+    const tree1 = applyWizardToTree(tree0, wizard);
+
+    return {
+      ...s,
+      builder: {
+        ...s.builder,
+        tree: tree1,
+        fromWizardApplied: true,
+        wizardHashApplied: computeWizardHash(wizard),
+      },
+    };
+  });
+}
+
+// PR16a baseline: app.js importa importWizardToTree
+export const importWizardToTree = applyWizardSyncTree;
+
+function computeWizardHash(wizard){
+  const stable = {
+    deceased_sex: wizard?.deceased_sex || null,
+    spouse: wizard?.spouse || null,
+    descendants: wizard?.descendants || null,
+    parents: wizard?.parents || null,
+  };
+  return JSON.stringify(stable);
+}
+
+function applyWizardToTree(tree, wizard){
+  let out = tree;
+
+  const deceasedId = out.deceasedId;
+
+  const spouse = wizard?.spouse && typeof wizard.spouse === "object" ? wizard.spouse : {};
+  if (spouse.enabled === true){
+    const d = out.people[deceasedId];
+    if (d?.sex === "male"){
+      const wives = Number(spouse.wives_count || 0);
+      const count = Math.max(0, Math.min(4, Math.trunc(wives)));
+      for (let i = 0; i < count; i++){
+        out = addPerson(out, { name: `Esposa ${i + 1}`, sex: "female", alive: true });
+        const wid = `p${(out.nextId - 1)}`;
+        out = linkSpouses(out, deceasedId, wid);
+      }
+    }
+    if (d?.sex === "female" && spouse.husband_present === true){
+      out = addPerson(out, { name: "Esposo", sex: "male", alive: true });
+      const hid = `p${(out.nextId - 1)}`;
+      out = linkSpouses(out, deceasedId, hid);
+    }
+  }
+
+  const parents = wizard?.parents && typeof wizard.parents === "object" ? wizard.parents : {};
+  if (Number(parents.father || 0) > 0){
+    out = addPerson(out, { name: "Padre", sex: "male", alive: true });
+    const fid = `p${(out.nextId - 1)}`;
+    const rel = out.parents?.[deceasedId] && typeof out.parents[deceasedId] === "object" ? { ...out.parents[deceasedId] } : {};
+    rel.fatherId = fid;
+    out = { ...out, parents: { ...(out.parents || {}), [deceasedId]: rel } };
+  }
+  if (Number(parents.mother || 0) > 0){
+    out = addPerson(out, { name: "Madre", sex: "female", alive: true });
+    const mid = `p${(out.nextId - 1)}`;
+    const rel = out.parents?.[deceasedId] && typeof out.parents[deceasedId] === "object" ? { ...out.parents[deceasedId] } : {};
+    rel.motherId = mid;
+    out = { ...out, parents: { ...(out.parents || {}), [deceasedId]: rel } };
+  }
+
+  const descendants = wizard?.descendants && typeof wizard.descendants === "object" ? wizard.descendants : {};
+  const sons = Math.max(0, Math.min(20, Math.trunc(Number(descendants.son || 0))));
+  const daughters = Math.max(0, Math.min(20, Math.trunc(Number(descendants.daughter || 0))));
+
+  for (let i = 0; i < sons; i++){
+    out = addPerson(out, { name: `Hijo ${i + 1}`, sex: "male", alive: true });
+    const cid = `p${(out.nextId - 1)}`;
+    out = setParentRelation(out, cid, deceasedId);
+  }
+  for (let i = 0; i < daughters; i++){
+    out = addPerson(out, { name: `Hija ${i + 1}`, sex: "female", alive: true });
+    const cid = `p${(out.nextId - 1)}`;
+    out = setParentRelation(out, cid, deceasedId);
+  }
+
+  out = setDeceased(out, deceasedId);
+
+  return ensureTree(sanitizeTree(out));
 }
