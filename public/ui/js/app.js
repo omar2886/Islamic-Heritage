@@ -1,161 +1,105 @@
-import { mount } from "./render/mount.js";
-import { renderLayout } from "./ui/layout.js";
+// public/ui/js/app.js
 import { createStore } from "./store/store.js";
-import { initRouter } from "./router.js";
-import { captureFocus, restoreFocus } from "./ui/focus.js";
-import { pushToast } from "./ui/toast.js";
-import { openModal, closeModal } from "./ui/modal.js";
-import { wireWizard } from "./pages/wizard.js";
-import { wireBuilder, applyWizardSync } from "./pages/builder.js";
-import { wireResults } from "./pages/results.js";
+import { renderWizard, wireWizard } from "./pages/wizard.js";
+import { renderBuilder } from "./pages/builder.js";
+import { renderResults } from "./pages/results.js";
+
+import { renderModal, wireModal, closeModal } from "./ui/modal.js";
+import { renderToast, wireToast } from "./ui/toast.js";
+
 import { importWizardToTree } from "./pages/builder_tree.js";
 
-import { fetchRoles } from "./api/client.js";
-import { EXPECTED_ROLES, diffRoles } from "./api/contract.js";
-
-const root = document.getElementById("app");
 const store = createStore();
 
-let lastFocus = { key: null };
-let bootAbort = null;
-let lastRoute = store.getDerived().route;
-
-function wireUi(){
-  const btnToast = document.getElementById("btn-toast");
-  if (btnToast){
-    btnToast.addEventListener("click", () => pushToast(store, "Toast OK"));
-  }
-
-  const btnReset = document.getElementById("btn-reset");
-  if (btnReset){
-    btnReset.addEventListener("click", () => {
-      openModal(store, {
-        title: "Nuevo caso",
-        body: "Se borrará el caso guardado en este navegador y volverás al wizard.",
-        confirmLabel: "Confirmar reinicio",
-        confirmAction: "reset-case",
-      });
-    });
-  }
-
-  const btnModalClose = document.getElementById("btn-modal-close");
-  if (btnModalClose){
-    btnModalClose.addEventListener("click", () => closeModal(store));
-  }
-
-  const btnModalConfirm = document.getElementById("btn-modal-confirm");
-  if (btnModalConfirm){
-    btnModalConfirm.addEventListener("click", () => {
-      const action = btnModalConfirm.getAttribute("data-confirm-action");
-      handleModalConfirm(action);
-    });
-  }
-}
-
 function render(){
-  const prevRoute = lastRoute;
-  const prevScrollY = window.scrollY;
-  lastFocus = captureFocus();
+  const s = store.getState();
 
-  const state = store.getState();
-  const derived = store.getDerived();
-  const sameRoute = prevRoute === derived.route;
+  const hash = location.hash || "#/wizard";
+  const route = hash.split("?")[0];
 
-  mount(root, renderLayout(state, derived));
+  let pageHtml = "";
+  if (route === "#/wizard"){
+    pageHtml = renderWizard(s);
+  } else if (route === "#/builder"){
+    pageHtml = renderBuilder(s);
+  } else if (route === "#/results"){
+    pageHtml = renderResults(s);
+  } else {
+    location.hash = "#/wizard";
+    return;
+  }
 
-  restoreFocus(lastFocus);
+  const root = document.getElementById("app");
+  if (root){
+    root.innerHTML = `
+      ${renderToast(s)}
+      ${renderModal(s)}
+      <main class="app-main">
+        ${pageHtml}
+      </main>
+    `;
+  }
 
-  wireUi();
-  if (derived.route === "wizard"){
+  // Wire common UI.
+  wireToast(store);
+  wireModal(store);
+
+  // Wire page.
+  if (route === "#/wizard"){
     wireWizard(store);
+  } else if (route === "#/builder"){
+    // builder.js wires internally (tree or roles) on each render
+    // nothing here
+  } else if (route === "#/results"){
+    // results wiring is internal
   }
-  if (derived.route === "builder"){
-    wireBuilder(store);
-  }
-  if (derived.route === "results"){
-    wireResults(store);
-  }
-
-  if (sameRoute){
-    requestAnimationFrame(() => {
-      window.scrollTo(0, prevScrollY);
-    });
-  }
-
-  lastRoute = derived.route;
 }
 
-async function startBootCheck(){
-  if (bootAbort) bootAbort.abort();
-  bootAbort = new AbortController();
-
-  store.setState((s) => ({
-    ...s,
-    boot: { ...s.boot, status: "checking", error: null, diff: null, rolesServer: null },
-  }), { persist: false });
-
-  const res = await fetchRoles({ signal: bootAbort.signal });
-
-  if (!res.ok){
-    store.setState((s) => ({
-      ...s,
-      boot: { ...s.boot, status: "blocked", error: res.error || "No se pudo cargar roles.php", diff: null, rolesServer: null },
-    }), { persist: false });
-    return;
-  }
-
-  const diff = diffRoles(EXPECTED_ROLES, res.roles);
-  if (!diff.ok){
-    store.setState((s) => ({
-      ...s,
-      boot: { ...s.boot, status: "blocked", error: "Roles mismatch entre UI y servidor", diff, rolesServer: res.roles },
-    }), { persist: false });
-    return;
-  }
-
-  store.setState((s) => ({
-    ...s,
-    boot: { ...s.boot, status: "ready", error: null, diff: null, rolesServer: res.roles },
-  }), { persist: false });
+function handleHashChange(){
+  render();
 }
-
-store.subscribe(() => render());
-
-initRouter(store);
-render();
-startBootCheck();
 
 function handleModalConfirm(action){
   if (!action) return;
-  if (action === "reset-case"){
-    closeModal(store);
-    store.reset();
-    location.hash = "#/wizard";
-    startBootCheck();
-    return;
-  }
-  if (action === "builder-apply-wizard"){
-    closeModal(store);
-    applyWizardSync(store);
-  }
-  if (action === "builder-tree-import-wizard"){
-    closeModal(store);
-    importWizardToTree(store);
-    return;
-  }
+
   if (action === "builder-tree-reset"){
     closeModal(store);
     store.setState((s)=>({
       ...s,
       builder:{
-        ...s.builder,
+        ...(s.builder || {}),
         mode:"tree",
         tree: null,
         treeSelectedId: null,
+        treeUi: { search: "", collapsedGens: [] },
+        treeModal: null,
         fromWizardApplied: false,
+        heirsByRole: {},
         wizardHashApplied: null,
+        payloadPreview: null,
       }
-    }));
+    }), { persist: true });
+    return;
+  }
+
+  if (action === "builder-tree-import-wizard"){
+    closeModal(store);
+    importWizardToTree(store);
     return;
   }
 }
+
+// Global listeners.
+window.addEventListener("hashchange", handleHashChange);
+
+// Store subscription.
+store.subscribe(() => render());
+
+// Modal confirm hook.
+window.addEventListener("heritage-modal-confirm", (e) => {
+  const action = e?.detail?.action || null;
+  handleModalConfirm(action);
+});
+
+// Initial render.
+render();

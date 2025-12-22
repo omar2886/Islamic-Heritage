@@ -1,36 +1,12 @@
-import { CURRENT_SCHEMA_VERSION, loadState, saveState, clearPersistedState } from "./persist.js";
-import { deriveState, normalizeRoute } from "./derive.js";
-import { EXPECTED_ROLES } from "../api/contract.js";
-import { ROLE_GROUPS } from "../domain/roles.js";
-import { sanitizeTree, ensureTree, deriveHeirsByRoleFromTree } from "../domain/familyTree.js";
+import { EXPECTED_ROLES, ensureTree, sanitizeTree, deriveHeirsByRoleFromTree } from "../domain/familyTree.js";
 
-function clone(value){
-  if (typeof structuredClone === "function") return structuredClone(value);
-  return JSON.parse(JSON.stringify(value));
-}
+const STORE_KEY = "heritage_builder_state_v3";
 
 function clampCount(value, min = 0, max = 100){
   const num = Number(value);
   if (!Number.isFinite(num)) return min;
   const safe = Math.trunc(num);
   return Math.min(max, Math.max(min, safe));
-}
-
-const ROLE_LIMITS = {
-  husband: 1,
-  wife: 4,
-  father: 1,
-  mother: 1,
-  paternal_grandfather: 1,
-  paternal_grandmother: 1,
-  maternal_grandmother: 1,
-  paternal_great_grandmother: 1,
-  maternal_great_grandmother: 1,
-};
-
-function clampRoleCount(role, value){
-  const max = ROLE_LIMITS[role] ?? 100;
-  return clampCount(value, 0, max);
 }
 
 function makeDefaultWizard(){
@@ -42,21 +18,12 @@ function makeDefaultWizard(){
       audit: true,
       explain: true,
     },
-    spouse: {
-      enabled: false,
-      wives_count: 0,
-      husband_present: false,
-    },
-    descendants: {
-      son: 0,
-      daughter: 0,
-      sons_son: 0,
-      sons_daughter: 0,
-    },
-    parents: {
-      father: false,
-      mother: false,
-    },
+    spouse: { enabled: false, husband_present: false, wives_count: 0 },
+    descendants: { son: 0, daughter: 0, sons_son: 0, sons_daughter: 0, son_of_son: 0, daughter_of_son: 0 },
+    parents: { enabled: false, father_alive: true, mother_alive: true },
+    grandparents: { enabled: false },
+    siblings: { enabled: false },
+    uncles: { enabled: false },
   };
 }
 
@@ -65,6 +32,13 @@ function makeDefaultBuilder(){
     mode: "tree",          // "tree" | "roles"
     tree: null,
     treeSelectedId: null,
+
+    // UI-only fields for the Tree Builder.
+    treeUi: {
+      search: "",
+      collapsedGens: [],
+    },
+    treeModal: null,
 
     fromWizardApplied: false,
     heirsByRole: {},
@@ -82,220 +56,195 @@ function makeDefaultResults(){
   };
 }
 
-export const DEFAULT_STATE = {
-  schemaVersion: CURRENT_SCHEMA_VERSION,
-  boot: {
-    status: "idle",     // idle | checking | ready | blocked
-    error: null,
-    rolesServer: null,
-    diff: null,
-  },
-  ui: {
-    route: "wizard",
-    focus: { key: null },
+function makeDefaultUi(){
+  return {
     toasts: [],
     modal: null,
-  },
-  wizard: makeDefaultWizard(),
-  builder: makeDefaultBuilder(),
-  results: makeDefaultResults(),
-  meta: {
-    dirty: false,
-    lastTouched: null,
-  },
-};
+  };
+}
 
-function sanitize(candidate){
-  const base = clone(DEFAULT_STATE);
-  const safe = (candidate && typeof candidate === "object") ? candidate : {};
-  const route = normalizeRoute(safe?.ui?.route ?? base.ui.route);
+function safeJsonParse(s){
+  try { return JSON.parse(s); } catch { return null; }
+}
 
-  const out = {
-    ...base,
-    ...safe,
-    boot: base.boot,
-    ui: {
-      ...base.ui,
-      ...(safe.ui || {}),
-      route,
-      toasts: Array.isArray(safe?.ui?.toasts) ? safe.ui.toasts : [],
-      focus: (safe?.ui?.focus && typeof safe.ui.focus === "object") ? safe.ui.focus : { key: null },
-      modal: safe?.ui?.modal ?? null,
-    },
-    meta: {
-      ...base.meta,
-      ...(safe.meta || {}),
-      dirty: false,
-      lastTouched: null,
-    },
+export function createStore(){
+  let state = {
+    wizard: makeDefaultWizard(),
+    builder: makeDefaultBuilder(),
+    results: makeDefaultResults(),
+    ui: makeDefaultUi(),
   };
 
-  const boot = safe?.boot && typeof safe.boot === "object" ? safe.boot : {};
-  out.boot = {
-    status: typeof boot.status === "string" ? boot.status : "idle",
-    error: boot.error ?? null,
-    rolesServer: Array.isArray(boot.rolesServer) ? boot.rolesServer : null,
-    diff: boot.diff ?? null,
-  };
+  // Load persisted state.
+  const raw = typeof localStorage !== "undefined" ? localStorage.getItem(STORE_KEY) : null;
+  if (raw){
+    const parsed = safeJsonParse(raw);
+    if (parsed && typeof parsed === "object"){
+      state = sanitizeState(parsed);
+    }
+  } else {
+    state = sanitizeState(state);
+  }
 
-  const wizard = safe?.wizard && typeof safe.wizard === "object" ? safe.wizard : {};
-  const legacyEstate = wizard.estate && typeof wizard.estate === "object" ? wizard.estate : {};
-  let estateValue = "";
-  if (typeof wizard.estate_value === "string") estateValue = wizard.estate_value;
-  else if (typeof legacyEstate.value === "string") estateValue = legacyEstate.value;
-  else if (typeof legacyEstate.value === "number" && Number.isFinite(legacyEstate.value)) estateValue = String(legacyEstate.value);
+  const listeners = new Set();
 
-  let currency = "MAD";
-  if (typeof wizard.currency === "string") currency = wizard.currency;
-  else if (typeof legacyEstate.currency === "string") currency = legacyEstate.currency;
+  function getState(){
+    return state;
+  }
 
-  const wizardFlags = wizard.flags && typeof wizard.flags === "object" ? wizard.flags : {};
-  const audit = typeof wizardFlags.audit === "boolean" ? wizardFlags.audit : true;
-  const explain = typeof wizardFlags.explain === "boolean" ? wizardFlags.explain : true;
+  function setState(updater, meta){
+    const next = (typeof updater === "function") ? updater(state) : updater;
+    state = sanitizeState(next);
 
-  const deceasedSex = wizard.deceased_sex === "male" || wizard.deceased_sex === "female" ? wizard.deceased_sex : null;
-  const spouse = wizard.spouse && typeof wizard.spouse === "object" ? wizard.spouse : {};
-  const spouseEnabled = spouse.enabled === true;
-  let wivesCount = clampCount(spouse.wives_count, 0, 4);
-  let husbandPresent = spouse.husband_present === true;
+    // Persist by default, unless explicitly disabled.
+    const persist = !(meta && meta.persist === false);
+    if (persist && typeof localStorage !== "undefined"){
+      try {
+        localStorage.setItem(STORE_KEY, JSON.stringify({
+          wizard: state.wizard,
+          builder: state.builder,
+          results: state.results,
+          ui: state.ui,
+        }));
+      } catch {}
+    }
+
+    for (const cb of listeners) cb(state);
+  }
+
+  function subscribe(cb){
+    listeners.add(cb);
+    return () => listeners.delete(cb);
+  }
+
+  return { getState, setState, subscribe };
+}
+
+function sanitizeState(input){
+  const inObj = input && typeof input === "object" ? input : {};
+
+  // wizard
+  const defaultWizard = makeDefaultWizard();
+  const w = inObj.wizard && typeof inObj.wizard === "object" ? inObj.wizard : {};
+  const deceasedSex = w.deceased_sex === "male" || w.deceased_sex === "female" ? w.deceased_sex : null;
+
+  const spouseRaw = w.spouse && typeof w.spouse === "object" ? w.spouse : {};
+  let wivesCount = clampCount(spouseRaw.wives_count, 0, 4);
+  let husbandPresent = spouseRaw.husband_present === true;
   if (deceasedSex !== "male") wivesCount = 0;
   if (deceasedSex !== "female") husbandPresent = false;
-  if (!spouseEnabled){
+  if (!spouseRaw.enabled){
     wivesCount = 0;
     husbandPresent = false;
   }
 
-  const descendants = wizard.descendants && typeof wizard.descendants === "object" ? wizard.descendants : {};
-  const parents = wizard.parents && typeof wizard.parents === "object" ? wizard.parents : {};
+  const desc = w.descendants && typeof w.descendants === "object" ? w.descendants : {};
+  const parents = w.parents && typeof w.parents === "object" ? w.parents : {};
 
-  out.wizard = {
+  const wizard = {
+    ...defaultWizard,
     deceased_sex: deceasedSex,
-    estate_value: typeof estateValue === "string" ? estateValue : "",
-    currency: typeof currency === "string" ? currency : "MAD",
+    estate_value: typeof w.estate_value === "string" ? w.estate_value : defaultWizard.estate_value,
+    currency: typeof w.currency === "string" ? w.currency : defaultWizard.currency,
     flags: {
-      audit,
-      explain,
+      audit: w.flags?.audit !== false,
+      explain: w.flags?.explain !== false,
     },
     spouse: {
-      enabled: spouseEnabled,
+      enabled: spouseRaw.enabled === true,
       wives_count: wivesCount,
       husband_present: husbandPresent,
     },
     descendants: {
-      son: clampCount(descendants.son),
-      daughter: clampCount(descendants.daughter),
-      sons_son: clampCount(descendants.sons_son),
-      sons_daughter: clampCount(descendants.sons_daughter),
+      son: clampCount(desc.son),
+      daughter: clampCount(desc.daughter),
+      sons_son: clampCount(desc.sons_son),
+      sons_daughter: clampCount(desc.sons_daughter),
+      son_of_son: clampCount(desc.son_of_son),
+      daughter_of_son: clampCount(desc.daughter_of_son),
     },
     parents: {
-      father: parents.father === true,
-      mother: parents.mother === true,
+      enabled: parents.enabled === true,
+      father_alive: parents.father_alive !== false,
+      mother_alive: parents.mother_alive !== false,
     },
+    grandparents: { enabled: w.grandparents?.enabled === true },
+    siblings: { enabled: w.siblings?.enabled === true },
+    uncles: { enabled: w.uncles?.enabled === true },
   };
 
   // builder
-  const builder = safe?.builder && typeof safe.builder === "object" ? safe.builder : {};
-  let mode = "tree";
-  if (builder.mode === "tree" || builder.mode === "roles"){
-    mode = builder.mode;
-  } else {
-    const hasRoles = builder.heirsByRole && Object.values(builder.heirsByRole).some((v) => Number(v) > 0);
-    mode = hasRoles ? "roles" : "tree";
-  }
+  const builderRaw = inObj.builder && typeof inObj.builder === "object" ? inObj.builder : {};
+  const mode = builderRaw.mode === "roles" ? "roles" : "tree";
 
-  const tree = ensureTree(sanitizeTree(builder.tree), out.wizard);
+  const tree = ensureTree(sanitizeTree(builderRaw.tree));
 
   let rawHeirs = {};
   if (mode === "tree"){
-    rawHeirs = deriveHeirsByRoleFromTree(tree).heirsByRole;
+    rawHeirs = deriveHeirsByRoleFromTree(tree).heirsByRole || {};
   } else {
-    rawHeirs = builder.heirsByRole || {};
+    rawHeirs = builderRaw.heirsByRole && typeof builderRaw.heirsByRole === "object" ? builderRaw.heirsByRole : {};
   }
 
+  const roleSet = new Set([...(Array.isArray(EXPECTED_ROLES) ? EXPECTED_ROLES : []), ...Object.keys(rawHeirs || {})]);
   const heirsByRole = {};
-  EXPECTED_ROLES.forEach((role) => {
-    heirsByRole[role] = clampRoleCount(role, rawHeirs?.[role] ?? 0);
-  });
-
-  if (!out.wizard?.spouse?.enabled){
-    heirsByRole.husband = 0;
-    heirsByRole.wife = 0;
+  for (const role of roleSet){
+    heirsByRole[role] = clampCount(rawHeirs[role] || 0, 0, 999);
   }
-  if (out.wizard?.deceased_sex === "male"){
-    heirsByRole.husband = 0;
-  }else if (out.wizard?.deceased_sex === "female"){
-    heirsByRole.wife = 0;
-  }else{
-    heirsByRole.husband = 0;
-    heirsByRole.wife = 0;
+
+  // Wizard constraints apply only in roles mode.
+  if (mode !== "tree"){
+    if (!wizard?.spouse?.enabled){
+      heirsByRole.husband = 0;
+      heirsByRole.wife = 0;
+      heirsByRole.wives = 0;
+    }
+    if (wizard?.deceased_sex === "female"){
+      heirsByRole.wives = 0;
+      heirsByRole.wife = 0;
+    }
+    if (wizard?.deceased_sex === "male"){
+      heirsByRole.husband = 0;
+    }
   }
 
   const payloadPreview = {
-    heirs: ROLE_GROUPS.flatMap((group) => group.roles.map((role) => ({
-      role,
-      count: Number(heirsByRole[role] || 0),
-    })).filter((item) => item.count > 0)),
+    heirs: Array.from(roleSet)
+      .filter((role) => heirsByRole[role] > 0)
+      .map((role) => ({ role, count: heirsByRole[role] })),
   };
 
-  out.builder = {
-    ...makeDefaultBuilder(),
+  const builder = {
     mode,
-    fromWizardApplied: !!builder.fromWizardApplied,
-    wizardHashApplied: builder.wizardHashApplied ? String(builder.wizardHashApplied) : null,
-    heirsByRole,
-    payloadPreview: payloadPreview || { heirs: [] },
     tree,
-    treeSelectedId: typeof builder.treeSelectedId === "string" ? builder.treeSelectedId : null,
+    heirsByRole,
+    fromWizardApplied: Boolean(builderRaw.fromWizardApplied),
+    wizardHashApplied: typeof builderRaw.wizardHashApplied === "string" ? builderRaw.wizardHashApplied : null,
+    payloadPreview,
+
+    treeSelectedId: typeof builderRaw.treeSelectedId === "string" ? builderRaw.treeSelectedId : null,
+
+    treeUi: {
+      search: (builderRaw?.treeUi && typeof builderRaw.treeUi.search === "string") ? builderRaw.treeUi.search : "",
+      collapsedGens: Array.isArray(builderRaw?.treeUi?.collapsedGens) ? builderRaw.treeUi.collapsedGens : [],
+    },
+    treeModal: (builderRaw?.treeModal && typeof builderRaw.treeModal === "object") ? builderRaw.treeModal : null,
   };
 
-  const results = safe?.results && typeof safe.results === "object" ? safe.results : {};
+  const resultsRaw = inObj.results && typeof inObj.results === "object" ? inObj.results : {};
   const allowedStatuses = new Set(["idle", "running", "ok", "error"]);
-  out.results = {
-    status: allowedStatuses.has(results.status) ? results.status : "idle",
-    error: typeof results.error === "string" ? results.error : null,
-    response: results.response && typeof results.response === "object" ? results.response : null,
-    lastRunAt: Number.isFinite(results.lastRunAt) ? results.lastRunAt : null,
+  const results = {
+    status: allowedStatuses.has(resultsRaw.status) ? resultsRaw.status : "idle",
+    error: typeof resultsRaw.error === "string" ? resultsRaw.error : null,
+    response: resultsRaw.response && typeof resultsRaw.response === "object" ? resultsRaw.response : null,
+    lastRunAt: Number.isFinite(resultsRaw.lastRunAt) ? resultsRaw.lastRunAt : null,
   };
 
-  return out;
-}
+  const uiRaw = inObj.ui && typeof inObj.ui === "object" ? inObj.ui : {};
+  const ui = {
+    toasts: Array.isArray(uiRaw.toasts) ? uiRaw.toasts : [],
+    modal: uiRaw.modal && typeof uiRaw.modal === "object" ? uiRaw.modal : null,
+  };
 
-export function createStore(){
-  const persisted = loadState();
-  let state = sanitize(persisted || DEFAULT_STATE);
-  let derived = deriveState(state);
-
-  const subs = new Set();
-
-  function getState(){ return state; }
-  function getDerived(){ return derived; }
-
-  function setState(updater, meta = {}){
-    const prev = state;
-    const next = typeof updater === "function" ? updater(prev) : updater;
-    state = sanitize(next);
-
-    derived = deriveState(state);
-
-    const touched = meta && meta.persist === false ? false : true;
-    if (touched){
-      const toPersist = clone(state);
-      toPersist.meta = { ...toPersist.meta, dirty: false, lastTouched: null };
-      saveState(toPersist);
-    }
-
-    subs.forEach((fn) => fn({ state, derived, prev }));
-  }
-
-  function subscribe(fn){
-    subs.add(fn);
-    return () => subs.delete(fn);
-  }
-
-  function reset(){
-    clearPersistedState();
-    setState(DEFAULT_STATE, { persist: false });
-  }
-
-  return { getState, getDerived, setState, subscribe, reset };
+  return { wizard, builder, results, ui };
 }

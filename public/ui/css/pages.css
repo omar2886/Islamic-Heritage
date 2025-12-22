@@ -420,3 +420,117 @@
   border-bottom:1px solid var(--border);
   padding:8px 10px;
 }
+
+/* Tree Builder v2 */
+.tree-gen-list{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.tree-gen{
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:hidden;
+  background:var(--card);
+}
+
+.tree-gen-head{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 12px;
+  border-bottom:1px solid var(--border);
+}
+
+.tree-gen-body{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:10px 12px;
+}
+
+.tree-node{
+  position:relative;
+}
+
+.tree-node.is-selected{
+  outline:2px solid rgba(120, 170, 255, 0.65);
+  outline-offset:2px;
+}
+
+.tree-node.is-deceased{
+  border-color:rgba(220, 53, 69, 0.55);
+}
+
+.tree-node.is-male{
+  background:rgba(120, 170, 255, 0.08);
+}
+
+.tree-node.is-female{
+  background:rgba(255, 105, 180, 0.06);
+}
+
+.tree-node.is-unknown{
+  background:rgba(255, 255, 255, 0.02);
+}
+
+.tree-meta{
+  font-size:12px;
+  color:var(--muted);
+}
+
+.tree-actions{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
+.btn-xs{
+  padding:6px 10px;
+  border-radius:12px;
+  font-size:12px;
+  line-height:1;
+}
+
+.tree-modal{
+  max-width:720px;
+}
+
+.tree-spouse-row{
+  gap:8px;
+  align-items:center;
+  padding:6px 8px;
+  border:1px solid var(--border);
+  border-radius:12px;
+}
+
+.tree-pending{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:6px 8px;
+  border:1px dashed var(--border);
+  border-radius:12px;
+}
+
+.tree-dis-list{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.tree-dis-item{
+  padding:8px 10px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:var(--card);
+  cursor:pointer;
+}
+
+.tree-dis-item.is-selected{
+  outline:2px solid rgba(120, 170, 255, 0.65);
+  outline-offset:2px;
+}
