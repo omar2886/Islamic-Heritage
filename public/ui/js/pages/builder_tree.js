@@ -224,90 +224,119 @@ function computeWizardHash(wizard){
 }
 
 function applyWizardToTree(tree, wizard){
-  const seed = normalizeWizardSeed(wizard);
-
-  const isNewTree =
-    !tree ||
-    typeof tree !== "object" ||
-    !tree.people ||
-    typeof tree.people !== "object" ||
-    Object.keys(tree.people).length === 0;
-
+  const w = wizard && typeof wizard === "object" ? wizard : {};
   let t = ensureTree(tree, null);
-  const dId = t.deceasedId;
 
-  // Solo en árbol nuevo: aplicar sexo del causante desde wizard (seed explícito).
-  // En árbol existente: NO sobreescribir (tree manda).
-  if (isNewTree && (seed.deceasedSex === "male" || seed.deceasedSex === "female")){
-    t = updatePerson(t, dId, { sex: seed.deceasedSex });
+  const addOne = (fields) => {
+    const r = addPerson(t, fields);
+    t = r.tree;
+    return r.personId;
+  };
+
+  // Parents (merge, no duplicates)
+  const parents = w.parents && typeof w.parents === "object" ? w.parents : {};
+  const existingParents = getParents(t, t.deceasedId);
+
+  if (parents.father === true && !existingParents.fatherId){
+    const fatherId = addOne({ name: "Padre", sex: "male", alive: true });
+    t = setParents(t, t.deceasedId, { fatherId, motherId: existingParents.motherId || null });
   }
 
-  // Padres (solo si faltan)
-  const existingParents = getParents(t, dId);
-
-  if (seed.fatherAlive === true && !existingParents.fatherId){
-    const fatherId = `p${t.nextId}`;
-    t = addPerson(t, { name: "Padre", sex: "male", alive: true });
-    const now = getParents(t, dId);
-    t = setParents(t, dId, { fatherId, motherId: now.motherId });
+  if (parents.mother === true && !existingParents.motherId){
+    const now = getParents(t, t.deceasedId);
+    const motherId = addOne({ name: "Madre", sex: "female", alive: true });
+    t = setParents(t, t.deceasedId, { fatherId: now.fatherId || null, motherId });
   }
 
-  if (seed.motherAlive === true && !getParents(t, dId).motherId){
-    const motherId = `p${t.nextId}`;
-    t = addPerson(t, { name: "Madre", sex: "female", alive: true });
-    const now = getParents(t, dId);
-    t = setParents(t, dId, { fatherId: now.fatherId, motherId });
-  }
+  // Spouse(s) (merge, no duplicates)
+  const spouse = w.spouse && typeof w.spouse === "object" ? w.spouse : {};
+  if (spouse.enabled === true){
+    const d = t.people[t.deceasedId];
+    const dSexHint = safeSex(d?.sex) || safeSex(w.deceased_sex);
 
-  // Cónyuges (solo añadir hasta alcanzar seed.spouseCount si seed.spouseEnabled)
-  if (seed.spouseEnabled === true && seed.spouseCount > 0){
-    const spouses = getSpouses(t, dId);
-    const already = spouses.length;
-    const need = Math.max(0, seed.spouseCount - already);
+    if (dSexHint === "male"){
+      const wivesCount = Number.isFinite(Number(spouse.wives_count))
+        ? Math.max(0, Math.trunc(Number(spouse.wives_count)))
+        : 0;
 
-    for (let i = 0; i < need; i++){
-      const spouseId = `p${t.nextId}`;
-      const dSex = t.people?.[dId]?.sex === "female" ? "female" : "male";
-      const spouseSex = dSex === "female" ? "male" : "female";
-      const baseName = spouseSex === "male" ? "Esposo" : "Esposa";
-      t = addPerson(t, { name: `${baseName} ${already + i + 1}`, sex: spouseSex, alive: true });
-      t = linkSpouses(t, dId, spouseId);
+      const already = getSpouses(t, t.deceasedId).length;
+      const need = Math.max(0, wivesCount - already);
+
+      for (let i = 0; i < need; i++){
+        const wifeId = addOne({ name: `Esposa ${already + i + 1}`, sex: "female", alive: true });
+        t = linkSpouses(t, t.deceasedId, wifeId);
+      }
+    } else if (dSexHint === "female"){
+      const already = getSpouses(t, t.deceasedId).length;
+      if (already === 0){
+        const alive = spouse.husband_present === true;
+        const husbandId = addOne({ name: "Esposo", sex: "male", alive });
+        t = linkSpouses(t, t.deceasedId, husbandId);
+      }
     }
   }
 
-  // Hijos directos (seed mínimo): añadir solo lo que falta por sexo
-  if (seed.sons > 0 || seed.daughters > 0){
-    const children = getChildren(t, dId);
+  // Descendants: direct children (merge, no duplicates)
+  const desc = w.descendants && typeof w.descendants === "object" ? w.descendants : {};
+  const sonsWanted = Number.isFinite(Number(desc.son)) ? Math.max(0, Math.trunc(Number(desc.son))) : 0;
+  const daughtersWanted = Number.isFinite(Number(desc.daughter)) ? Math.max(0, Math.trunc(Number(desc.daughter))) : 0;
 
-    const existingSons = children.filter((id) => t.people?.[id]?.sex === "male").length;
-    const existingDaughters = children.filter((id) => t.people?.[id]?.sex === "female").length;
+  const dSex = safeSex(t.people[t.deceasedId]?.sex);
+  const parentRole = dSex === "female" ? "mother" : "father";
 
-    const needSons = Math.max(0, seed.sons - existingSons);
-    const needDaughters = Math.max(0, seed.daughters - existingDaughters);
+  const childrenIds0 = getChildren(t, t.deceasedId);
+  const existingSons = childrenIds0.filter((id) => t.people[id]?.sex === "male").length;
+  const existingDaughters = childrenIds0.filter((id) => t.people[id]?.sex === "female").length;
 
-    const dSex = t.people?.[dId]?.sex === "female" ? "female" : "male";
-    const parentAs = dSex === "female" ? "mother" : "father";
+  const needSons = Math.max(0, sonsWanted - existingSons);
+  const needDaughters = Math.max(0, daughtersWanted - existingDaughters);
 
-    for (let i = 0; i < needSons; i++){
-      const childId = `p${t.nextId}`;
-      t = addPerson(t, { name: `Hijo ${existingSons + i + 1}`, sex: "male", alive: true });
+  const attachToDeceased = (childId) => {
+    const existing = getParents(t, childId);
+    t = setParents(t, childId, {
+      fatherId: parentRole === "father" ? t.deceasedId : existing.fatherId,
+      motherId: parentRole === "mother" ? t.deceasedId : existing.motherId,
+    });
+  };
 
+  for (let i = 0; i < needSons; i++){
+    const childId = addOne({ name: `Hijo ${existingSons + i + 1}`, sex: "male", alive: true });
+    attachToDeceased(childId);
+  }
+
+  for (let i = 0; i < needDaughters; i++){
+    const childId = addOne({ name: `Hija ${existingDaughters + i + 1}`, sex: "female", alive: true });
+    attachToDeceased(childId);
+  }
+
+  // Grandchildren via son: attach all to the first son (deterministic, merge, no duplicates)
+  const grandSonsWanted = Number.isFinite(Number(desc.sons_son)) ? Math.max(0, Math.trunc(Number(desc.sons_son))) : 0;
+  const grandDaughtersWanted = Number.isFinite(Number(desc.sons_daughter)) ? Math.max(0, Math.trunc(Number(desc.sons_daughter))) : 0;
+
+  const sonsIds = getChildren(t, t.deceasedId).filter((id) => t.people[id]?.sex === "male");
+  const anchorSonId = sonsIds.length ? sonsIds[0] : null;
+
+  if (anchorSonId){
+    const anchorKids = getChildren(t, anchorSonId);
+    const existingGrandSons = anchorKids.filter((id) => t.people[id]?.sex === "male").length;
+    const existingGrandDaughters = anchorKids.filter((id) => t.people[id]?.sex === "female").length;
+
+    const needGrandSons = Math.max(0, grandSonsWanted - existingGrandSons);
+    const needGrandDaughters = Math.max(0, grandDaughtersWanted - existingGrandDaughters);
+
+    const attachToAnchorSon = (childId) => {
       const existing = getParents(t, childId);
-      t = setParents(t, childId, {
-        fatherId: parentAs === "father" ? dId : existing.fatherId,
-        motherId: parentAs === "mother" ? dId : existing.motherId,
-      });
+      t = setParents(t, childId, { fatherId: anchorSonId, motherId: existing.motherId });
+    };
+
+    for (let i = 0; i < needGrandSons; i++){
+      const id = addOne({ name: `Nieto ${existingGrandSons + i + 1}`, sex: "male", alive: true });
+      attachToAnchorSon(id);
     }
 
-    for (let i = 0; i < needDaughters; i++){
-      const childId = `p${t.nextId}`;
-      t = addPerson(t, { name: `Hija ${existingDaughters + i + 1}`, sex: "female", alive: true });
-
-      const existing = getParents(t, childId);
-      t = setParents(t, childId, {
-        fatherId: parentAs === "father" ? dId : existing.fatherId,
-        motherId: parentAs === "mother" ? dId : existing.motherId,
-      });
+    for (let i = 0; i < needGrandDaughters; i++){
+      const id = addOne({ name: `Nieta ${existingGrandDaughters + i + 1}`, sex: "female", alive: true });
+      attachToAnchorSon(id);
     }
   }
 
@@ -811,11 +840,8 @@ function commitCreatePerson(store){
   const vals = readModalValues();
   const sex = safeSex(vals.sexRaw) || "male";
 
-  const res = addPerson(tree, { name: vals.name || "Persona", sex, alive: !!vals.alive });
-  const nextTree = (res && typeof res === "object" && res.tree) ? res.tree : res;
-  const newId = (res && typeof res === "object" && typeof res.personId === "string") ? res.personId : null;
-
-  setTreeInState(store, nextTree, { treeSelectedId: newId }, { persist: true });
+  const r = addPerson(tree, { name: vals.name || "Persona", sex, alive: !!vals.alive });
+  setTreeInState(store, r.tree, { treeSelectedId: r.personId }, { persist: true });
   closeTreeModal(store);
 }
 
@@ -880,14 +906,9 @@ function commitAddSpouse(store, personId){
   }
 
   const sex = safeSex(vals.sexRaw) || "male";
-  const res = addPerson(nextTree, { name: vals.name || "Cónyuge", sex, alive: !!vals.alive });
-  nextTree = (res && typeof res === "object" && res.tree) ? res.tree : res;
-  const newId = (res && typeof res === "object" && typeof res.personId === "string") ? res.personId : null;
-
-  if (!newId || !nextTree.people?.[newId]){
-    setModalError(store, "No se pudo crear el cónyuge.");
-    return;
-  }
+  const r = addPerson(nextTree, { name: vals.name || "Cónyuge", sex, alive: !!vals.alive });
+  nextTree = r.tree;
+  const newId = r.personId;
 
   nextTree = linkSpouses(nextTree, personId, newId);
 
@@ -947,14 +968,9 @@ function commitAddChild(store, parentId){
   }
 
   const sex = safeSex(vals.sexRaw) || "male";
-  const res = addPerson(nextTree, { name: vals.name || "Hijo/a", sex, alive: !!vals.alive });
-  nextTree = (res && typeof res === "object" && res.tree) ? res.tree : res;
-  const newId = (res && typeof res === "object" && typeof res.personId === "string") ? res.personId : null;
-
-  if (!newId || !nextTree.people?.[newId]){
-    setModalError(store, "No se pudo crear el hijo.");
-    return;
-  }
+  const r = addPerson(nextTree, { name: vals.name || "Hijo/a", sex, alive: !!vals.alive });
+  nextTree = r.tree;
+  const newId = r.personId;
 
   linkChild(newId);
 }
