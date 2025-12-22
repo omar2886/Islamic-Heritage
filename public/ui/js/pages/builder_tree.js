@@ -442,6 +442,10 @@ export function applyWizardSyncTree(store) {
   });
 }
 
+export function importWizardToTree(store) {
+  applyWizardSyncTree(store);
+}
+
 /* ------------------------- helpers ------------------------- */
 
 function renderModeTabs(mode) {
