@@ -1280,3 +1280,7 @@ export function bindBuilderTreeEvents(store){
     }
   }, { once: true });
 }
+
+export function wireBuilderTree(store){
+  return bindBuilderTreeEvents(store);
+}
