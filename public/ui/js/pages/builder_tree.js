@@ -151,135 +151,174 @@ function renderPill(label, kind = "neutral"){
   return `<span class="${cls}">${escapeHtml(label)}</span>`;
 }
 
-function computeWizardHash(wizard){
-  // Minimal stable hash for "wizard changed" banners.
+function normalizeWizardSeed(wizard){
   const w = wizard && typeof wizard === "object" ? wizard : {};
-  const payload = {
-    deceased_sex: safeSex(w.deceased_sex) || "",
-    spouse_enabled: w.spouse?.enabled === true,
-    spouse_count: Number.isFinite(Number(w.spouse?.count)) ? Math.trunc(Number(w.spouse.count)) : 0,
-    father_alive: w.ascendants?.father?.alive === true,
-    mother_alive: w.ascendants?.mother?.alive === true,
-    sons: Number.isFinite(Number(w.descendants?.sons)) ? Math.trunc(Number(w.descendants.sons)) : 0,
-    daughters: Number.isFinite(Number(w.descendants?.daughters)) ? Math.trunc(Number(w.descendants.daughters)) : 0,
+
+  const deceasedSex = (w.deceased_sex === "male" || w.deceased_sex === "female") ? w.deceased_sex : "";
+
+  // parents (schema viejo) o ascendants (schema nuevo)
+  const parentsObj = (w.parents && typeof w.parents === "object") ? w.parents : null;
+  const ascObj = (w.ascendants && typeof w.ascendants === "object") ? w.ascendants : null;
+
+  const fatherAlive = !!(ascObj?.father?.alive ?? parentsObj?.father);
+  const motherAlive = !!(ascObj?.mother?.alive ?? parentsObj?.mother);
+
+  // spouse (schema nuevo: count) o viejo (wives_count / husband_present)
+  const spouseObj = (w.spouse && typeof w.spouse === "object") ? w.spouse : {};
+  const spouseEnabled = spouseObj.enabled === true;
+
+  let spouseCountRaw = 0;
+  if (Number.isFinite(Number(spouseObj.count))){
+    spouseCountRaw = Number(spouseObj.count);
+  } else if (Number.isFinite(Number(spouseObj.wives_count))){
+    spouseCountRaw = Number(spouseObj.wives_count);
+  } else if (spouseObj.husband_present === true){
+    spouseCountRaw = 1;
+  } else {
+    spouseCountRaw = 0;
+  }
+
+  let spouseCount = Math.max(0, Math.trunc(spouseCountRaw));
+  const maxSpouse = deceasedSex === "female" ? 1 : 4;
+  if (spouseCount > maxSpouse) spouseCount = maxSpouse;
+
+  // descendants (schema nuevo: sons/daughters) o viejo (son/daughter)
+  const descObj = (w.descendants && typeof w.descendants === "object") ? w.descendants : {};
+  let sonsRaw = 0;
+  let daughtersRaw = 0;
+
+  if (descObj && (descObj.sons != null || descObj.daughters != null)){
+    sonsRaw = descObj.sons;
+    daughtersRaw = descObj.daughters;
+  } else {
+    sonsRaw = descObj.son;
+    daughtersRaw = descObj.daughter;
+  }
+
+  let sons = Number.isFinite(Number(sonsRaw)) ? Math.max(0, Math.trunc(Number(sonsRaw))) : 0;
+  let daughters = Number.isFinite(Number(daughtersRaw)) ? Math.max(0, Math.trunc(Number(daughtersRaw))) : 0;
+
+  // seed razonable para evitar imports absurdos
+  if (sons > 50) sons = 50;
+  if (daughters > 50) daughters = 50;
+
+  return {
+    deceasedSex,
+    fatherAlive,
+    motherAlive,
+    spouseEnabled,
+    spouseCount,
+    sons,
+    daughters,
   };
+}
+
+function computeWizardHash(wizard){
+  // Hash estable solo para banners "wizard cambió" (seed normalizado).
+  const seed = normalizeWizardSeed(wizard);
   try{
-    return JSON.stringify(payload);
+    return JSON.stringify(seed);
   }catch(_e){
     return String(Date.now());
   }
 }
 
 function applyWizardToTree(tree, wizard){
-  const w = wizard && typeof wizard === "object" ? wizard : {};
+  const seed = normalizeWizardSeed(wizard);
+
+  const isNewTree =
+    !tree ||
+    typeof tree !== "object" ||
+    !tree.people ||
+    typeof tree.people !== "object" ||
+    Object.keys(tree.people).length === 0;
+
   let t = ensureTree(tree, null);
+  const dId = t.deceasedId;
 
-  function clampInt(v, min, max){
-    const n = Number.isFinite(Number(v)) ? Math.trunc(Number(v)) : 0;
-    return Math.min(max, Math.max(min, n));
+  // Solo en árbol nuevo: aplicar sexo del causante desde wizard (seed explícito).
+  // En árbol existente: NO sobreescribir (tree manda).
+  if (isNewTree && (seed.deceasedSex === "male" || seed.deceasedSex === "female")){
+    t = updatePerson(t, dId, { sex: seed.deceasedSex });
   }
 
-  function addPersonWrap(tt, patch){
-    const res = addPerson(tt, patch);
-    if (res && typeof res === "object" && res.tree && typeof res.personId === "string"){
-      return { tree: res.tree, personId: res.personId };
-    }
-    // Backwards-compat if addPerson returns the tree directly
-    if (res && typeof res === "object" && res.people && typeof res.nextId === "number"){
-      return { tree: res, personId: String(Math.max(1, res.nextId - 1)) };
-    }
-    return { tree: tt, personId: null };
+  // Padres (solo si faltan)
+  const existingParents = getParents(t, dId);
+
+  if (seed.fatherAlive === true && !existingParents.fatherId){
+    const fatherId = `p${t.nextId}`;
+    t = addPerson(t, { name: "Padre", sex: "male", alive: true });
+    const now = getParents(t, dId);
+    t = setParents(t, dId, { fatherId, motherId: now.motherId });
   }
 
-  const wizardDeceasedSex = safeSex(w.deceased_sex);
-  const peopleCount = Object.keys(t.people || {}).length;
-  const hasAnyLinks = Object.keys(t.parents || {}).length > 0 || Object.keys(t.spouses || {}).length > 0;
-  if (wizardDeceasedSex && peopleCount === 1 && !hasAnyLinks){
-    t = updatePerson(t, t.deceasedId, { sex: wizardDeceasedSex });
+  if (seed.motherAlive === true && !getParents(t, dId).motherId){
+    const motherId = `p${t.nextId}`;
+    t = addPerson(t, { name: "Madre", sex: "female", alive: true });
+    const now = getParents(t, dId);
+    t = setParents(t, dId, { fatherId: now.fatherId, motherId });
   }
 
-  // Parents (only add if wizard says alive=true and missing in tree)
-  const existingParents = getParents(t, t.deceasedId);
+  // Cónyuges (solo añadir hasta alcanzar seed.spouseCount si seed.spouseEnabled)
+  if (seed.spouseEnabled === true && seed.spouseCount > 0){
+    const spouses = getSpouses(t, dId);
+    const already = spouses.length;
+    const need = Math.max(0, seed.spouseCount - already);
 
-  if (w.ascendants?.father?.alive === true && !existingParents.fatherId){
-    const r = addPersonWrap(t, { name: "Padre", sex: "male", alive: true });
-    t = r.tree;
-    t = setParents(t, t.deceasedId, { fatherId: r.personId, motherId: existingParents.motherId });
-  }
-
-  if (w.ascendants?.mother?.alive === true && !existingParents.motherId){
-    const now = getParents(t, t.deceasedId);
-    const r = addPersonWrap(t, { name: "Madre", sex: "female", alive: true });
-    t = r.tree;
-    t = setParents(t, t.deceasedId, { fatherId: now.fatherId, motherId: r.personId });
-  }
-
-  // Spouses (only add to reach the wizard count, never delete)
-  const spouseEnabled = w.spouse?.enabled === true;
-  const spouseCount = clampInt(w.spouse?.count ?? 0, 0, 4);
-
-  if (spouseEnabled && spouseCount > 0){
-    const d = t.people[t.deceasedId];
-    const dSex = safeSex(d?.sex) || wizardDeceasedSex;
-
-    const already = getSpouses(t, t.deceasedId).length;
-
-    if (dSex === "male"){
-      const need = Math.max(0, spouseCount - already);
-      for (let i = 0; i < need; i++){
-        const r = addPersonWrap(t, { name: `Esposa ${already + i + 1}`, sex: "female", alive: true });
-        t = r.tree;
-        if (r.personId){
-          t = linkSpouses(t, t.deceasedId, r.personId);
-        }
-      }
-    }else if (dSex === "female"){
-      const target = spouseCount > 0 ? 1 : 0;
-      const need = Math.max(0, target - already);
-      for (let i = 0; i < need; i++){
-        const r = addPersonWrap(t, { name: "Esposo", sex: "male", alive: true });
-        t = r.tree;
-        if (r.personId){
-          t = linkSpouses(t, t.deceasedId, r.personId);
-        }
-      }
+    for (let i = 0; i < need; i++){
+      const spouseId = `p${t.nextId}`;
+      const dSex = t.people?.[dId]?.sex === "female" ? "female" : "male";
+      const spouseSex = dSex === "female" ? "male" : "female";
+      const baseName = spouseSex === "male" ? "Esposo" : "Esposa";
+      t = addPerson(t, { name: `${baseName} ${already + i + 1}`, sex: spouseSex, alive: true });
+      t = linkSpouses(t, dId, spouseId);
     }
   }
 
-  // Descendants (only add to reach wizard counts, never delete)
-  const sons = clampInt(w.descendants?.sons ?? 0, 0, 20);
-  const daughters = clampInt(w.descendants?.daughters ?? 0, 0, 20);
+  // Hijos directos (seed mínimo): añadir solo lo que falta por sexo
+  if (seed.sons > 0 || seed.daughters > 0){
+    const children = getChildren(t, dId);
 
-  const d = t.people[t.deceasedId];
-  const dSex = safeSex(d?.sex) || wizardDeceasedSex;
+    const existingSons = children.filter((id) => t.people?.[id]?.sex === "male").length;
+    const existingDaughters = children.filter((id) => t.people?.[id]?.sex === "female").length;
 
-  const childFatherId = dSex === "male" ? t.deceasedId : null;
-  const childMotherId = dSex === "female" ? t.deceasedId : null;
+    const needSons = Math.max(0, seed.sons - existingSons);
+    const needDaughters = Math.max(0, seed.daughters - existingDaughters);
 
-  const existingChildren = getChildren(t, t.deceasedId);
-  const existingSons = existingChildren.filter((id) => t.people[id]?.sex === "male").length;
-  const existingDaughters = existingChildren.filter((id) => t.people[id]?.sex === "female").length;
+    const dSex = t.people?.[dId]?.sex === "female" ? "female" : "male";
+    const parentAs = dSex === "female" ? "mother" : "father";
 
-  const needSons = Math.max(0, sons - existingSons);
-  const needDaughters = Math.max(0, daughters - existingDaughters);
+    for (let i = 0; i < needSons; i++){
+      const childId = `p${t.nextId}`;
+      t = addPerson(t, { name: `Hijo ${existingSons + i + 1}`, sex: "male", alive: true });
 
-  for (let i = 0; i < needSons; i++){
-    const r = addPersonWrap(t, { name: `Hijo ${existingSons + i + 1}`, sex: "male", alive: true });
-    t = r.tree;
-    if (r.personId){
-      t = setParents(t, r.personId, { fatherId: childFatherId, motherId: childMotherId });
+      const existing = getParents(t, childId);
+      t = setParents(t, childId, {
+        fatherId: parentAs === "father" ? dId : existing.fatherId,
+        motherId: parentAs === "mother" ? dId : existing.motherId,
+      });
     }
-  }
 
-  for (let i = 0; i < needDaughters; i++){
-    const r = addPersonWrap(t, { name: `Hija ${existingDaughters + i + 1}`, sex: "female", alive: true });
-    t = r.tree;
-    if (r.personId){
-      t = setParents(t, r.personId, { fatherId: childFatherId, motherId: childMotherId });
+    for (let i = 0; i < needDaughters; i++){
+      const childId = `p${t.nextId}`;
+      t = addPerson(t, { name: `Hija ${existingDaughters + i + 1}`, sex: "female", alive: true });
+
+      const existing = getParents(t, childId);
+      t = setParents(t, childId, {
+        fatherId: parentAs === "father" ? dId : existing.fatherId,
+        motherId: parentAs === "mother" ? dId : existing.motherId,
+      });
     }
   }
 
   return t;
+}
+
+export function applyWizardSyncTree(_store){
+  // Tree es la fuente de verdad.
+  // El wizard solo puede importarse al árbol mediante acción explícita:
+  // confirmAction = "builder-tree-import-wizard" => importWizardToTree(store)
+  return;
 }
 
 function buildGenerationIndex(tree){
