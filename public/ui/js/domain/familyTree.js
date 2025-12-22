@@ -1,264 +1,164 @@
 // public/ui/js/domain/familyTree.js
 
-export const EXPECTED_ROLES = [
-  "husband",
-  "wives",
-  "father",
-  "mother",
-  "son",
-  "daughter",
-  "paternal_grandfather",
-  "paternal_grandmother",
-  "maternal_grandfather",
-  "maternal_grandmother",
-  "full_brother",
-  "full_sister",
-  "paternal_brother",
-  "paternal_sister",
-  "maternal_brother",
-  "maternal_sister",
-  "son_of_son",
-  "daughter_of_son",
-  "son_of_full_brother",
-  "daughter_of_full_brother",
-  "son_of_paternal_brother",
-  "daughter_of_paternal_brother",
-  "paternal_uncle",
-  "paternal_aunt",
-  "maternal_uncle",
-  "maternal_aunt",
-  "son_of_paternal_uncle",
-  "daughter_of_paternal_uncle",
-];
+export function sanitizeTree(raw){
+  if (!raw || typeof raw !== "object") return null;
 
-// Tree schema:
-// {
-//   version: 1,
-//   deceasedId: "p1",
-//   nextId: 2,
-//   people: { [id]: { id, name, sex, alive } },
-//   parents: { [childId]: { fatherId, motherId } },
-//   spouses: { [id]: [otherId, ...] }
-// }
+  const version = raw.version === 1 ? 1 : 1;
+  const nextId = typeof raw.nextId === "number" ? raw.nextId : 2;
 
-function normalizeSex(sex){
-  return sex === "male" || sex === "female" ? sex : "male";
+  const people = (raw.people && typeof raw.people === "object") ? raw.people : {};
+  const parents = (raw.parents && typeof raw.parents === "object") ? raw.parents : {};
+  const spouses = (raw.spouses && typeof raw.spouses === "object") ? raw.spouses : {};
+
+  const deceasedId = typeof raw.deceasedId === "string" ? raw.deceasedId : null;
+
+  return { version, nextId, people, parents, spouses, deceasedId };
 }
 
-function ensureSpouseSymmetry(spousesOrTree, peopleMaybe){
-  const isTreeLike = spousesOrTree && typeof spousesOrTree === "object" && !Array.isArray(spousesOrTree) && spousesOrTree.people;
-  const people = isTreeLike ? (spousesOrTree.people || {}) : (peopleMaybe || {});
-  const spousesRaw = isTreeLike ? spousesOrTree.spouses : spousesOrTree;
-
+function ensureSpouseSymmetry(spouses, people){
   const out = {};
-  const ids = Object.keys(people || {});
-  const s = spousesRaw && typeof spousesRaw === "object" ? spousesRaw : {};
-  for (const id of ids){
-    const arr = Array.isArray(s[id]) ? s[id].filter((x) => typeof x === "string") : [];
-    out[id] = Array.from(new Set(arr.filter((x) => people[x] && x !== id)));
-  }
-  // Make it symmetric.
-  for (const [a, arr] of Object.entries(out)){
-    for (const b of arr){
-      out[b] ||= [];
-      if (!out[b].includes(a)) out[b].push(a);
-    }
-  }
+  Object.entries(spouses || {}).forEach(([a, arr]) => {
+    if (!people[a]) return;
+    const list = Array.isArray(arr) ? arr : [];
+    out[a] = list.filter((b) => people[b]).map(String);
+  });
 
-  if (isTreeLike){
-    return { ...spousesOrTree, spouses: out };
-  }
+  Object.entries(out).forEach(([a, arr]) => {
+    arr.forEach((b) => {
+      if (!out[b]) out[b] = [];
+      if (!out[b].includes(a)) out[b].push(a);
+    });
+  });
+
   return out;
 }
 
-export function ensureTree(tree){
-  const safe = sanitizeTree(tree);
+export function ensureTree(tree, _wizardIgnored){
+  const out = tree && typeof tree === "object" ? tree : null;
 
-  if (!safe.people || Object.keys(safe.people).length === 0){
+  if (!out || !out.people || typeof out.people !== "object" || Object.keys(out.people).length === 0){
     return makeDefaultTree("male");
   }
 
-  let deceasedId = typeof safe.deceasedId === "string" ? safe.deceasedId : "p1";
-  const people = { ...safe.people };
-
-  if (!people[deceasedId]){
-    deceasedId = "p1";
-  }
-  if (!people[deceasedId]){
-    people[deceasedId] = { id: deceasedId, name: "Causante", sex: "male", alive: false };
+  let deceasedId = out.deceasedId;
+  if (!deceasedId || !out.people[deceasedId]){
+    deceasedId = Object.keys(out.people)[0];
   }
 
+  const people = { ...out.people };
   const d = people[deceasedId];
-  people[deceasedId] = {
-    ...d,
-    name: d?.name ? d.name : "Causante",
-    sex: (d?.sex === "male" || d?.sex === "female") ? d.sex : "male",
-    alive: false,
-  };
+  const name = (d && typeof d.name === "string" && d.name.trim()) ? d.name.trim() : "Causante";
+  const sex = d && d.sex === "female" ? "female" : "male";
+  people[deceasedId] = { ...d, name, sex, alive: false };
 
-  const out = ensureSpouseSymmetry({ ...safe, deceasedId, people });
-  return out;
+  const spouses = ensureSpouseSymmetry(out.spouses || {}, people);
+
+  return {
+    version: 1,
+    deceasedId,
+    nextId: (typeof out.nextId === "number" && out.nextId >= 2) ? out.nextId : 2,
+    people,
+    parents: out.parents || {},
+    spouses,
+  };
 }
 
 export function makeDefaultTree(deceasedSex = "male"){
-  const s = normalizeSex(deceasedSex);
   return {
     version: 1,
-    deceasedId: "p1",
+    deceasedId: "1",
     nextId: 2,
     people: {
-      p1: { id: "p1", name: "Causante", sex: s, alive: false }
+      "1": { id: "1", name: "Causante", sex: deceasedSex === "female" ? "female" : "male", alive: false },
     },
     parents: {},
     spouses: {},
   };
 }
 
-export function sanitizeTree(tree){
-  const t = tree && typeof tree === "object" ? tree : null;
-  if (!t || !t.people || typeof t.people !== "object"){
-    return makeDefaultTree("male");
-  }
+export function addPerson(tree, fields){
+  const t = ensureTree(sanitizeTree(tree), null);
+  const id = String(t.nextId);
+  const sex = fields?.sex === "female" ? "female" : "male";
+  const alive = fields?.alive === true;
+  const name = typeof fields?.name === "string" ? fields.name : "";
 
-  const people = {};
-  for (const [id, p] of Object.entries(t.people)){
-    if (!id || typeof id !== "string") continue;
-    if (!p || typeof p !== "object") continue;
-    people[id] = {
-      id,
-      name: typeof p.name === "string" ? p.name : "",
-      sex: normalizeSex(p.sex),
-      alive: Boolean(p.alive),
-    };
-  }
-
-  if (!Object.keys(people).length){
-    return makeDefaultTree("male");
-  }
-
-  const parents = {};
-  if (t.parents && typeof t.parents === "object"){
-    for (const [childId, rel] of Object.entries(t.parents)){
-      if (!people[childId]) continue;
-      const fatherId = rel && typeof rel === "object" ? rel.fatherId : null;
-      const motherId = rel && typeof rel === "object" ? rel.motherId : null;
-      parents[childId] = {
-        fatherId: (typeof fatherId === "string" && people[fatherId] && fatherId !== childId) ? fatherId : null,
-        motherId: (typeof motherId === "string" && people[motherId] && motherId !== childId) ? motherId : null,
-      };
-    }
-  }
-
-  const spouses = ensureSpouseSymmetry(t.spouses || {}, people);
-
-  const deceasedId = (typeof t.deceasedId === "string" && people[t.deceasedId]) ? t.deceasedId : Object.keys(people)[0];
-  const nextId = (typeof t.nextId === "number" && t.nextId >= 2) ? t.nextId : 2;
-
-  // Force deceased alive=false always.
-  people[deceasedId] = { ...people[deceasedId], alive: false, name: people[deceasedId].name || "Causante" };
-
+  const person = { id, sex, alive, name };
   return {
-    version: 1,
-    deceasedId,
-    nextId,
-    people,
-    parents,
-    spouses,
+    tree: {
+      ...t,
+      nextId: t.nextId + 1,
+      people: { ...t.people, [id]: person },
+    },
+    personId: id,
   };
-}
-
-export function addPerson(tree, person){
-  const t = ensureTree(tree);
-  const id = `p${t.nextId}`;
-  const p = person && typeof person === "object" ? person : {};
-  const sex = normalizeSex(p.sex);
-  const alive = Boolean(p.alive);
-
-  const people = { ...t.people, [id]: { id, name: typeof p.name === "string" ? p.name : "Persona", sex, alive } };
-  return { ...t, people, nextId: t.nextId + 1 };
 }
 
 export function updatePerson(tree, id, patch){
-  const t = ensureTree(tree);
+  const t = ensureTree(sanitizeTree(tree), null);
   if (!t.people[id]) return t;
 
-  const p = t.people[id];
-  const up = patch && typeof patch === "object" ? patch : {};
+  const prev = t.people[id];
+  const sex = patch?.sex === "female" ? "female" : (patch?.sex === "male" ? "male" : prev.sex);
+  const alive = typeof patch?.alive === "boolean" ? patch.alive : prev.alive;
+  const name = typeof patch?.name === "string" ? patch.name : prev.name;
 
-  const next = {
-    ...p,
-    name: (typeof up.name === "string") ? up.name : p.name,
-    sex: (up.sex === "male" || up.sex === "female") ? up.sex : p.sex,
-    alive: (typeof up.alive === "boolean") ? up.alive : p.alive,
-  };
-
-  // If updating deceased, force alive=false.
+  const next = { ...prev, sex, alive, name };
   if (id === t.deceasedId) next.alive = false;
 
   return { ...t, people: { ...t.people, [id]: next } };
 }
 
-export function getParents(tree, childId){
-  const t = ensureTree(tree);
-  const rel = t.parents && typeof t.parents === "object" ? t.parents[childId] : null;
+export function getParents(tree, id){
+  const t = ensureTree(sanitizeTree(tree), null);
+  const row = t.parents[id] || {};
   return {
-    fatherId: rel && typeof rel.fatherId === "string" ? rel.fatherId : null,
-    motherId: rel && typeof rel.motherId === "string" ? rel.motherId : null,
+    fatherId: typeof row.fatherId === "string" ? row.fatherId : null,
+    motherId: typeof row.motherId === "string" ? row.motherId : null,
   };
 }
 
-export function setParents(tree, childId, parents){
-  const t = ensureTree(tree);
+export function setParents(tree, childId, { fatherId, motherId }){
+  const t = ensureTree(sanitizeTree(tree), null);
   if (!t.people[childId]) return t;
 
-  const fatherId = parents && typeof parents.fatherId === "string" ? parents.fatherId : null;
-  const motherId = parents && typeof parents.motherId === "string" ? parents.motherId : null;
-
-  const fatherOk = fatherId && t.people[fatherId] && fatherId !== childId ? fatherId : null;
-  const motherOk = motherId && t.people[motherId] && motherId !== childId ? motherId : null;
-
-  return {
-    ...t,
-    parents: {
-      ...(t.parents || {}),
-      [childId]: { fatherId: fatherOk, motherId: motherOk },
-    },
+  const nextRow = {
+    fatherId: fatherId && t.people[fatherId] ? String(fatherId) : null,
+    motherId: motherId && t.people[motherId] ? String(motherId) : null,
   };
+
+  return { ...t, parents: { ...t.parents, [childId]: nextRow } };
 }
 
 export function getChildren(tree, parentId){
-  const t = ensureTree(tree);
-  const out = [];
-  for (const [childId, rel] of Object.entries(t.parents || {})){
-    if (!rel || typeof rel !== "object") continue;
-    if (rel.fatherId === parentId || rel.motherId === parentId){
-      out.push(childId);
-    }
-  }
-  return out;
+  const t = ensureTree(sanitizeTree(tree), null);
+  return Object.entries(t.parents || {})
+    .filter(([, row]) => row?.fatherId === parentId || row?.motherId === parentId)
+    .map(([childId]) => String(childId));
 }
 
 export function getSpouses(tree, id){
-  const t = ensureTree(tree);
-  const arr = t.spouses && typeof t.spouses === "object" ? t.spouses[id] : null;
-  return Array.isArray(arr) ? arr.slice() : [];
+  const t = ensureTree(sanitizeTree(tree), null);
+  const arr = t.spouses?.[id];
+  return Array.isArray(arr) ? arr.map(String) : [];
 }
 
-export function linkSpouses(tree, aId, bId){
-  const t = ensureTree(tree);
-  if (!t.people[aId] || !t.people[bId] || aId === bId) return t;
+export function linkSpouses(tree, a, b){
+  const t = ensureTree(sanitizeTree(tree), null);
+  if (!t.people[a] || !t.people[b] || a === b) return t;
 
-  const spouses = ensureSpouseSymmetry(t.spouses || {}, t.people);
-  spouses[aId] ||= [];
-  spouses[bId] ||= [];
-  if (!spouses[aId].includes(bId)) spouses[aId].push(bId);
-  if (!spouses[bId].includes(aId)) spouses[bId].push(aId);
+  const spouses = { ...(t.spouses || {}) };
+  spouses[a] = Array.isArray(spouses[a]) ? spouses[a].slice() : [];
+  spouses[b] = Array.isArray(spouses[b]) ? spouses[b].slice() : [];
 
-  return { ...t, spouses };
+  if (!spouses[a].includes(b)) spouses[a].push(b);
+  if (!spouses[b].includes(a)) spouses[b].push(a);
+
+  return { ...t, spouses: ensureSpouseSymmetry(spouses, t.people) };
 }
 
 export function unlinkSpouses(tree, aId, bId){
-  const t = ensureTree(tree);
+  const t = ensureTree(sanitizeTree(tree), null);
   const spouses = ensureSpouseSymmetry(t.spouses || {}, t.people);
   if (!spouses[aId] || !spouses[bId]) return t;
 
@@ -268,7 +168,7 @@ export function unlinkSpouses(tree, aId, bId){
 }
 
 export function deriveHeirsByRoleFromTree(tree) {
-  const t = ensureTree(tree);
+  const t = ensureTree(sanitizeTree(tree), null);
   const dId = t.deceasedId;
   const d = t.people[dId];
   const heirsByRole = {};

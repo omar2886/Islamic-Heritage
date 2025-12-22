@@ -729,3 +729,243 @@
   font-size:12px;
   color:var(--muted);
 }
+/* =========================================================
+   Tree Builder v2 (relacional, generaciones, modales locales)
+   ========================================================= */
+
+.tree-builder-v2{
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px){
+  .tree-builder-v2{
+    grid-template-columns: 1fr;
+  }
+}
+
+.tree-builder-v2 .btn-xs{
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.tree-builder-v2 .btn-primary{
+  background: #1f6feb;
+  border-color: #1f6feb;
+  color: #fff;
+}
+
+.tree-builder-v2 .btn-danger{
+  background: #b42318;
+  border-color: #b42318;
+  color: #fff;
+}
+
+.tree-sidebar{
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.tree-sidebar-top{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.tree-title{ font-weight: 700; }
+
+.tree-actions{
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.tree-people-header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  margin-bottom: 8px;
+}
+
+.tree-people-title{ font-weight: 700; }
+
+.tree-people{
+  display: grid;
+  gap: 8px;
+  max-height: 52vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.tree-person{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  border-radius: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.tree-person.is-selected{
+  border-color: #1f6feb;
+}
+
+.tree-person-name{
+  font-weight: 600;
+  text-align: left;
+}
+
+.tree-person-badges{
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.pill-deceased{
+  background: rgba(31, 111, 235, 0.16);
+  border-color: rgba(31, 111, 235, 0.35);
+}
+
+.tree-main{
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.tree-gens{
+  display: grid;
+  gap: 12px;
+}
+
+.tree-gen{
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--panel-2);
+}
+
+.tree-gen-header{
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.tree-gen-title{ font-weight: 700; }
+
+.tree-gen-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.tree-node{
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 10px;
+  cursor: pointer;
+}
+
+.tree-node.is-selected{
+  border-color: #1f6feb;
+}
+
+.tree-node-top{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.tree-node-name{ font-weight: 700; }
+
+.tree-node-badges{
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.tree-node-actions{
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.notice-actions{ margin-top: 8px; }
+
+.tree-modal-backdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 1000;
+}
+
+.tree-modal-backdrop.is-hidden{ display: none; }
+
+.tree-modal{
+  width: min(520px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.tree-modal-header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+}
+
+.tree-modal-title{ font-weight: 800; }
+
+.tree-modal-body{
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.form-row{ display: grid; gap: 6px; }
+
+.radio-row{
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.tree-modal-footer{
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--panel-2);
+}
+
+.is-hidden{ display: none; }
