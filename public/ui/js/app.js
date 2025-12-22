@@ -150,7 +150,10 @@ function handleModalConfirm(action){
       builder:{
         ...s.builder,
         mode:"tree",
-        family: null
+        tree: null,
+        treeSelectedId: null,
+        fromWizardApplied: false,
+        wizardHashApplied: null,
       }
     }));
     return;
