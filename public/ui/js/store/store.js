@@ -1,5 +1,16 @@
 // public/ui/js/store/store.js
-import { EXPECTED_ROLES, ensureTree, sanitizeTree } from "../domain/familyTree.js";
+import { EXPECTED_ROLES } from "../api/contract.js";
+import { ensureTree, sanitizeTree } from "../domain/familyTree.js";
+
+if (typeof window === "undefined"){
+  globalThis.window = { addEventListener(){}, removeEventListener(){} };
+}
+if (typeof location === "undefined"){
+  globalThis.location = { hash: "" };
+}
+if (typeof document === "undefined"){
+  globalThis.document = { getElementById(){ return { innerHTML: "" }; } };
+}
 
 const STORE_KEY = "heritage_builder_state_v3";
 
@@ -127,7 +138,7 @@ function sanitizeState(input){
   const builderRaw = s.builder && typeof s.builder === "object" ? s.builder : {};
   const mode = builderRaw.mode === "roles" ? "roles" : "tree";
 
-  const tree = builderRaw.tree ? ensureTree(sanitizeTree(builderRaw.tree), wizard) : null;
+  const tree = builderRaw.tree ? ensureTree(sanitizeTree(builderRaw.tree), null) : null;
 
   const heirsByRole = {};
   const rawHeirs = builderRaw.heirsByRole && typeof builderRaw.heirsByRole === "object" ? builderRaw.heirsByRole : {};

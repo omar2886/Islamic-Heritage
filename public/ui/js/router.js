@@ -19,11 +19,16 @@ export function initRouter(store){
 
   window.addEventListener("hashchange", applyRoute);
 
+  // Siempre aplica route inicial
   if (!location.hash || location.hash === "#"){
     location.hash = "#/wizard";
-  }else{
-    applyRoute();
   }
+  applyRoute();
 
   return () => window.removeEventListener("hashchange", applyRoute);
+}
+
+// Alias para compatibilidad con app.js
+export function startRouter(store, _opts = {}){
+  return initRouter(store);
 }
