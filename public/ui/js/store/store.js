@@ -2,16 +2,6 @@
 import { EXPECTED_ROLES } from "../api/contract.js";
 import { ensureTree, sanitizeTree } from "../domain/familyTree.js";
 
-if (typeof window === "undefined"){
-  globalThis.window = { addEventListener(){}, removeEventListener(){} };
-}
-if (typeof location === "undefined"){
-  globalThis.location = { hash: "" };
-}
-if (typeof document === "undefined"){
-  globalThis.document = { getElementById(){ return { innerHTML: "" }; } };
-}
-
 const STORE_KEY = "heritage_builder_state_v3";
 
 function clampCount(value, min = 0, max = 100){
@@ -32,7 +22,8 @@ function makeDefaultWizard(){
     },
     spouse: { enabled: false, husband_present: false, wives_count: 0 },
     descendants: { son: 0, daughter: 0, sons_son: 0, sons_daughter: 0, son_of_son: 0, daughter_of_son: 0 },
-    parents: { enabled: false, father_alive: true, mother_alive: true },
+    // IMPORTANTE: wizard.js y builder_tree.js usan parents.father / parents.mother
+    parents: { father: false, mother: false },
     grandparents: { enabled: false },
     siblings: { enabled: false },
     uncles: { enabled: false },
@@ -55,19 +46,21 @@ function normalizeTreeUi(raw){
   return {
     search: typeof ui.search === "string" ? ui.search : "",
     collapsedLevels,
-    // keep legacy keys for older UI code (if any)
+    // legacy keys (si existen)
     collapsed: collapsedLevels,
     showDisconnected: ui.showDisconnected !== false,
     peopleListCollapsed: ui.peopleListCollapsed === true,
+    // CRITICO: builder_tree usa treeUi.modal (modal interno del tree builder)
+    modal: ui.modal && typeof ui.modal === "object" ? ui.modal : null,
   };
 }
 
 function makeDefaultBuilder(){
   return {
-    mode: "tree",          // "tree" | "roles"
+    mode: "tree", // "tree" | "roles"
     tree: null,
     treeSelectedId: null,
-    treeUi: { search: "", collapsedLevels: {}, showDisconnected: true, peopleListCollapsed: false },
+    treeUi: { search: "", collapsedLevels: {}, showDisconnected: true, peopleListCollapsed: false, modal: null },
 
     fromWizardApplied: false,
     heirsByRole: {},
@@ -78,7 +71,7 @@ function makeDefaultBuilder(){
 
 function makeDefaultResults(){
   return {
-    status: "idle",    // idle | running | ok | error
+    status: "idle", // idle | running | ok | error
     error: null,
     response: null,
     lastRunAt: null,
@@ -96,6 +89,29 @@ function safeJsonParse(s){
   try { return JSON.parse(s); } catch { return null; }
 }
 
+function sanitizeResults(raw){
+  const r = (raw && typeof raw === "object") ? raw : {};
+  const out = makeDefaultResults();
+
+  const allowed = new Set(["idle", "running", "ok", "error"]);
+  out.status = allowed.has(r.status) ? r.status : "idle";
+  out.error = (typeof r.error === "string" && r.error) ? r.error : null;
+  out.response = (r.response && typeof r.response === "object") ? r.response : null;
+  out.lastRunAt = Number.isFinite(Number(r.lastRunAt)) ? Number(r.lastRunAt) : null;
+
+  return out;
+}
+
+function sanitizeUi(raw){
+  const u = (raw && typeof raw === "object") ? raw : {};
+  const out = makeDefaultUi();
+
+  out.toasts = Array.isArray(u.toasts) ? u.toasts.filter((t) => t && typeof t === "object") : [];
+  out.modal = (u.modal && typeof u.modal === "object") ? u.modal : null;
+
+  return out;
+}
+
 function sanitizeState(input){
   const s = input && typeof input === "object" ? input : {};
 
@@ -108,7 +124,6 @@ function sanitizeState(input){
   wizard.flags.audit = wizardRaw.flags?.audit !== false;
   wizard.flags.explain = wizardRaw.flags?.explain !== false;
 
-  // Keep old wizard keys as is (backward compatibility for now)
   if (wizardRaw.spouse && typeof wizardRaw.spouse === "object"){
     wizard.spouse = {
       enabled: wizardRaw.spouse.enabled === true,
@@ -116,6 +131,7 @@ function sanitizeState(input){
       wives_count: clampCount(wizardRaw.spouse.wives_count, 0, 4),
     };
   }
+
   if (wizardRaw.descendants && typeof wizardRaw.descendants === "object"){
     wizard.descendants = {
       son: clampCount(wizardRaw.descendants.son, 0, 50),
@@ -126,19 +142,28 @@ function sanitizeState(input){
       daughter_of_son: clampCount(wizardRaw.descendants.daughter_of_son, 0, 50),
     };
   }
+
+  // Parents: soporta legacy father_alive/mother_alive pero normaliza a father/mother
   if (wizardRaw.parents && typeof wizardRaw.parents === "object"){
-    wizard.parents = {
-      enabled: wizardRaw.parents.enabled === true,
-      father_alive: wizardRaw.parents.father_alive !== false,
-      mother_alive: wizardRaw.parents.mother_alive !== false,
-    };
+    const p = wizardRaw.parents;
+    const father =
+      (p.father === true) ||
+      (p.father_alive === true) ||
+      (p.father_alive !== undefined ? p.father_alive !== false : false);
+
+    const mother =
+      (p.mother === true) ||
+      (p.mother_alive === true) ||
+      (p.mother_alive !== undefined ? p.mother_alive !== false : false);
+
+    wizard.parents = { father: Boolean(father), mother: Boolean(mother) };
   }
 
   // Builder
   const builderRaw = s.builder && typeof s.builder === "object" ? s.builder : {};
   const mode = builderRaw.mode === "roles" ? "roles" : "tree";
 
-  const tree = builderRaw.tree ? ensureTree(sanitizeTree(builderRaw.tree), null) : null;
+  const tree = builderRaw.tree ? ensureTree(sanitizeTree(builderRaw.tree)) : null;
 
   const heirsByRole = {};
   const rawHeirs = builderRaw.heirsByRole && typeof builderRaw.heirsByRole === "object" ? builderRaw.heirsByRole : {};
@@ -183,24 +208,23 @@ function sanitizeState(input){
     treeUi,
   };
 
-  // Results + UI
-  const results = makeDefaultResults();
-  const ui = makeDefaultUi();
+  // Results + UI: NO resetear a defaults, hay que conservarlos
+  const results = sanitizeResults(s.results);
+  const ui = sanitizeUi(s.ui);
 
   return { wizard, builder, results, ui };
 }
 
 export function createStore(){
-  let state = {
+  let state = sanitizeState({
     wizard: makeDefaultWizard(),
     builder: makeDefaultBuilder(),
     results: makeDefaultResults(),
     ui: makeDefaultUi(),
-  };
+  });
 
   // Load persisted state.
-  const raw = typeof localStorage !== "undefined" ?
-    safeJsonParse(localStorage.getItem(STORE_KEY)) : null;
+  const raw = (typeof localStorage !== "undefined") ? safeJsonParse(localStorage.getItem(STORE_KEY)) : null;
   if (raw){
     state = sanitizeState(raw);
   }
@@ -224,7 +248,8 @@ export function createStore(){
       const next = typeof updater === "function" ? updater(state) : updater;
       state = sanitizeState({ ...state, ...next });
       notify();
-      if (meta.persist) persist();
+      // Persist por defecto; solo NO persistir cuando meta.persist === false
+      if (meta.persist !== false) persist();
     },
     subscribe(fn){
       listeners.add(fn);
