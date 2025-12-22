@@ -32,12 +32,7 @@ function makeDefaultBuilder(){
     mode: "tree",          // "tree" | "roles"
     tree: null,
     treeSelectedId: null,
-
-    treeUi: {
-      search: "",
-      collapsed: {},
-      modal: null,
-    },
+    treeUi: { search: "", collapsed: {}, modal: null },
 
     fromWizardApplied: false,
     heirsByRole: {},
@@ -213,31 +208,12 @@ function sanitizeState(input){
       .map((role) => ({ role, count: heirsByRole[role] })),
   };
 
-  const treeUi = builderRaw.treeUi && typeof builderRaw.treeUi === "object" ? builderRaw.treeUi : {};
-  const rawCollapsed = treeUi.collapsed && typeof treeUi.collapsed === "object" ? treeUi.collapsed : {};
-  const cleanCollapsed = {};
-  for (const [key, value] of Object.entries(rawCollapsed)){
-    if (value === true) cleanCollapsed[String(key)] = true;
-  }
-  let cleanModal = null;
-  if (treeUi.modal && typeof treeUi.modal === "object"){
-    const type = String(treeUi.modal.type || "");
-    if (type === "edit-person"){
-      const personId = typeof treeUi.modal.personId === "string" ? treeUi.modal.personId : null;
-      cleanModal = personId ? { type, personId } : null;
-    }else if (type === "add-child"){
-      const parentId = typeof treeUi.modal.parentId === "string" ? treeUi.modal.parentId : null;
-      const sex = (treeUi.modal.sex === "male" || treeUi.modal.sex === "female") ? treeUi.modal.sex : null;
-      cleanModal = parentId ? { type, parentId, sex } : null;
-    }else if (type === "add-spouse"){
-      const personId = typeof treeUi.modal.personId === "string" ? treeUi.modal.personId : null;
-      cleanModal = personId ? { type, personId } : null;
-    }
-  }
-  const builderTreeUi = {
-    search: typeof treeUi.search === "string" ? treeUi.search.slice(0, 80) : "",
-    collapsed: cleanCollapsed,
-    modal: cleanModal,
+  const treeUiRaw = builderRaw.treeUi && typeof builderRaw.treeUi === "object" ? builderRaw.treeUi : {};
+  const treeUiCollapsed = treeUiRaw.collapsed && typeof treeUiRaw.collapsed === "object" ? treeUiRaw.collapsed : {};
+  const treeUi = {
+    search: typeof treeUiRaw.search === "string" ? treeUiRaw.search : "",
+    collapsed: treeUiCollapsed,
+    modal: null,
   };
 
   const builder = {
@@ -249,8 +225,7 @@ function sanitizeState(input){
     payloadPreview,
 
     treeSelectedId: typeof builderRaw.treeSelectedId === "string" ? builderRaw.treeSelectedId : null,
-
-    treeUi: builderTreeUi,
+    treeUi,
   };
 
   const resultsRaw = inObj.results && typeof inObj.results === "object" ? inObj.results : {};
