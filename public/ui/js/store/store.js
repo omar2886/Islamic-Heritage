@@ -33,12 +33,11 @@ function makeDefaultBuilder(){
     tree: null,
     treeSelectedId: null,
 
-    // UI-only fields for the Tree Builder.
     treeUi: {
       search: "",
-      collapsedGens: [],
+      collapsed: {},
+      modal: null,
     },
-    treeModal: null,
 
     fromWizardApplied: false,
     heirsByRole: {},
@@ -193,7 +192,7 @@ function sanitizeState(input){
   }
 
   // Wizard constraints apply only in roles mode.
-  if (mode !== "tree"){
+  if (mode === "roles"){
     if (!wizard?.spouse?.enabled){
       heirsByRole.husband = 0;
       heirsByRole.wife = 0;
@@ -214,6 +213,33 @@ function sanitizeState(input){
       .map((role) => ({ role, count: heirsByRole[role] })),
   };
 
+  const treeUi = builderRaw.treeUi && typeof builderRaw.treeUi === "object" ? builderRaw.treeUi : {};
+  const rawCollapsed = treeUi.collapsed && typeof treeUi.collapsed === "object" ? treeUi.collapsed : {};
+  const cleanCollapsed = {};
+  for (const [key, value] of Object.entries(rawCollapsed)){
+    if (value === true) cleanCollapsed[String(key)] = true;
+  }
+  let cleanModal = null;
+  if (treeUi.modal && typeof treeUi.modal === "object"){
+    const type = String(treeUi.modal.type || "");
+    if (type === "edit-person"){
+      const personId = typeof treeUi.modal.personId === "string" ? treeUi.modal.personId : null;
+      cleanModal = personId ? { type, personId } : null;
+    }else if (type === "add-child"){
+      const parentId = typeof treeUi.modal.parentId === "string" ? treeUi.modal.parentId : null;
+      const sex = (treeUi.modal.sex === "male" || treeUi.modal.sex === "female") ? treeUi.modal.sex : null;
+      cleanModal = parentId ? { type, parentId, sex } : null;
+    }else if (type === "add-spouse"){
+      const personId = typeof treeUi.modal.personId === "string" ? treeUi.modal.personId : null;
+      cleanModal = personId ? { type, personId } : null;
+    }
+  }
+  const builderTreeUi = {
+    search: typeof treeUi.search === "string" ? treeUi.search.slice(0, 80) : "",
+    collapsed: cleanCollapsed,
+    modal: cleanModal,
+  };
+
   const builder = {
     mode,
     tree,
@@ -224,11 +250,7 @@ function sanitizeState(input){
 
     treeSelectedId: typeof builderRaw.treeSelectedId === "string" ? builderRaw.treeSelectedId : null,
 
-    treeUi: {
-      search: (builderRaw?.treeUi && typeof builderRaw.treeUi.search === "string") ? builderRaw.treeUi.search : "",
-      collapsedGens: Array.isArray(builderRaw?.treeUi?.collapsedGens) ? builderRaw.treeUi.collapsedGens : [],
-    },
-    treeModal: (builderRaw?.treeModal && typeof builderRaw.treeModal === "object") ? builderRaw.treeModal : null,
+    treeUi: builderTreeUi,
   };
 
   const resultsRaw = inObj.results && typeof inObj.results === "object" ? inObj.results : {};
