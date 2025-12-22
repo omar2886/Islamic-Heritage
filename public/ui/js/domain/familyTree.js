@@ -64,24 +64,26 @@ function ensureSpouseSymmetry(spouses, people){
 }
 
 export function ensureTree(tree) {
-  // Ensure we always have a valid deceased node and a coherent minimal schema.
+  // Ensure we always have a valid deceased node.
   const out = tree && typeof tree === "object" ? tree : null;
 
+  // Tree is the source of truth. Wizard must not force sex or other attributes here.
   if (!out || !out.people || typeof out.people !== "object" || Object.keys(out.people).length === 0) {
     return makeDefaultTree("male");
   }
 
-  // If deceasedId missing or invalid, pick first person.
+  // If deceasedId missing or invalid, pick first person and mark as deceased.
   let deceasedId = out.deceasedId;
   if (!deceasedId || !out.people[deceasedId]) {
     deceasedId = Object.keys(out.people)[0];
   }
 
-  // Force deceased alive=false and ensure basic fields.
+  // Ensure deceased is flagged as not alive (he is not an heir).
   const people = { ...out.people };
-  const d = people[deceasedId] || { id: deceasedId };
-  const sex = (d.sex === "male" || d.sex === "female") ? d.sex : "male";
-  people[deceasedId] = { ...d, sex, alive: false, name: d.name || "Causante" };
+  const deceased = people[deceasedId] || null;
+  if (deceased) {
+    people[deceasedId] = { ...deceased, alive: false };
+  }
 
   // Ensure spouse symmetry.
   const spouses = ensureSpouseSymmetry(out.spouses || {}, people);
