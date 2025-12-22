@@ -1,4 +1,5 @@
 import { postCalc } from "../api/client.js";
+import { sanitizeTree, ensureTree } from "../domain/familyTree.js";
 
 const ROLE_ALIASES = Object.freeze({
   wives: "wife",
@@ -42,14 +43,11 @@ function normalizeEstateValue(input){
   let raw = String(input ?? "").trim();
   if (raw === "") return { value: null, error: null };
 
-  // remove spaces
   raw = raw.replace(/\s+/g, "");
 
-  // If both separators exist, assume comma is thousands separator and remove it.
   if (raw.includes(".") && raw.includes(",")){
     raw = raw.replace(/,/g, "");
   } else if (!raw.includes(".") && raw.includes(",")){
-    // If only comma exists, treat it as decimal separator.
     raw = raw.replace(/,/g, ".");
   }
 
@@ -69,6 +67,46 @@ function normalizeCurrency(input){
   return { value: raw, error: null };
 }
 
+function normalizeSex(input){
+  const raw = String(input ?? "").trim();
+  if (raw === "male" || raw === "female") return raw;
+  return "unknown";
+}
+
+function normalizeDecedentId(input){
+  const raw = String(input ?? "").trim();
+  if (raw === "") return "";
+  return /^P[0-9]+$/.test(raw) ? raw : "";
+}
+
+function deriveUiMeta(state){
+  const wizard = state?.wizard || {};
+  const builder = state?.builder || {};
+  const mode = builder?.mode === "tree" ? "tree" : "roles";
+
+  let sex = normalizeSex(wizard.deceased_sex);
+  let decedentId = "";
+
+  if (mode === "tree"){
+    const tree = ensureTree(sanitizeTree(builder.tree));
+    const did = tree?.deceasedId;
+    const d = did ? tree?.people?.[did] : null;
+    sex = normalizeSex(d?.sex);
+    decedentId = normalizeDecedentId(did);
+  }
+
+  const uiMeta = {
+    sex,
+    source: mode === "tree" ? "ui-tree" : "ui-roles",
+  };
+
+  if (decedentId !== ""){
+    uiMeta.decedentId = decedentId;
+  }
+
+  return uiMeta;
+}
+
 export function buildCalcPayload(state){
   const preview = state?.builder?.payloadPreview;
   if (!preview || !Array.isArray(preview.heirs)) return { ok: false, error: "Completa builder primero" };
@@ -76,13 +114,15 @@ export function buildCalcPayload(state){
   const heirs = cloneHeirs(preview.heirs);
   if (!heirs.length) return { ok: false, error: "Agrega al menos un heredero" };
 
-  const estateResult = normalizeEstateValue(state?.wizard?.estate_value);
+  const wizard = state?.wizard || {};
+
+  const estateResult = normalizeEstateValue(wizard.estate_value);
   if (estateResult.error) return { ok: false, error: estateResult.error };
 
-  const currencyResult = normalizeCurrency(state?.wizard?.currency);
+  const currencyResult = normalizeCurrency(wizard.currency);
   if (currencyResult.error) return { ok: false, error: currencyResult.error };
 
-  const wizardFlags = state?.wizard?.flags || {};
+  const wizardFlags = wizard.flags || {};
   const audit = typeof wizardFlags.audit === "boolean" ? wizardFlags.audit : true;
   const explain = typeof wizardFlags.explain === "boolean" ? wizardFlags.explain : true;
   if (!audit && !explain){
@@ -103,21 +143,7 @@ export function buildCalcPayload(state){
   if (explain) cliFlags.push("--explain");
   payload.cli_flags = cliFlags;
 
-  const wizard = state?.wizard || {};
-  if (wizard.estate_value && String(wizard.estate_value).trim() !== ""){
-    payload.estate_value = String(wizard.estate_value).trim();
-  }
-  if (wizard.currency && String(wizard.currency).trim() !== ""){
-    payload.currency = String(wizard.currency).trim().toUpperCase();
-  }
-  const flags = wizard.flags || {};
-  if (flags.audit) payload.audit = true;
-  if (flags.explain) payload.explain = true;
-
-  payload.ui_meta = {
-    sex: wizard.deceased_sex || null,
-    source: "ui-vanilla",
-  };
+  payload.ui_meta = deriveUiMeta(state);
 
   return { ok: true, payload };
 }
