@@ -1,5 +1,5 @@
 import { ROLE_GROUPS, labelForRole } from "../domain/roles.js";
-import { renderBuilderTree, wireBuilderTree, applyWizardSyncTree } from "./builder_tree.js";
+import { renderBuilderTree, wireBuilderTree, importWizardToTree } from "./builder_tree.js";
 
 const ROLE_LIMITS = {
   husband: 1,
@@ -686,6 +686,6 @@ export function wireBuilder(store){
 
 export function applyWizardSync(store){
   const mode = getBuilderMode(store.getState());
-  if (mode === "tree") return applyWizardSyncTree(store);
+  if (mode === "tree") return importWizardToTree(store);
   return applyWizardSyncRoles(store);
 }

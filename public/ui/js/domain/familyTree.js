@@ -90,8 +90,50 @@ export function addPerson(tree, fields){
       nextId: t.nextId + 1,
       people: { ...t.people, [id]: person },
     },
+    id,
     personId: id,
   };
+}
+
+export function removePerson(tree, id){
+  const t = ensureTree(sanitizeTree(tree), null);
+  if (!t.people[id]) return t;
+  if (id === t.deceasedId) return t;
+
+  const people = { ...t.people };
+  delete people[id];
+
+  const parents = { ...(t.parents || {}) };
+  delete parents[id];
+  Object.entries(parents).forEach(([childId, row]) => {
+    const next = { ...row };
+    let changed = false;
+    if (next.fatherId === id){
+      next.fatherId = null;
+      changed = true;
+    }
+    if (next.motherId === id){
+      next.motherId = null;
+      changed = true;
+    }
+    if (changed) parents[childId] = next;
+  });
+
+  const spouses = ensureSpouseSymmetry(t.spouses || {}, people);
+  delete spouses[id];
+  Object.entries(spouses).forEach(([pid, arr]) => {
+    const filtered = (arr || []).filter((x) => x !== id);
+    if (filtered.length) spouses[pid] = filtered;
+    else delete spouses[pid];
+  });
+
+  let deceasedId = t.deceasedId;
+  if (deceasedId && !people[deceasedId]){
+    const ids = Object.keys(people);
+    deceasedId = ids.length ? ids[0] : null;
+  }
+
+  return { ...t, people, parents, spouses, deceasedId };
 }
 
 export function updatePerson(tree, id, patch){
