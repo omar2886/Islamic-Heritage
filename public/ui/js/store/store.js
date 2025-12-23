@@ -267,16 +267,23 @@ export function createStore(){
 
   function persist(){
     if (typeof localStorage === "undefined") return;
-    // Persistimos solo datos de caso, NO navegación (ui.route) ni boot.
+
+    // No persistir modales o UI efimera
     const snapshot = {
-      wizard: state.wizard,
-      builder: state.builder,
-      results: state.results,
+      ...state,
       ui: {
-        toasts: state.ui?.toasts || [],
-        modal: state.ui?.modal || null,
+        ...(state.ui || {}),
+        modal: null,
+      },
+      builder: {
+        ...(state.builder || {}),
+        treeUi: {
+          ...((state.builder || {}).treeUi || {}),
+          modal: null,
+        },
       },
     };
+
     localStorage.setItem(STORE_KEY, JSON.stringify(snapshot));
   }
 
