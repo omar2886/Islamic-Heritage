@@ -226,194 +226,140 @@ export function renderWizard(state){
 }
 
 export function wireWizard(store){
-  const sexRadios = document.querySelectorAll('input[name="wizard-sex"]');
-  sexRadios.forEach((el) => {
-    el.addEventListener("change", () => {
-      const value = el.value === "female" ? "female" : "male";
-      store.setState((s) => ({
-        ...s,
-        wizard: {
-          ...s.wizard,
+  const root = document.getElementById("app");
+  if (!root) return;
+
+  // Guard idempotente: NO duplicar listeners por re-render
+  if (root.dataset.wizardWired === "1") return;
+  root.dataset.wizardWired = "1";
+
+  const setWizard = (patchFn) => {
+    store.setState((s) => ({
+      ...s,
+      wizard: patchFn(s.wizard),
+    }));
+  };
+
+  root.addEventListener("change", (ev) => {
+    const t = ev.target;
+    if (!t || !(t instanceof HTMLElement)) return;
+
+    if (t.matches('input[name="wizard-sex"]')){
+      const value = t.getAttribute("value") === "female" ? "female" : "male";
+      setWizard((w) => {
+        const spouseEnabled = !!w.spouse?.enabled;
+        return {
+          ...w,
           deceased_sex: value,
           spouse: {
-            ...s.wizard.spouse,
-            enabled: s.wizard.spouse.enabled,
-            wives_count: value === "female" ? 0 : (s.wizard.spouse.enabled ? s.wizard.spouse.wives_count : 0),
-            husband_present: value === "male" ? false : (s.wizard.spouse.enabled ? s.wizard.spouse.husband_present : false),
+            ...w.spouse,
+            enabled: spouseEnabled,
+            wives_count: value === "male" && spouseEnabled ? (Number.isFinite(Number(w.spouse?.wives_count)) ? Math.max(0, Math.min(4, Math.trunc(Number(w.spouse.wives_count)))) : 0) : 0,
+            husband_present: value === "female" && spouseEnabled ? !!w.spouse?.husband_present : false,
           },
-        },
-      }));
-    });
-  });
+        };
+      });
+      return;
+    }
 
-  const estateValueEl = document.getElementById("wizard-estate-value");
-  if (estateValueEl){
-    estateValueEl.addEventListener("input", (ev) => {
-      const raw = String(ev.target.value ?? "");
-      store.setState((s) => ({
-        ...s,
-        wizard: {
-          ...s.wizard,
-          estate_value: raw,
-        },
-      }));
-    });
-  }
-
-  const currencyEl = document.getElementById("wizard-currency");
-  if (currencyEl){
-    currencyEl.addEventListener("input", (ev) => {
-      const raw = String(ev.target.value ?? "");
-      const cleaned = raw.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
-      ev.target.value = cleaned;
-      store.setState((s) => ({
-        ...s,
-        wizard: {
-          ...s.wizard,
-          currency: cleaned,
-        },
-      }));
-    });
-  }
-
-  const flagAudit = document.getElementById("wizard-flag-audit");
-  if (flagAudit){
-    flagAudit.addEventListener("change", (ev) => {
-      store.setState((s) => ({
-        ...s,
-        wizard: {
-          ...s.wizard,
-          flags: {
-            ...(s.wizard.flags || {}),
-            audit: ev.target.checked,
-          },
-        },
-      }));
-    });
-  }
-
-  const flagExplain = document.getElementById("wizard-flag-explain");
-  if (flagExplain){
-    flagExplain.addEventListener("change", (ev) => {
-      store.setState((s) => ({
-        ...s,
-        wizard: {
-          ...s.wizard,
-          flags: {
-            ...(s.wizard.flags || {}),
-            explain: ev.target.checked,
-          },
-        },
-      }));
-    });
-  }
-
-  const spouseEnabled = document.getElementById("wizard-spouse-enabled");
-  if (spouseEnabled){
-    spouseEnabled.addEventListener("change", (ev) => {
-      const enabled = ev.target.checked;
-      store.setState((s) => ({
-        ...s,
-        wizard: {
-          ...s.wizard,
+    if (t.id === "wizard-spouse-enabled"){
+      const enabled = !!t.checked;
+      setWizard((w) => {
+        const sex = w.deceased_sex;
+        const wivesCount = enabled && sex === "male"
+          ? (Number.isFinite(Number(w.spouse?.wives_count)) ? Math.max(0, Math.min(4, Math.trunc(Number(w.spouse.wives_count)))) : 0)
+          : 0;
+        const husbandPresent = enabled && sex === "female" ? !!w.spouse?.husband_present : false;
+        return {
+          ...w,
           spouse: {
-            ...s.wizard.spouse,
+            ...w.spouse,
             enabled,
-            wives_count: enabled ? s.wizard.spouse.wives_count : 0,
-            husband_present: enabled ? s.wizard.spouse.husband_present : false,
+            wives_count: wivesCount,
+            husband_present: husbandPresent,
           },
-        },
-      }));
-    });
-  }
+        };
+      });
+      return;
+    }
 
-  const wivesCount = document.getElementById("wizard-wives-count");
-  if (wivesCount){
-    wivesCount.addEventListener("input", (ev) => {
-      const value = clampInput(ev.target, 4);
-      store.setState((s) => ({
-        ...s,
-        wizard: {
-          ...s.wizard,
-          spouse: { ...s.wizard.spouse, wives_count: value },
+    if (t.id === "wizard-husband-present"){
+      setWizard((w) => ({
+        ...w,
+        spouse: {
+          ...w.spouse,
+          husband_present: !!t.checked,
         },
       }));
-    });
-  }
+      return;
+    }
 
-  const husband = document.getElementById("wizard-husband-present");
-  if (husband){
-    husband.addEventListener("change", (ev) => {
-      store.setState((s) => ({
-        ...s,
-        wizard: {
-          ...s.wizard,
-          spouse: { ...s.wizard.spouse, husband_present: ev.target.checked },
-        },
-      }));
-    });
-  }
+    if (t.id === "wizard-parent-father"){
+      setWizard((w) => ({ ...w, parents: { ...w.parents, father: !!t.checked } }));
+      return;
+    }
 
-  const descendantFields = [
-    { id: "wizard-desc-son", key: "son" },
-    { id: "wizard-desc-daughter", key: "daughter" },
-    { id: "wizard-desc-sons_son", key: "sons_son" },
-    { id: "wizard-desc-sons_daughter", key: "sons_daughter" },
-  ];
-  descendantFields.forEach(({ id, key }) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener("input", (ev) => {
-      const value = clampInput(ev.target, 100);
-      store.setState((s) => ({
-        ...s,
-        wizard: {
-          ...s.wizard,
-          descendants: { ...s.wizard.descendants, [key]: value },
-        },
-      }));
-    });
+    if (t.id === "wizard-parent-mother"){
+      setWizard((w) => ({ ...w, parents: { ...w.parents, mother: !!t.checked } }));
+      return;
+    }
+
+    if (t.id === "wizard-flag-audit"){
+      setWizard((w) => ({ ...w, flags: { ...(w.flags || {}), audit: !!t.checked } }));
+      return;
+    }
+
+    if (t.id === "wizard-flag-explain"){
+      setWizard((w) => ({ ...w, flags: { ...(w.flags || {}), explain: !!t.checked } }));
+      return;
+    }
   });
 
-  const parentFather = document.getElementById("wizard-parent-father");
-  if (parentFather){
-    parentFather.addEventListener("change", (ev) => {
-      store.setState((s) => ({
-        ...s,
-        wizard: {
-          ...s.wizard,
-          parents: { ...s.wizard.parents, father: ev.target.checked },
-        },
-      }));
-    });
-  }
+  root.addEventListener("input", (ev) => {
+    const t = ev.target;
+    if (!t || !(t instanceof HTMLElement)) return;
 
-  const parentMother = document.getElementById("wizard-parent-mother");
-  if (parentMother){
-    parentMother.addEventListener("change", (ev) => {
-      store.setState((s) => ({
-        ...s,
-        wizard: {
-          ...s.wizard,
-          parents: { ...s.wizard.parents, mother: ev.target.checked },
-        },
-      }));
-    });
-  }
+    if (t.id === "wizard-estate-value"){
+      const raw = String(t.value ?? "");
+      setWizard((w) => ({ ...w, estate_value: raw }));
+      return;
+    }
 
-  const continueBtn = document.getElementById("wizard-continue");
-  if (continueBtn){
-    continueBtn.addEventListener("click", () => {
-      if (continueBtn.disabled) return;
-      store.setState((s) => ({
-        ...s,
-        builder: {
-          ...s.builder,
-          pendingWizardSync: true,
-          dirty: false,
-        },
-      }));
+    if (t.id === "wizard-currency"){
+      const raw = String(t.value ?? "");
+      const cleaned = raw.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
+      t.value = cleaned;
+      setWizard((w) => ({ ...w, currency: cleaned }));
+      return;
+    }
+
+    if (t.id === "wizard-wives-count"){
+      const value = clampInput(t, 4);
+      setWizard((w) => ({ ...w, spouse: { ...w.spouse, wives_count: value } }));
+      return;
+    }
+
+    const descMap = {
+      "wizard-desc-son": "son",
+      "wizard-desc-daughter": "daughter",
+      "wizard-desc-sons_son": "sons_son",
+      "wizard-desc-sons_daughter": "sons_daughter",
+    };
+    if (t.id in descMap){
+      const key = descMap[t.id];
+      const value = clampInput(t, 100);
+      setWizard((w) => ({ ...w, descendants: { ...w.descendants, [key]: value } }));
+      return;
+    }
+  });
+
+  root.addEventListener("click", (ev) => {
+    const t = ev.target;
+    if (!t || !(t instanceof HTMLElement)) return;
+
+    if (t.id === "wizard-continue"){
+      if (t.hasAttribute("disabled")) return;
       location.hash = "#/builder";
-    });
-  }
+    }
+  });
 }
