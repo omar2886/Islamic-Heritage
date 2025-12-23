@@ -1124,3 +1124,24 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Tree Builder */
+.builder-tree .gen { margin-bottom: 14px; }
+.builder-tree .gen-head { padding: 6px 2px; }
+.builder-tree .gen-title { margin: 0; font-size: 16px; }
+.builder-tree .gen-body { gap: 10px; }
+.builder-tree .person-card { border: 1px solid var(--border, #e6e6e6); border-radius: 10px; padding: 12px; background: #fff; }
+.builder-tree .person-card.is-decedent { outline: 2px solid #111; }
+.builder-tree .person-card.is-selected { box-shadow: 0 0 0 2px rgba(0,0,0,0.15); }
+.person-name { font-weight: 700; }
+.tree-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 18px; z-index: 50; }
+.tree-modal { width: min(920px, 100%); max-height: 92vh; overflow: auto; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 800px){
+  .grid2 { grid-template-columns: 1fr; }
+}
+.label { font-size: 12px; color: #444; }
+.hint { font-size: 12px; color: #666; margin: 0; }
+.muted { color: #666; }
+.mini-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.mini-table th, .mini-table td { border-bottom: 1px solid #eee; padding: 8px 6px; vertical-align: top; }

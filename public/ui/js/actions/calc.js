@@ -1,5 +1,6 @@
 import { postCalc } from "../api/client.js";
 import { sanitizeTree, ensureTree } from "../domain/familyTree.js";
+import { deriveHeirsFromTree } from "../domain/treeRoles.js";
 
 const ROLE_ALIASES = Object.freeze({
   wives: "wife",
@@ -79,7 +80,7 @@ function normalizeDecedentId(input){
   return /^P[0-9]+$/.test(raw) ? raw : "";
 }
 
-function deriveUiMeta(state){
+function buildUiMetaFromState(state){
   const wizard = state?.wizard || {};
   const builder = state?.builder || {};
   const mode = builder?.mode === "tree" ? "tree" : "roles";
@@ -108,10 +109,19 @@ function deriveUiMeta(state){
 }
 
 export function buildCalcPayload(state){
-  const preview = state?.builder?.payloadPreview;
-  if (!preview || !Array.isArray(preview.heirs)) return { ok: false, error: "Completa builder primero" };
+  const mode = state?.builder?.mode === "roles" ? "roles" : "tree";
 
-  const heirs = cloneHeirs(preview.heirs);
+  let heirs = [];
+  if (mode === "tree"){
+    const tree = state?.builder?.tree;
+    const derived = deriveHeirsFromTree(tree);
+    heirs = cloneHeirs(derived.heirs);
+  } else {
+    const preview = state?.builder?.payloadPreview;
+    if (!preview || !Array.isArray(preview.heirs)) return { ok: false, error: "Completa builder primero" };
+    heirs = cloneHeirs(preview.heirs);
+  }
+
   if (!heirs.length) return { ok: false, error: "Agrega al menos un heredero" };
 
   const wizard = state?.wizard || {};
@@ -141,9 +151,9 @@ export function buildCalcPayload(state){
   const cliFlags = [];
   if (audit) cliFlags.push("--audit");
   if (explain) cliFlags.push("--explain");
-  payload.cli_flags = cliFlags;
+  payload.flags = cliFlags;
 
-  payload.ui_meta = deriveUiMeta(state);
+  payload.ui_meta = buildUiMetaFromState(state);
 
   return { ok: true, payload };
 }
