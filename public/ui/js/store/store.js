@@ -80,9 +80,33 @@ function makeDefaultResults(){
 
 function makeDefaultUi(){
   return {
+    // Ruta UI actual (router). No debe afectar al core, solo a la vista.
+    route: "wizard",
     toasts: [],
     modal: null,
   };
+}
+
+function makeDefaultBoot(){
+  return {
+    status: "idle", // idle | checking | ready | blocked
+    error: null,
+    diff: null,
+    rolesServer: null,
+  };
+}
+
+function sanitizeBoot(raw){
+  const b = (raw && typeof raw === "object") ? raw : {};
+  const out = makeDefaultBoot();
+
+  const allowed = new Set(["idle", "checking", "ready", "blocked"]);
+  out.status = allowed.has(b.status) ? b.status : "idle";
+  out.error = (typeof b.error === "string" && b.error) ? b.error : null;
+  out.diff = (b.diff && typeof b.diff === "object") ? b.diff : null;
+  out.rolesServer = (b.rolesServer && typeof b.rolesServer === "object") ? b.rolesServer : null;
+
+  return out;
 }
 
 function safeJsonParse(s){
@@ -106,6 +130,8 @@ function sanitizeUi(raw){
   const u = (raw && typeof raw === "object") ? raw : {};
   const out = makeDefaultUi();
 
+  const route = String(u.route || "").trim().toLowerCase();
+  out.route = (route === "wizard" || route === "builder" || route === "results") ? route : "wizard";
   out.toasts = Array.isArray(u.toasts) ? u.toasts.filter((t) => t && typeof t === "object") : [];
   out.modal = (u.modal && typeof u.modal === "object") ? u.modal : null;
 
@@ -212,7 +238,10 @@ function sanitizeState(input){
   const results = sanitizeResults(s.results);
   const ui = sanitizeUi(s.ui);
 
-  return { wizard, builder, results, ui };
+  // Boot: estado runtime, NO debe influir en core ni en persistencia.
+  const boot = sanitizeBoot(s.boot);
+
+  return { wizard, builder, results, ui, boot };
 }
 
 export function createStore(){
@@ -221,6 +250,7 @@ export function createStore(){
     builder: makeDefaultBuilder(),
     results: makeDefaultResults(),
     ui: makeDefaultUi(),
+    boot: makeDefaultBoot(),
   });
 
   // Load persisted state.
@@ -237,7 +267,17 @@ export function createStore(){
 
   function persist(){
     if (typeof localStorage === "undefined") return;
-    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    // Persistimos solo datos de caso, NO navegación (ui.route) ni boot.
+    const snapshot = {
+      wizard: state.wizard,
+      builder: state.builder,
+      results: state.results,
+      ui: {
+        toasts: state.ui?.toasts || [],
+        modal: state.ui?.modal || null,
+      },
+    };
+    localStorage.setItem(STORE_KEY, JSON.stringify(snapshot));
   }
 
   return {
@@ -261,6 +301,7 @@ export function createStore(){
         builder: makeDefaultBuilder(),
         results: makeDefaultResults(),
         ui: makeDefaultUi(),
+        boot: makeDefaultBoot(),
       });
       notify();
       persist();
