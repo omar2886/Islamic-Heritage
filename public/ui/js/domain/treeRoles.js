@@ -7,8 +7,9 @@ const ROLE_SET = new Set(EXPECTED_ROLES);
 function uniq(arr){
   const out = [];
   const seen = new Set();
-  for (const x of arr){
+  for (const x of arr || []){
     const k = String(x);
+    if (!k) continue;
     if (seen.has(k)) continue;
     seen.add(k);
     out.push(k);
@@ -22,20 +23,22 @@ function personLabel(p){
 }
 
 function isAlive(t, id){
-  return Boolean(t.people?.[id]?.alive === true);
+  return Boolean(t?.people?.[id]?.alive === true);
 }
 
 function sexOf(t, id){
-  const s = t.people?.[id]?.sex;
-  return s === "female" ? "female" : "male";
+  const s = t?.people?.[id]?.sex;
+  if (s === "male" || s === "female") return s;
+  return "unknown";
 }
 
-function addRole(map, role, ids){
+function addRole(roleMap, role, ids){
   if (!ROLE_SET.has(role)) return;
-  if (!map[role]) map[role] = new Set();
-  for (const id of ids){
-    if (!id) continue;
-    map[role].add(String(id));
+  if (!roleMap[role]) roleMap[role] = new Set();
+  for (const id of ids || []){
+    const k = String(id);
+    if (!k) continue;
+    roleMap[role].add(k);
   }
 }
 
@@ -121,33 +124,74 @@ function formatPath(path){
   return parts.join(" ");
 }
 
+function buildEvidence(t, roleSets){
+  const used = new Set();
+  const roleOut = {};
+
+  for (const [role, set] of Object.entries(roleSets || {})){
+    if (!set || typeof set.values !== "function") continue;
+    const ids = Array.from(set.values());
+    ids.forEach((x) => used.add(String(x)));
+    roleOut[role] = {
+      count: ids.length,
+      ids,
+      people: ids.map((id) => {
+        const p = t.people?.[id] || {};
+        return {
+          id,
+          name: personLabel(p),
+          sex: sexOf(t, id),
+          alive: Boolean(p.alive),
+        };
+      }),
+    };
+  }
+
+  return { roleOut, used };
+}
+
 export function deriveHeirsFromTree(tree){
   const t = ensureTree(sanitizeTree(tree), null);
   const did = t.deceasedId;
 
-  const roles = {};
   const warnings = [];
+  if (!did || !t.people?.[did]){
+    return {
+      ok: false,
+      tree: t,
+      heirs: [],
+      roles: {},
+      warnings: ["No hay causante (deceasedId) valido en el arbol."],
+      unmapped: [],
+    };
+  }
+
+  const roleSets = {};
 
   // Spouses
   const spouseIds = uniq(getSpouses(t, did));
   const livingSpouses = spouseIds.filter((id) => isAlive(t, id));
   const husbands = livingSpouses.filter((id) => sexOf(t, id) === "male");
   const wives = livingSpouses.filter((id) => sexOf(t, id) === "female");
+  const spouseUnknown = livingSpouses.filter((id) => sexOf(t, id) === "unknown");
 
-  addRole(roles, "husband", husbands);
-  addRole(roles, "wife", wives);
+  addRole(roleSets, "husband", husbands);
+  addRole(roleSets, "wife", wives);
 
   if (husbands.length > 1) warnings.push("Hay mas de un esposo vivo en el arbol. Revisa enlaces de conyuge.");
   if (wives.length > 4) warnings.push("Hay mas de 4 esposas vivas en el arbol. Revisa enlaces de conyuge.");
+  if (spouseUnknown.length) warnings.push("Hay conyuges vivos con sexo desconocido; no se pueden mapear a wife/husband.");
 
   // Children
   const childIds = uniq(getChildren(t, did));
   const livingChildren = childIds.filter((id) => isAlive(t, id));
   const sons = livingChildren.filter((id) => sexOf(t, id) === "male");
   const daughters = livingChildren.filter((id) => sexOf(t, id) === "female");
+  const childrenUnknown = livingChildren.filter((id) => sexOf(t, id) === "unknown");
 
-  addRole(roles, "son", sons);
-  addRole(roles, "daughter", daughters);
+  addRole(roleSets, "son", sons);
+  addRole(roleSets, "daughter", daughters);
+  if (childrenUnknown.length) warnings.push("Hay hijos vivos con sexo desconocido; no se pueden mapear a son/daughter.");
 
   // Grandchildren via sons
   const grandSons = [];
@@ -155,39 +199,40 @@ export function deriveHeirsFromTree(tree){
   for (const sid of sons){
     const gc = uniq(getChildren(t, sid)).filter((id) => isAlive(t, id));
     for (const id of gc){
-      if (sexOf(t, id) === "male") grandSons.push(id);
-      else grandDaughters.push(id);
+      const sx = sexOf(t, id);
+      if (sx === "male") grandSons.push(id);
+      else if (sx === "female") grandDaughters.push(id);
     }
   }
-  addRole(roles, "sons_son", grandSons);
-  addRole(roles, "sons_daughter", grandDaughters);
+  addRole(roleSets, "sons_son", grandSons);
+  addRole(roleSets, "sons_daughter", grandDaughters);
 
   // Parents
   const dp = getParents(t, did);
-  const fatherId = dp.fatherId && t.people[dp.fatherId] ? dp.fatherId : null;
-  const motherId = dp.motherId && t.people[dp.motherId] ? dp.motherId : null;
+  const fatherId = dp.fatherId && t.people?.[dp.fatherId] ? dp.fatherId : null;
+  const motherId = dp.motherId && t.people?.[dp.motherId] ? dp.motherId : null;
 
-  if (fatherId && isAlive(t, fatherId)) addRole(roles, "father", [fatherId]);
-  if (motherId && isAlive(t, motherId)) addRole(roles, "mother", [motherId]);
+  if (fatherId && isAlive(t, fatherId)) addRole(roleSets, "father", [fatherId]);
+  if (motherId && isAlive(t, motherId)) addRole(roleSets, "mother", [motherId]);
 
   // Paternal grandparents
   let pgf = null;
   let pgm = null;
   if (fatherId){
     const fp = getParents(t, fatherId);
-    pgf = fp.fatherId && t.people[fp.fatherId] ? fp.fatherId : null;
-    pgm = fp.motherId && t.people[fp.motherId] ? fp.motherId : null;
+    pgf = fp.fatherId && t.people?.[fp.fatherId] ? fp.fatherId : null;
+    pgm = fp.motherId && t.people?.[fp.motherId] ? fp.motherId : null;
 
-    if (pgf && isAlive(t, pgf) && sexOf(t, pgf) === "male") addRole(roles, "paternal_grandfather", [pgf]);
-    if (pgm && isAlive(t, pgm) && sexOf(t, pgm) === "female") addRole(roles, "paternal_grandmother", [pgm]);
+    if (pgf && isAlive(t, pgf) && sexOf(t, pgf) === "male") addRole(roleSets, "paternal_grandfather", [pgf]);
+    if (pgm && isAlive(t, pgm) && sexOf(t, pgm) === "female") addRole(roleSets, "paternal_grandmother", [pgm]);
   }
 
   // Maternal grandmother
   let mgm = null;
   if (motherId){
     const mp = getParents(t, motherId);
-    mgm = mp.motherId && t.people[mp.motherId] ? mp.motherId : null;
-    if (mgm && isAlive(t, mgm) && sexOf(t, mgm) === "female") addRole(roles, "maternal_grandmother", [mgm]);
+    mgm = mp.motherId && t.people?.[mp.motherId] ? mp.motherId : null;
+    if (mgm && isAlive(t, mgm) && sexOf(t, mgm) === "female") addRole(roleSets, "maternal_grandmother", [mgm]);
   }
 
   // Great grandmothers
@@ -200,14 +245,22 @@ export function deriveHeirsFromTree(tree){
     const gp = getParents(t, pgm);
     if (gp.motherId) paternalGreatGms.push(gp.motherId);
   }
-  addRole(roles, "paternal_great_grandmother", paternalGreatGms.filter((id) => isAlive(t, id) && sexOf(t, id) === "female"));
+  addRole(
+    roleSets,
+    "paternal_great_grandmother",
+    paternalGreatGms.filter((id) => isAlive(t, id) && sexOf(t, id) === "female")
+  );
 
   const maternalGreatGms = [];
   if (mgm){
     const gp = getParents(t, mgm);
     if (gp.motherId) maternalGreatGms.push(gp.motherId);
   }
-  addRole(roles, "maternal_great_grandmother", maternalGreatGms.filter((id) => isAlive(t, id) && sexOf(t, id) === "female"));
+  addRole(
+    roleSets,
+    "maternal_great_grandmother",
+    maternalGreatGms.filter((id) => isAlive(t, id) && sexOf(t, id) === "female")
+  );
 
   // Siblings of deceased
   const fullBro = [];
@@ -224,35 +277,35 @@ export function deriveHeirsFromTree(tree){
     const p = getParents(t, id);
     const shareFather = Boolean(fatherId && p.fatherId === fatherId);
     const shareMother = Boolean(motherId && p.motherId === motherId);
-
     if (!shareFather && !shareMother) continue;
 
-    const sex = sexOf(t, id);
+    const sx = sexOf(t, id);
+    if (sx === "unknown") continue;
 
     if (shareFather && shareMother){
-      if (sex === "male") fullBro.push(id);
+      if (sx === "male") fullBro.push(id);
       else fullSis.push(id);
       continue;
     }
     if (shareFather){
-      if (sex === "male") consBro.push(id);
+      if (sx === "male") consBro.push(id);
       else consSis.push(id);
       continue;
     }
     if (shareMother){
-      if (sex === "male") uterBro.push(id);
+      if (sx === "male") uterBro.push(id);
       else uterSis.push(id);
     }
   }
 
-  addRole(roles, "full_brother", fullBro);
-  addRole(roles, "full_sister", fullSis);
-  addRole(roles, "consanguine_brother", consBro);
-  addRole(roles, "consanguine_sister", consSis);
-  addRole(roles, "uterine_brother", uterBro);
-  addRole(roles, "uterine_sister", uterSis);
+  addRole(roleSets, "full_brother", fullBro);
+  addRole(roleSets, "full_sister", fullSis);
+  addRole(roleSets, "consanguine_brother", consBro);
+  addRole(roleSets, "consanguine_sister", consSis);
+  addRole(roleSets, "uterine_brother", uterBro);
+  addRole(roleSets, "uterine_sister", uterSis);
 
-  // Paternal uncles (brothers of father)
+  // Paternal uncles
   const paternalUncleIds = [];
   const consanguinePaternalUncleIds = [];
 
@@ -269,29 +322,25 @@ export function deriveHeirsFromTree(tree){
       if (!shareF) continue;
 
       const shareM = Boolean(fatherMother && p.motherId === fatherMother);
-
-      if (shareM){
-        paternalUncleIds.push(id);
-      } else {
-        consanguinePaternalUncleIds.push(id);
-      }
+      if (shareM) paternalUncleIds.push(id);
+      else consanguinePaternalUncleIds.push(id);
     }
   }
 
-  addRole(roles, "paternal_uncle", paternalUncleIds);
-  addRole(roles, "consanguine_paternal_uncle", consanguinePaternalUncleIds);
+  addRole(roleSets, "paternal_uncle", paternalUncleIds);
+  addRole(roleSets, "consanguine_paternal_uncle", consanguinePaternalUncleIds);
 
   const collectUncleDesc = (uncleIds, rolePrefix) => {
-    const sons = [];
+    const sons2 = [];
     const daughters2 = [];
     const sonsDaughters = [];
 
-    for (const uid of uncleIds){
+    for (const uid of uncleIds || []){
       const kids = uniq(getChildren(t, uid)).filter((id) => isAlive(t, id));
       const sonsIds = kids.filter((id) => sexOf(t, id) === "male");
       const daughtersIds = kids.filter((id) => sexOf(t, id) === "female");
 
-      sons.push(...sonsIds);
+      sons2.push(...sonsIds);
       daughters2.push(...daughtersIds);
 
       for (const sid2 of sonsIds){
@@ -300,37 +349,23 @@ export function deriveHeirsFromTree(tree){
       }
     }
 
-    addRole(roles, `${rolePrefix}_son`, sons);
-    addRole(roles, `${rolePrefix}s_daughter`, daughters2);
-    addRole(roles, `${rolePrefix}_sons_daughter`, sonsDaughters);
+    addRole(roleSets, `${rolePrefix}_son`, sons2);
+    addRole(roleSets, `${rolePrefix}s_daughter`, daughters2);
+    addRole(roleSets, `${rolePrefix}_sons_daughter`, sonsDaughters);
   };
 
   collectUncleDesc(paternalUncleIds, "paternal_uncle");
   collectUncleDesc(consanguinePaternalUncleIds, "consanguine_paternal_uncle");
 
-  // Build evidence and unmapped
-  const used = new Set();
-  const roleOut = {};
-  for (const [role, set] of Object.entries(roles)){
-    const ids = Array.from(set.values());
-    ids.forEach((x) => used.add(x));
-    roleOut[role] = {
-      count: ids.length,
-      ids,
-      people: ids.map((id) => {
-        const p = t.people[id] || {};
-        return { id, name: personLabel(p), sex: sexOf(t, id), alive: Boolean(p.alive) };
-      }),
-    };
-  }
-
+  // Evidence + unmapped
+  const { roleOut, used } = buildEvidence(t, roleSets);
   const adj = buildAdjacency(t);
-  const aliveConnected = Object.keys(t.people || {}).filter((id) => id !== did && isAlive(t, id));
+
+  const aliveOthers = Object.keys(t.people || {}).filter((id) => id !== did && isAlive(t, id));
   const unmapped = [];
 
-  for (const id of aliveConnected){
+  for (const id of aliveOthers){
     if (used.has(id)) continue;
-
     const path = shortestPath(adj, did, id);
     unmapped.push({
       id,
@@ -342,10 +377,10 @@ export function deriveHeirsFromTree(tree){
     });
   }
 
-  // Build heirs payload
+  // Payload heirs
   const heirs = [];
   for (const role of EXPECTED_ROLES){
-    const count = roleOut[role]?.count || 0;
+    const count = Number(roleOut[role]?.count) || 0;
     if (count > 0) heirs.push({ role, count });
   }
 
@@ -353,7 +388,7 @@ export function deriveHeirsFromTree(tree){
     ok: true,
     tree: t,
     heirs,
-    roles,
+    roles: roleOut,
     warnings,
     unmapped,
   };

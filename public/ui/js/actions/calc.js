@@ -15,69 +15,59 @@ function canonicalRoleId(roleId){
 }
 
 function cloneHeirs(list){
-  if (!Array.isArray(list)) return [];
-
-  const merged = Object.create(null);
-
-  for (const item of list){
-    const role = canonicalRoleId(item?.role);
+  const out = [];
+  for (const h of list || []){
+    if (!h || typeof h !== "object") continue;
+    const role = canonicalRoleId(h.role);
+    const count = Number(h.count);
     if (!role) continue;
-
-    const rawCount = item?.count;
-
-    let count = null;
-    if (typeof rawCount === "number") {
-      count = rawCount;
-    } else {
-      count = Number.parseInt(String(rawCount ?? "").trim(), 10);
-    }
-
-    if (!Number.isInteger(count) || count <= 0) continue;
-
-    merged[role] = (merged[role] || 0) + count;
+    if (!Number.isFinite(count) || count <= 0) continue;
+    out.push({ role, count: Math.trunc(count) });
   }
-
-  return Object.entries(merged).map(([role, count]) => ({ role, count }));
+  return out;
 }
 
-function normalizeEstateValue(input){
-  let raw = String(input ?? "").trim();
-  if (raw === "") return { value: null, error: null };
-
-  raw = raw.replace(/\s+/g, "");
-
-  if (raw.includes(".") && raw.includes(",")){
-    raw = raw.replace(/,/g, "");
-  } else if (!raw.includes(".") && raw.includes(",")){
-    raw = raw.replace(/,/g, ".");
-  }
-
-  if (!/^[0-9]{1,18}(\.[0-9]{1,6})?$/.test(raw)){
-    return { value: null, error: "Patrimonio inválido. Usa un número con hasta 6 decimales." };
-  }
-
-  return { value: raw, error: null };
+function normalizeSex(sex){
+  const s = String(sex || "").trim().toLowerCase();
+  if (s === "male" || s === "female") return s;
+  return null;
 }
 
-function normalizeCurrency(input){
-  const raw = String(input ?? "").trim().toUpperCase();
-  if (raw === "") return { value: null, error: null };
-  if (!/^[A-Z]{3}$/.test(raw)){
-    return { value: null, error: "Moneda inválida. Usa 3 letras, ej. MAD, EUR, USD." };
+function normalizeDecedentId(id){
+  const s = String(id || "").trim();
+  if (!s) return "";
+  return s.slice(0, 120);
+}
+
+function normalizeCurrency(currency){
+  const c = String(currency || "").trim().toUpperCase();
+  if (!c) return { error: "Moneda vacía" };
+  if (c.length > 12) return { error: "Moneda demasiado larga" };
+  return { value: c };
+}
+
+function normalizeEstateValue(value){
+  const raw = String(value ?? "").trim();
+  if (!raw) return { error: "Valor de la herencia vacío" };
+
+  const cleaned = raw.replace(/\s+/g, "");
+  if (!cleaned) return { error: "Valor de la herencia inválido" };
+
+  let normalized = cleaned;
+  if (normalized.includes(".") && normalized.includes(",")){
+    normalized = normalized.replace(/,/g, "");
+  } else if (!normalized.includes(".") && normalized.includes(",")){
+    normalized = normalized.replace(/,/g, ".");
   }
-  return { value: raw, error: null };
-}
 
-function normalizeSex(input){
-  const raw = String(input ?? "").trim();
-  if (raw === "male" || raw === "female") return raw;
-  return "unknown";
-}
+  if (!/^[-+]?\d*(\.\d+)?$/.test(normalized)) return { error: "Valor de la herencia inválido" };
 
-function normalizeDecedentId(input){
-  const raw = String(input ?? "").trim();
-  if (raw === "") return "";
-  return /^P[0-9]+$/.test(raw) ? raw : "";
+  const num = Number(normalized);
+  if (!Number.isFinite(num)) return { error: "Valor de la herencia inválido" };
+  if (num < 0) return { error: "Valor de la herencia no puede ser negativo" };
+  if (num > 1e15) return { error: "Valor de la herencia fuera de rango" };
+
+  return { value: num };
 }
 
 function buildUiMetaFromState(state){
@@ -96,33 +86,37 @@ function buildUiMetaFromState(state){
     decedentId = normalizeDecedentId(did);
   }
 
-  const uiMeta = {
-    sex,
-    source: mode === "tree" ? "ui-tree" : "ui-roles",
-  };
+  const source = mode === "tree" ? "tree" : "roles";
+  const ui_meta = { source };
 
-  if (decedentId !== ""){
-    uiMeta.decedentId = decedentId;
-  }
+  if (sex) ui_meta.sex = sex;
+  if (decedentId) ui_meta.decedentId = decedentId;
 
-  return uiMeta;
+  return ui_meta;
 }
 
-export function buildCalcPayload(state){
-  const mode = state?.builder?.mode === "roles" ? "roles" : "tree";
+function buildCalcPayload(state){
+  const builder = state?.builder || {};
+  const mode = builder?.mode === "tree" ? "tree" : "roles";
 
   let heirs = [];
+
   if (mode === "tree"){
-    const tree = state?.builder?.tree;
-    const derived = deriveHeirsFromTree(tree);
+    const derived = deriveHeirsFromTree(builder.tree);
+    if (!derived || derived.ok !== true){
+      const msg = Array.isArray(derived?.warnings) && derived.warnings.length ? derived.warnings[0] : "Arbol invalido para derivar roles";
+      return { ok: false, error: msg };
+    }
     heirs = cloneHeirs(derived.heirs);
+    if (!heirs.length){
+      return { ok: false, error: "El arbol no produce ningun rol soportado. Revisa Derivacion (panel derecho)." };
+    }
   } else {
-    const preview = state?.builder?.payloadPreview;
+    const preview = builder.payloadPreview;
     if (!preview || !Array.isArray(preview.heirs)) return { ok: false, error: "Completa builder primero" };
     heirs = cloneHeirs(preview.heirs);
+    if (!heirs.length) return { ok: false, error: "Agrega al menos un heredero" };
   }
-
-  if (!heirs.length) return { ok: false, error: "Agrega al menos un heredero" };
 
   const wizard = state?.wizard || {};
 
@@ -133,34 +127,25 @@ export function buildCalcPayload(state){
   if (currencyResult.error) return { ok: false, error: currencyResult.error };
 
   const wizardFlags = wizard.flags || {};
-  const audit = typeof wizardFlags.audit === "boolean" ? wizardFlags.audit : true;
-  const explain = typeof wizardFlags.explain === "boolean" ? wizardFlags.explain : true;
-  if (!audit && !explain){
-    return { ok: false, error: "Activa Audit o Explain, al menos uno." };
-  }
+  const cli_flags = [];
+  if (wizardFlags.explain !== false) cli_flags.push("--explain");
+  if (wizardFlags.audit !== false) cli_flags.push("--audit");
 
-  const payload = { heirs };
-
-  if (estateResult.value !== null){
-    payload.estate_value = estateResult.value;
-  }
-  if (currencyResult.value !== null){
-    payload.currency = currencyResult.value;
-  }
-
-  const cliFlags = [];
-  if (audit) cliFlags.push("--audit");
-  if (explain) cliFlags.push("--explain");
-  payload.flags = cliFlags;
-
-  payload.ui_meta = buildUiMetaFromState(state);
+  const payload = {
+    heirs,
+    estate_value: estateResult.value,
+    currency: currencyResult.value,
+    cli_flags,
+    ui_meta: buildUiMetaFromState(state),
+  };
 
   return { ok: true, payload };
 }
 
 export async function runCalc(store){
+  const state = store.getState();
+  const built = buildCalcPayload(state);
   const startedAt = Date.now();
-  const built = buildCalcPayload(store.getState());
 
   if (!built.ok){
     store.setState((s) => ({
@@ -168,7 +153,7 @@ export async function runCalc(store){
       results: {
         ...s.results,
         status: "error",
-        error: built.error || "Completa builder primero",
+        error: built.error || "No se pudo construir el payload",
         response: null,
         lastRunAt: startedAt,
       },
@@ -184,6 +169,7 @@ export async function runCalc(store){
       error: null,
       response: null,
       lastRunAt: startedAt,
+      lastPayload: built.payload,
     },
   }));
 
@@ -198,9 +184,9 @@ export async function runCalc(store){
         results: {
           ...s.results,
           status: "error",
-          error: data.error || "calc.php devolvió error",
+          error: data.error || "Error del core",
           response: data,
-          lastRunAt: finishedAt,
+          finishedAt,
         },
       }));
       return;
@@ -212,8 +198,8 @@ export async function runCalc(store){
         ...s.results,
         status: "ok",
         error: null,
-        response: data ?? null,
-        lastRunAt: finishedAt,
+        response: data,
+        finishedAt,
       },
     }));
     return;
@@ -224,9 +210,9 @@ export async function runCalc(store){
     results: {
       ...s.results,
       status: "error",
-      error: res.error || "Error al calcular",
-      response: res.debug ? { debug: res.debug } : null,
-      lastRunAt: finishedAt,
+      error: res.error || "Error de red",
+      response: null,
+      finishedAt,
     },
   }));
 }
