@@ -1,125 +1,170 @@
-// public/ui/js/app.js
 import { mount } from "./render/mount.js";
+import { renderLayout } from "./ui/layout.js";
 import { createStore } from "./store/store.js";
-
-import { renderWizard, wireWizard } from "./pages/wizard.js";
-import { renderBuilder, wireBuilder, applyWizardSync } from "./pages/builder.js";
-import { renderResults, wireResults } from "./pages/results.js";
-
-import { renderToast } from "./ui/toast.js";
-import { renderModal, wireModal } from "./ui/modal.js";
-
-import { importWizardToTree } from "./pages/builder_tree.js";
+import { initRouter } from "./router.js";
 import { captureFocus, restoreFocus } from "./ui/focus.js";
+import { pushToast } from "./ui/toast.js";
+import { openModal, closeModal } from "./ui/modal.js";
 
-function normalizeRouteFromHash(){
-  const raw = (typeof location !== "undefined" && location.hash) ? location.hash : "";
-  const h = raw.startsWith("#") ? raw.slice(1) : raw;
-  const p = h.startsWith("/") ? h.slice(1) : h;
-  const first = (p.split(/[/?]/)[0] || "").trim();
+import { wireWizard } from "./pages/wizard.js";
+import { wireBuilder, applyWizardSync } from "./pages/builder.js";
+import { wireResults } from "./pages/results.js";
+import { importWizardToTree } from "./pages/builder_tree.js";
 
-  if (first === "builder" || first === "results" || first === "wizard") return first;
-  return "wizard";
+import { fetchRoles } from "./api/client.js";
+import { EXPECTED_ROLES, diffRoles } from "./api/contract.js";
+import { deriveState } from "./store/derive.js";
+
+const hasDom = typeof window !== "undefined" && typeof document !== "undefined";
+const root = hasDom ? document.getElementById("app") : null;
+const store = createStore();
+
+let bootAbort = null;
+const getDerived = () => deriveState(store.getState());
+let lastRoute = getDerived().route;
+let lastFocus = { key: null };
+
+function wireUi(){
+  const btnToast = document.getElementById("btn-toast");
+  if (btnToast){
+    btnToast.addEventListener("click", () => pushToast(store, "Toast OK"));
+  }
+
+  const btnReset = document.getElementById("btn-reset");
+  if (btnReset){
+    btnReset.addEventListener("click", () => {
+      openModal(store, {
+        title: "Nuevo caso",
+        body: "Se borrará el caso guardado en este navegador y volverás al wizard.",
+        confirmLabel: "Confirmar reinicio",
+        confirmAction: "reset-case",
+      });
+    });
+  }
+
+  const btnModalClose = document.getElementById("btn-modal-close");
+  if (btnModalClose){
+    btnModalClose.addEventListener("click", () => closeModal(store));
+  }
+
+  const btnModalConfirm = document.getElementById("btn-modal-confirm");
+  if (btnModalConfirm){
+    btnModalConfirm.addEventListener("click", () => {
+      const action = btnModalConfirm.getAttribute("data-confirm-action");
+      handleModalConfirm(action);
+    });
+  }
 }
 
-function renderRoute(state, route){
-  if (route === "builder") return renderBuilder(state);
-  if (route === "results") return renderResults(state);
-  return renderWizard(state);
+function render(){
+  if (!root) return;
+  const prevRoute = lastRoute;
+  const prevScrollY = window.scrollY;
+
+  lastFocus = captureFocus();
+
+  const state = store.getState();
+  const derived = getDerived();
+  const sameRoute = prevRoute === derived.route;
+
+  mount(root, renderLayout(state, derived));
+  restoreFocus(lastFocus);
+
+  wireUi();
+
+  // IMPORTANT: wireWizard usa delegación idempotente, se puede llamar en cada render
+  if (derived.route === "wizard"){
+    wireWizard(store);
+  } else if (derived.route === "builder"){
+    wireBuilder(store);
+  } else if (derived.route === "results"){
+    wireResults(store);
+  }
+
+  if (sameRoute){
+    requestAnimationFrame(() => {
+      window.scrollTo(0, prevScrollY);
+    });
+  }
+
+  lastRoute = derived.route;
 }
 
-function resetToEmptyTree(store){
+async function startBootCheck(){
+  if (bootAbort) bootAbort.abort();
+  bootAbort = new AbortController();
+
   store.setState((s) => ({
     ...s,
-    builder: {
-      ...(s.builder || {}),
-      tree: null,
-      treeSelectedId: null,
-      fromWizardApplied: false,
-      wizardHashApplied: null,
-      payloadPreview: null,
-    },
-  }));
+    boot: { ...s.boot, status: "checking", error: null, diff: null, rolesServer: null },
+  }), { persist: false });
+
+  const res = await fetchRoles({ signal: bootAbort.signal });
+
+  if (!res.ok){
+    store.setState((s) => ({
+      ...s,
+      boot: { ...s.boot, status: "blocked", error: res.error || "No se pudo cargar roles.php", diff: null, rolesServer: null },
+    }), { persist: false });
+    return;
+  }
+
+  const diff = diffRoles(EXPECTED_ROLES, res.roles);
+  if (!diff.ok){
+    store.setState((s) => ({
+      ...s,
+      boot: { ...s.boot, status: "blocked", error: "Roles mismatch entre UI y servidor", diff, rolesServer: res.roles },
+    }), { persist: false });
+    return;
+  }
+
+  store.setState((s) => ({
+    ...s,
+    boot: { ...s.boot, status: "ready", error: null, diff: null, rolesServer: res.roles },
+  }), { persist: false });
 }
 
-function boot(){
-  const root = document.getElementById("app");
-  if (!root) return;
+function handleModalConfirm(action){
+  if (!action) return;
 
-  const store = createStore();
-
-  function onModalConfirm(action){
-    // wireModal ya hace closeModal(store) antes de emitir el evento
-    if (action === "reset-case"){
-      store.reset();
-      location.hash = "#/wizard";
-      return;
-    }
-
-    if (action === "builder-apply-wizard"){
-      applyWizardSync(store);
-      return;
-    }
-
-    if (action === "builder-tree-import-wizard"){
-      importWizardToTree(store);
-      return;
-    }
-
-    if (action === "builder-tree-reset"){
-      resetToEmptyTree(store);
-      return;
-    }
-
-    console.warn("Unknown modal confirm action:", action);
-  }
-
-  window.addEventListener("heritage-modal-confirm", (e) => {
-    const action = e?.detail?.action;
-    if (typeof action === "string" && action) onModalConfirm(action);
-  });
-
-  let lastRoute = null;
-
-  function render(){
-    const state = store.getState();
-    const route = normalizeRouteFromHash();
-
-    const focus = captureFocus();
-    const html =
-      renderRoute(state, route) +
-      renderToast(state) +
-      renderModal(state);
-
-    mount(root, html);
-    restoreFocus(focus);
-
-    // Global UI wiring (modal buttons)
-    wireModal(store);
-
-    // Page wiring
-    if (route === "wizard"){
-      wireWizard(store);
-    } else if (route === "builder"){
-      wireBuilder(store);
-    } else if (route === "results"){
-      wireResults(store);
-    }
-
-    lastRoute = route;
-  }
-
-  // Ensure default route
-  if (!location.hash || location.hash === "#"){
+  if (action === "reset-case"){
+    closeModal(store);
+    store.reset();
     location.hash = "#/wizard";
+    startBootCheck();
+    return;
   }
 
-  store.subscribe(render);
-  window.addEventListener("hashchange", render);
-  render();
+  if (action === "builder-apply-wizard"){
+    closeModal(store);
+    applyWizardSync(store);
+    return;
+  }
+
+  if (action === "builder-tree-import-wizard"){
+    closeModal(store);
+    importWizardToTree(store);
+    return;
+  }
+
+  if (action === "builder-tree-reset"){
+    closeModal(store);
+    store.setState((s) => ({
+      ...s,
+      builder: {
+        ...s.builder,
+        mode: "tree",
+        tree: null,
+        treeSelectedId: null,
+      },
+    }));
+    return;
+  }
 }
 
-// Guard para que Codex pueda hacer import en Node sin ejecutar boot()
-if (typeof window !== "undefined" && typeof document !== "undefined"){
-  boot();
+store.subscribe(() => render());
+if (hasDom && root){
+  initRouter(store);
+  render();
+  startBootCheck();
 }
