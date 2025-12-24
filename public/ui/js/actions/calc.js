@@ -1,84 +1,221 @@
-// public/ui/js/actions/calc.js  (REEMPLAZAR ENTERO)
-import { apiPostJson } from "../api/client.js";
-import { deriveHeirsByRoleFromTree } from "../domain/deriveHeirsFromTree.js";
+import { postCalc } from "../api/client.js";
+import { sanitizeTree, ensureTree } from "../domain/familyTree.js";
+import { deriveHeirsFromTree } from "../domain/treeRoles.js";
 
-function num(v){
-  const n = Number(v);
-  return Number.isFinite(n) ? n : NaN;
+const ROLE_ALIASES = Object.freeze({
+  wives: "wife",
+  husbands: "husband",
+});
+
+function canonicalRoleId(roleId){
+  const raw = (roleId === null || roleId === undefined) ? "" : String(roleId);
+  const key = raw.trim();
+  if (!key) return null;
+  return ROLE_ALIASES[key] || key;
 }
 
-export async function runCalculation(store){
-  const state = store.getState();
+function cloneHeirs(list){
+  const out = [];
+  for (const h of list || []){
+    if (!h || typeof h !== "object") continue;
+    const role = canonicalRoleId(h.role);
+    const count = Number(h.count);
+    if (!role) continue;
+    if (!Number.isFinite(count) || count <= 0) continue;
+    out.push({ role, count: Math.trunc(count) });
+  }
+  return out;
+}
+
+function normalizeSex(sex){
+  const s = String(sex || "").trim().toLowerCase();
+  if (s === "male" || s === "female") return s;
+  return null;
+}
+
+function normalizeDecedentId(id){
+  // API exige max 32
+  const s = String(id || "").trim();
+  if (!s) return "";
+  return s.slice(0, 32);
+}
+
+function normalizeCurrency(currency){
+  const c = String(currency || "").trim().toUpperCase();
+  if (!c) return { error: "Moneda vacía" };
+  if (!/^[A-Z]{3}$/.test(c)) return { error: "Moneda inválida (usa 3 letras, ej. MAD)" };
+  return { value: c };
+}
+
+function normalizeEstateValue(value){
+  const raw = String(value ?? "").trim();
+  if (!raw) return { value: null }; // opcional
+
+  const cleaned = raw.replace(/\s+/g, "");
+  if (!cleaned) return { error: "Valor de la herencia inválido" };
+
+  let normalized = cleaned;
+  if (normalized.includes(".") && normalized.includes(",")){
+    normalized = normalized.replace(/,/g, "");
+  } else if (!normalized.includes(".") && normalized.includes(",")){
+    normalized = normalized.replace(/,/g, ".");
+  }
+
+  if (!/^[-+]?\d*(\.\d+)?$/.test(normalized)) return { error: "Valor de la herencia inválido" };
+
+  const num = Number(normalized);
+  if (!Number.isFinite(num)) return { error: "Valor de la herencia inválido" };
+  if (num < 0) return { error: "Valor de la herencia no puede ser negativo" };
+  if (num > 1e15) return { error: "Valor de la herencia fuera de rango" };
+
+  return { value: num };
+}
+
+function buildUiMetaFromState(state){
   const wizard = state?.wizard || {};
   const builder = state?.builder || {};
-  const mode = builder?.mode || "tree";
-  const tree = builder?.tree || null;
+  const mode = builder?.mode === "tree" ? "tree" : "roles";
 
-  const estateValue = num(wizard.estate_value);
-  const currency = wizard.currency || "MAD";
-
-  if (!Number.isFinite(estateValue) || estateValue <= 0){
-    store.setState((s) => ({
-      ...s,
-      results: {
-        ...(s.results || {}),
-        error: "Valor de la herencia requerido.",
-        response: null,
-      },
-    }));
-    return;
-  }
-
-  let heirs = [];
-  let derivation = null;
+  let sex = normalizeSex(wizard.deceased_sex);
+  let decedentId = "";
 
   if (mode === "tree"){
-    derivation = deriveHeirsByRoleFromTree(tree);
-    heirs = derivation.heirs || [];
-  } else {
-    // fallback: si existiese un modo alternativo, usar payloadPreview
-    heirs = builder?.payloadPreview?.heirs || [];
+    const tree = ensureTree(sanitizeTree(builder.tree));
+    const did = tree?.deceasedId;
+    const d = did ? tree?.people?.[did] : null;
+    sex = normalizeSex(d?.sex);
+    decedentId = normalizeDecedentId(did);
   }
 
-  if (!Array.isArray(heirs) || heirs.length === 0){
+  const source = mode === "tree" ? "tree" : "roles";
+  const ui_meta = { source };
+
+  if (sex) ui_meta.sex = sex;
+  if (decedentId) ui_meta.decedentId = decedentId;
+
+  return ui_meta;
+}
+
+function buildCalcPayload(state){
+  const builder = state?.builder || {};
+  const mode = builder?.mode === "tree" ? "tree" : "roles";
+
+  let heirs = [];
+
+  if (mode === "tree"){
+    const derived = deriveHeirsFromTree(builder.tree);
+    if (!derived || derived.ok !== true){
+      const msg = Array.isArray(derived?.warnings) && derived.warnings.length ? derived.warnings[0] : "Arbol invalido para derivar roles";
+      return { ok: false, error: msg };
+    }
+    heirs = cloneHeirs(derived.heirs);
+    if (!heirs.length){
+      return { ok: false, error: "El arbol no produce ningun rol soportado. Revisa Derivacion (panel derecho)." };
+    }
+  } else {
+    const preview = builder.payloadPreview;
+    if (!preview || !Array.isArray(preview.heirs)) return { ok: false, error: "Completa builder primero" };
+    heirs = cloneHeirs(preview.heirs);
+    if (!heirs.length) return { ok: false, error: "Agrega al menos un heredero" };
+  }
+
+  const wizard = state?.wizard || {};
+
+  const estateResult = normalizeEstateValue(wizard.estate_value);
+  if (estateResult.error) return { ok: false, error: estateResult.error };
+
+  const currencyResult = normalizeCurrency(wizard.currency || "MAD");
+  if (currencyResult.error) return { ok: false, error: currencyResult.error };
+
+  const wizardFlags = wizard.flags || {};
+  const cli_flags = [];
+  if (wizardFlags.explain !== false) cli_flags.push("--explain");
+  if (wizardFlags.audit !== false) cli_flags.push("--audit");
+
+  const payload = {
+    heirs,
+    currency: currencyResult.value,
+    cli_flags,
+    ui_meta: buildUiMetaFromState(state),
+  };
+
+  // estate_value opcional
+  if (estateResult.value !== null) payload.estate_value = estateResult.value;
+
+  return { ok: true, payload };
+}
+
+export async function runCalc(store){
+  const state = store.getState();
+  const built = buildCalcPayload(state);
+  const startedAt = Date.now();
+
+  if (!built.ok){
     store.setState((s) => ({
       ...s,
       results: {
-        ...(s.results || {}),
-        error: "No hay herederos derivados. Construye o importa el árbol.",
+        ...s.results,
+        status: "error",
+        error: built.error || "No se pudo construir el payload",
         response: null,
+        lastRunAt: startedAt,
       },
     }));
     return;
   }
-
-  // Payload esperado por calc.php: mantener la forma conservadora
-  const payload = {
-    estate_value: estateValue,
-    currency,
-    heirs,
-    // evidencia opcional para UI: NO usarlo en core si no lo acepta, pero lo enviamos solo si el server tolera campos extra.
-    // Si tu backend es estricto, comenta las siguientes 2 líneas.
-    _ui_mode: mode,
-    _ui_source: "tree",
-  };
 
   store.setState((s) => ({
     ...s,
-    results: { ...(s.results || {}), loading: true, error: null, response: null, lastPayload: payload, derivation },
+    results: {
+      ...s.results,
+      status: "running",
+      error: null,
+      response: null,
+      lastRunAt: startedAt,
+      lastPayload: built.payload,
+    },
   }));
 
-  try {
-    const res = await apiPostJson("../api/calc.php", payload);
+  const res = await postCalc(built.payload);
+  const finishedAt = Date.now();
+
+  if (res.ok){
+    const data = res.data;
+    if (data && data.ok === false){
+      store.setState((s) => ({
+        ...s,
+        results: {
+          ...s.results,
+          status: "error",
+          error: data.error || "Error del core",
+          response: data,
+          finishedAt,
+        },
+      }));
+      return;
+    }
+
     store.setState((s) => ({
       ...s,
-      results: { ...(s.results || {}), loading: false, error: null, response: res, lastPayload: payload, derivation },
+      results: {
+        ...s.results,
+        status: "ok",
+        error: null,
+        response: data,
+        finishedAt,
+      },
     }));
-  } catch (err){
-    const msg = err?.message ? String(err.message) : "Error al calcular.";
-    store.setState((s) => ({
-      ...s,
-      results: { ...(s.results || {}), loading: false, error: msg, response: null, lastPayload: payload, derivation },
-    }));
+    return;
   }
+
+  store.setState((s) => ({
+    ...s,
+    results: {
+      ...s.results,
+      status: "error",
+      error: res.error || "Error de red",
+      response: null,
+      finishedAt,
+    },
+  }));
 }
