@@ -1,34 +1,56 @@
-// public/ui/js/pages/wizard.js
-import { escapeHtml } from "../ui/escape.js";
-import { renderIcon } from "../ui/icons.js";
-
-function clampInt(v, min, max){
-  const n = parseInt(String(v ?? "0"), 10);
-  if (!Number.isFinite(n)) return min;
-  return Math.max(min, Math.min(max, n));
+function clampInput(el, max = 100){
+  const raw = el.value === "" ? 0 : Number(el.value);
+  const safe = Number.isFinite(raw) ? Math.trunc(raw) : 0;
+  const clamped = Math.min(max, Math.max(0, safe));
+  el.value = clamped;
+  return clamped;
 }
 
-function setWizard(store, fn){
-  store.setState((s) => {
-    const w = s.wizard || {};
-    const next = fn(w);
-    return { ...s, wizard: next };
-  }, { persist: true });
+function formatDesc(value, singular, plural){
+  const n = Number(value) || 0;
+  if (n === 0) return `Sin ${plural}`;
+  if (n === 1) return `1 ${singular}`;
+  return `${n} ${plural}`;
+}
+
+function labelSex(value){
+  if (value === "male") return "Hombre";
+  if (value === "female") return "Mujer";
+  return "Sin especificar";
+}
+
+function safeBool(v){
+  return v === true;
+}
+
+function safeInt(v, min = 0, max = 100){
+  const n = Number(v);
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, Math.trunc(n)));
 }
 
 export function renderWizard(state){
-  const w = state?.wizard || {};
-  const sex = w.deceased_sex || "";
-  const spouse = w.spouse || { enabled: false, wives_count: 0, husband_present: false };
-  const parents = w.parents || { father: false, mother: false };
-  const desc = w.descendants || { son: 0, daughter: 0, sons_son: 0, sons_daughter: 0 };
+  const wizard = state?.wizard || {};
+  const sex = wizard.deceased_sex || "";
+
+  const spouse = wizard.spouse || { enabled: false, wives_count: 0, husband_present: false };
+  const spouseEnabled = safeBool(spouse.enabled);
+
+  const parents = wizard.parents || { father: false, mother: false };
+  const father = safeBool(parents.father);
+  const mother = safeBool(parents.mother);
+
+  const desc = wizard.descendants || { son: 0, daughter: 0, sons_son: 0, sons_daughter: 0 };
+  const son = safeInt(desc.son, 0, 50);
+  const daughter = safeInt(desc.daughter, 0, 50);
+  const sons_son = safeInt(desc.sons_son, 0, 50);
+  const sons_daughter = safeInt(desc.sons_daughter, 0, 50);
 
   const isMale = sex === "male";
   const isFemale = sex === "female";
 
-  const wivesCount = clampInt(spouse.wives_count, 0, 4);
-  const estateValue = String(w.estate_value ?? "");
-  const currency = w.currency || "MAD";
+  const wivesCount = safeInt(spouse.wives_count, 0, 4);
+  const husbandPresent = safeBool(spouse.husband_present);
 
   const canContinue = sex === "male" || sex === "female";
 
@@ -37,7 +59,7 @@ export function renderWizard(state){
       <section class="card card-pad stack" style="gap:12px;">
         <div class="row" style="justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
           <strong>Wizard</strong>
-          <span class="muted">Define entradas básicas y luego importa al árbol desde el Builder</span>
+          <span class="muted">Define entradas básicas. El árbol se crea/importa desde el Builder.</span>
         </div>
 
         <div class="grid2">
@@ -45,250 +67,225 @@ export function renderWizard(state){
             <span class="label">Sexo del causante</span>
             <div class="row" style="gap:10px; flex-wrap:wrap;">
               <label class="row" style="gap:8px;">
-                <input type="radio" name="wizard-deceased-sex" id="wizard-deceased-male" value="male" ${isMale ? "checked" : ""}>
+                <input type="radio" name="wizard-sex" value="male" ${isMale ? "checked" : ""}>
                 <span>Hombre</span>
               </label>
               <label class="row" style="gap:8px;">
-                <input type="radio" name="wizard-deceased-sex" id="wizard-deceased-female" value="female" ${isFemale ? "checked" : ""}>
+                <input type="radio" name="wizard-sex" value="female" ${isFemale ? "checked" : ""}>
                 <span>Mujer</span>
               </label>
             </div>
           </label>
 
-          <label class="field">
-            <span class="label">Valor de la herencia</span>
-            <div class="row" style="gap:10px;">
-              <input class="input" id="wizard-estate-value" type="number" min="0" step="1" value="${escapeHtml(estateValue)}" placeholder="Ej: 250000">
-              <select class="input" id="wizard-currency" style="max-width:110px;">
-                <option value="MAD" ${currency === "MAD" ? "selected" : ""}>MAD</option>
-                <option value="EUR" ${currency === "EUR" ? "selected" : ""}>EUR</option>
-                <option value="USD" ${currency === "USD" ? "selected" : ""}>USD</option>
-              </select>
+          <div class="field">
+            <span class="label">Cónyuge(s)</span>
+            <div class="stack" style="gap:8px;">
+              <label class="row" style="gap:8px;">
+                <input type="checkbox" id="wizard-spouse-enabled" ${spouseEnabled ? "checked" : ""}>
+                <span>Hay cónyuge(s)</span>
+              </label>
+
+              ${spouseEnabled && isMale ? `
+                <label class="field" style="margin:0;">
+                  <span class="label">Nº de esposas (0..4)</span>
+                  <input type="number" min="0" max="4" step="1" id="wizard-wives-count" value="${wivesCount}">
+                </label>
+              ` : ""}
+
+              ${spouseEnabled && isFemale ? `
+                <label class="row" style="gap:8px;">
+                  <input type="checkbox" id="wizard-husband-present" ${husbandPresent ? "checked" : ""}>
+                  <span>Esposo presente (vivo)</span>
+                </label>
+              ` : ""}
             </div>
-            <div class="muted" style="margin-top:6px;">Obligatorio para calcular resultados.</div>
-          </label>
-        </div>
-      </section>
-
-      <section class="card card-pad stack" style="gap:12px;">
-        <strong>Cónyuge</strong>
-
-        ${isMale ? `
-          <div class="stack" style="gap:10px;">
-            <label class="field">
-              <span class="label">Esposas vivas (0 a 4)</span>
-              <input class="input" id="wizard-wives-count" type="number" min="0" max="4" step="1" value="${escapeHtml(String(wivesCount))}">
-            </label>
-            <div class="muted">En MVP: se crean ese número de esposas vivas al importar al árbol.</div>
           </div>
-        ` : ""}
 
-        ${isFemale ? `
-          <div class="stack" style="gap:10px;">
-            <label class="row" style="gap:10px; align-items:center;">
-              <input type="checkbox" id="wizard-husband-present" ${spouse.husband_present ? "checked" : ""}>
-              <span>Esposo vivo</span>
-            </label>
-            <div class="muted">En MVP: si está activo, se crea un esposo vivo al importar al árbol.</div>
+          <div class="field">
+            <span class="label">Padres vivos</span>
+            <div class="row" style="gap:12px; flex-wrap:wrap;">
+              <label class="row" style="gap:8px;">
+                <input type="checkbox" id="wizard-father" ${father ? "checked" : ""}>
+                <span>Padre</span>
+              </label>
+              <label class="row" style="gap:8px;">
+                <input type="checkbox" id="wizard-mother" ${mother ? "checked" : ""}>
+                <span>Madre</span>
+              </label>
+            </div>
           </div>
-        ` : ""}
 
-        ${(!isMale && !isFemale) ? `<div class="muted">Selecciona primero el sexo del causante.</div>` : ""}
-
-      </section>
-
-      <section class="card card-pad stack" style="gap:12px;">
-        <strong>Padres del causante</strong>
-        <div class="grid2">
-          <label class="row" style="gap:10px; align-items:center;">
-            <input type="checkbox" id="wizard-parent-father" ${parents.father ? "checked" : ""}>
-            <span>Padre vivo</span>
-          </label>
-          <label class="row" style="gap:10px; align-items:center;">
-            <input type="checkbox" id="wizard-parent-mother" ${parents.mother ? "checked" : ""}>
-            <span>Madre viva</span>
-          </label>
-        </div>
-      </section>
-
-      <section class="card card-pad stack" style="gap:12px;">
-        <strong>Descendientes del causante</strong>
-
-        <div class="grid2">
-          <label class="field">
-            <span class="label">Hijos (varones)</span>
-            <input class="input" id="wizard-desc-son" type="number" min="0" step="1" value="${escapeHtml(String(clampInt(desc.son, 0, 99)))}">
-          </label>
-          <label class="field">
-            <span class="label">Hijas</span>
-            <input class="input" id="wizard-desc-daughter" type="number" min="0" step="1" value="${escapeHtml(String(clampInt(desc.daughter, 0, 99)))}">
-          </label>
+          <div class="field">
+            <span class="label">Descendientes</span>
+            <div class="grid2" style="gap:10px;">
+              <label class="field" style="margin:0;">
+                <span class="label">Hijos</span>
+                <input type="number" min="0" max="50" step="1" id="wizard-son" value="${son}">
+                <span class="muted">${formatDesc(son, "hijo", "hijos")}</span>
+              </label>
+              <label class="field" style="margin:0;">
+                <span class="label">Hijas</span>
+                <input type="number" min="0" max="50" step="1" id="wizard-daughter" value="${daughter}">
+                <span class="muted">${formatDesc(daughter, "hija", "hijas")}</span>
+              </label>
+              <label class="field" style="margin:0;">
+                <span class="label">Nietos (hijo de hijo)</span>
+                <input type="number" min="0" max="50" step="1" id="wizard-sons-son" value="${sons_son}">
+                <span class="muted">${formatDesc(sons_son, "nieto", "nietos")}</span>
+              </label>
+              <label class="field" style="margin:0;">
+                <span class="label">Nietas (hija de hijo)</span>
+                <input type="number" min="0" max="50" step="1" id="wizard-sons-daughter" value="${sons_daughter}">
+                <span class="muted">${formatDesc(sons_daughter, "nieta", "nietas")}</span>
+              </label>
+            </div>
+          </div>
         </div>
 
-        <div class="grid2">
-          <label class="field">
-            <span class="label">Nietos (hijos de hijo)</span>
-            <input class="input" id="wizard-desc-sons-son" type="number" min="0" step="1" value="${escapeHtml(String(clampInt(desc.sons_son, 0, 99)))}">
-          </label>
-          <label class="field">
-            <span class="label">Nietas (hijas de hijo)</span>
-            <input class="input" id="wizard-desc-sons-daughter" type="number" min="0" step="1" value="${escapeHtml(String(clampInt(desc.sons_daughter, 0, 99)))}">
-          </label>
+        <div class="row" style="justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div class="muted">
+            Reglas: el wizard no modifica el árbol automáticamente. Al entrar al Builder podrás importar con confirmación.
+          </div>
+          <div class="row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+            ${!canContinue ? `<p class="muted" style="margin:0;">Define el sexo del causante para continuar.</p>` : ""}
+            <button class="btn" type="button" id="wizard-continue" ${canContinue ? "" : "disabled"}>Continuar al builder</button>
+          </div>
         </div>
-
-        <div class="muted">
-          Nota MVP: los nietos solo se crearán al importar si existe al menos un hijo varón (o se creará uno si pides nietos y no hay hijos).
-        </div>
-      </section>
-
-      <section class="card card-pad row" style="justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-        <div class="stack">
-          <strong>Continuar</strong>
-          <div class="muted">El Wizard no cambia el árbol automáticamente. Importa explícitamente desde el Builder.</div>
-        </div>
-        <button class="btn btn-primary" type="button" data-wizard-action="go-builder" ${canContinue ? "" : "disabled"}>
-          ${renderIcon("arrowRight")} Ir al Builder
-        </button>
       </section>
     </div>
   `;
 }
 
-export function bindWizardEvents(store){
-  const root = document.getElementById("page-wizard");
+export function wireWizard(store){
+  const root = document.getElementById("app");
   if (!root) return;
 
-  // Sexo
-  const male = document.getElementById("wizard-deceased-male");
-  const female = document.getElementById("wizard-deceased-female");
+  if (root.dataset.wizardWired === "1") return;
+  root.dataset.wizardWired = "1";
 
-  const onSexChange = (sex) => {
-    setWizard(store, (w) => ({
-      ...w,
-      deceased_sex: sex,
-      spouse: sex === "male"
-        ? { enabled: true, wives_count: clampInt(w?.spouse?.wives_count ?? 0, 0, 4), husband_present: false }
-        : { enabled: true, wives_count: 0, husband_present: Boolean(w?.spouse?.husband_present) },
+  const setWizard = (patchFn) => {
+    store.setState((s) => ({
+      ...s,
+      wizard: patchFn(s.wizard || {}),
     }));
   };
 
-  if (male) male.addEventListener("change", () => { if (male.checked) onSexChange("male"); });
-  if (female) female.addEventListener("change", () => { if (female.checked) onSexChange("female"); });
+  root.addEventListener("change", (ev) => {
+    const t = ev.target;
+    if (!t || !(t instanceof HTMLElement)) return;
 
-  // Valor herencia
-  const estate = document.getElementById("wizard-estate-value");
-  if (estate){
-    estate.addEventListener("input", () => {
-      const v = estate.value;
-      setWizard(store, (w) => ({ ...w, estate_value: v }));
-    });
-    estate.addEventListener("change", () => {
-      const v = estate.value;
-      setWizard(store, (w) => ({ ...w, estate_value: v }));
-    });
-  }
+    if (t.matches('input[name="wizard-sex"]')){
+      const value = t.getAttribute("value") === "female" ? "female" : "male";
+      setWizard((w) => {
+        const spouseEnabled = !!w.spouse?.enabled;
+        return {
+          ...w,
+          deceased_sex: value,
+          spouse: {
+            ...w.spouse,
+            enabled: spouseEnabled,
+            wives_count: value === "male" && spouseEnabled ? (Number.isFinite(Number(w.spouse?.wives_count)) ? Math.max(0, Math.min(4, Math.trunc(Number(w.spouse.wives_count)))) : 0) : 0,
+            husband_present: value === "female" && spouseEnabled ? !!w.spouse?.husband_present : false,
+          },
+        };
+      });
+      return;
+    }
 
-  const currency = document.getElementById("wizard-currency");
-  if (currency){
-    currency.addEventListener("change", () => {
-      const v = currency.value || "MAD";
-      setWizard(store, (w) => ({ ...w, currency: v }));
-    });
-  }
+    if (t.id === "wizard-spouse-enabled"){
+      const enabled = !!t.checked;
+      setWizard((w) => {
+        const sex = w.deceased_sex;
+        const wivesCount = enabled && sex === "male"
+          ? (Number.isFinite(Number(w.spouse?.wives_count)) ? Math.max(0, Math.min(4, Math.trunc(Number(w.spouse.wives_count)))) : 0)
+          : 0;
+        const husbandPresent = enabled && sex === "female" ? !!w.spouse?.husband_present : false;
+        return {
+          ...w,
+          spouse: {
+            ...w.spouse,
+            enabled,
+            wives_count: wivesCount,
+            husband_present: husbandPresent,
+          },
+        };
+      });
+      return;
+    }
 
-  // Cónyuge (hombre)
-  const wives = document.getElementById("wizard-wives-count");
-  if (wives){
-    const commit = () => {
-      const v = clampInt(wives.value, 0, 4);
-      // BUGFIX: guardar también en input (no depender de blur)
-      if (String(wives.value) !== String(v)) wives.value = String(v);
-
-      setWizard(store, (w) => ({
+    if (t.id === "wizard-husband-present"){
+      const checked = !!t.checked;
+      setWizard((w) => ({
         ...w,
-        spouse: {
-          enabled: true,
-          wives_count: v,
-          husband_present: false,
-        },
+        spouse: { ...(w.spouse || {}), husband_present: checked },
       }));
-    };
-    wives.addEventListener("input", commit);
-    wives.addEventListener("change", commit);
-    wives.addEventListener("blur", commit);
-  }
+      return;
+    }
 
-  // Cónyuge (mujer)
-  const husband = document.getElementById("wizard-husband-present");
-  if (husband){
-    const commit = () => {
-      setWizard(store, (w) => ({
+    if (t.id === "wizard-father"){
+      const checked = !!t.checked;
+      setWizard((w) => ({
         ...w,
-        spouse: {
-          enabled: true,
-          wives_count: 0,
-          husband_present: Boolean(husband.checked),
-        },
+        parents: { ...(w.parents || {}), father: checked },
       }));
-    };
-    husband.addEventListener("change", commit);
-    husband.addEventListener("click", commit);
-  }
+      return;
+    }
 
-  // Padres
-  const pf = document.getElementById("wizard-parent-father");
-  if (pf){
-    const commit = () => {
-      setWizard(store, (w) => ({ ...w, parents: { ...(w.parents || {}), father: Boolean(pf.checked) } }));
-    };
-    pf.addEventListener("change", commit);
-    pf.addEventListener("click", commit);
-  }
-
-  const pm = document.getElementById("wizard-parent-mother");
-  if (pm){
-    const commit = () => {
-      setWizard(store, (w) => ({ ...w, parents: { ...(w.parents || {}), mother: Boolean(pm.checked) } }));
-    };
-    pm.addEventListener("change", commit);
-    pm.addEventListener("click", commit);
-  }
-
-  // Descendientes
-  const bindNum = (id, key) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const commit = () => {
-      const v = clampInt(el.value, 0, 99);
-      if (String(el.value) !== String(v)) el.value = String(v);
-      setWizard(store, (w) => ({
+    if (t.id === "wizard-mother"){
+      const checked = !!t.checked;
+      setWizard((w) => ({
         ...w,
-        descendants: { ...(w.descendants || {}), [key]: v },
+        parents: { ...(w.parents || {}), mother: checked },
       }));
+      return;
+    }
+  });
+
+  root.addEventListener("input", (ev) => {
+    const t = ev.target;
+    if (!t || !(t instanceof HTMLElement)) return;
+
+    if (t.id === "wizard-wives-count"){
+      const n = clampInput(t, 4);
+      setWizard((w) => ({
+        ...w,
+        spouse: { ...(w.spouse || {}), wives_count: n },
+      }));
+      return;
+    }
+
+    const map = {
+      "wizard-son": "son",
+      "wizard-daughter": "daughter",
+      "wizard-sons-son": "sons_son",
+      "wizard-sons-daughter": "sons_daughter",
     };
-    el.addEventListener("input", commit);
-    el.addEventListener("change", commit);
-    el.addEventListener("blur", commit);
-  };
 
-  bindNum("wizard-desc-son", "son");
-  bindNum("wizard-desc-daughter", "daughter");
-  bindNum("wizard-desc-sons-son", "sons_son");
-  bindNum("wizard-desc-sons-daughter", "sons_daughter");
+    if (t.id in map){
+      const key = map[t.id];
+      const n = clampInput(t, 50);
+      setWizard((w) => ({
+        ...w,
+        descendants: { ...(w.descendants || {}), [key]: n },
+      }));
+      return;
+    }
+  });
 
-  // Navegación
-  root.addEventListener("click", (e) => {
-    const btn = e.target instanceof Element ? e.target.closest("[data-wizard-action]") : null;
-    if (!btn) return;
-    const act = btn.getAttribute("data-wizard-action");
+  root.addEventListener("click", (ev) => {
+    const t = ev.target;
+    if (!t || !(t instanceof HTMLElement)) return;
 
-    if (act === "go-builder"){
-      // Commit extra para inputs visibles antes de navegar (evita pérdida por falta de blur)
-      if (wives) wives.dispatchEvent(new Event("change", { bubbles: true }));
-      if (estate) estate.dispatchEvent(new Event("change", { bubbles: true }));
+    if (t.id === "wizard-continue"){
+      if (t.hasAttribute("disabled")) return;
 
-      // Router por hash
-      window.location.hash = "#/builder";
+      // marcar importación pendiente: la acción explícita ocurre en el Builder (modal confirm)
+      store.setState((s) => ({
+        ...s,
+        builder: { ...(s.builder || {}), wizardPendingImport: true },
+      }));
+
+      location.hash = "#/builder";
     }
   });
 }

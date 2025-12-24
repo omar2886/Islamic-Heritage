@@ -23,6 +23,7 @@ const MODAL_TYPES = Object.freeze({
   ADD_CHILD: "add_child",
   ADD_SPOUSE: "add_spouse",
   SET_PARENT: "set_parent",
+  CONFIRM_IMPORT: "confirm_import",
 });
 
 function normStr(v){
@@ -395,6 +396,22 @@ function renderModal(tree, ui){
   const modal = ui.modal;
   if (!modal) return "";
 
+  if (modal.type === MODAL_TYPES.CONFIRM_IMPORT){
+    return modalBase({
+      title: "Importar desde wizard",
+      body: `
+        <div class="stack" style="gap:10px;">
+          <p style="margin:0;">Se importarán los datos del wizard al árbol. Esta acción puede crear y enlazar personas.</p>
+          <div class="row" style="justify-content:flex-end; gap:10px; flex-wrap:wrap;">
+            <button class="btn" type="button" data-tree-action="modal-cancel">Cancelar</button>
+            <button class="btn btn-primary" type="button" data-tree-action="confirm-import">Confirmar importación</button>
+          </div>
+        </div>
+      `,
+      error: modal.error || null,
+    });
+  }
+
   if (modal.type === MODAL_TYPES.CREATE_PERSON){
     return renderModalCreatePerson(modal.error);
   }
@@ -436,6 +453,10 @@ function openAddChildModal(store, parentId){
 function openSetParentModal(store, childId, parentKind){
   if (!childId || (parentKind !== "father" && parentKind !== "mother")) return;
   setModal(store, { type: MODAL_TYPES.SET_PARENT, childId, parentKind, error: null });
+}
+
+function openConfirmImportModal(store){
+  setModal(store, { type: MODAL_TYPES.CONFIRM_IMPORT, error: null });
 }
 
 function readModalValues(){
@@ -1320,6 +1341,15 @@ export function bindBuilderTreeEvents(store){
   const root = document.getElementById("page-builder");
   if (!root) return;
 
+  const pendingImport = Boolean(store.getState()?.builder?.wizardPendingImport);
+  if (pendingImport){
+    store.setState((s) => ({
+      ...s,
+      builder: { ...(s.builder || {}), wizardPendingImport: false },
+    }));
+    openConfirmImportModal(store);
+  }
+
   const toggleChildFields = () => {
     const isNew = document.getElementById("tree-child-mode-new")?.checked === true;
     document.querySelectorAll('[data-child-mode="new"]').forEach((el) => el.classList.toggle("is-hidden", !isNew));
@@ -1462,6 +1492,12 @@ export function bindBuilderTreeEvents(store){
 
     if (action === "modal-save-parent" && modalChildId && modalParentKind){
       commitSetParent(store, modalChildId, modalParentKind);
+      return;
+    }
+
+    if (action === "confirm-import"){
+      importWizardToTree(store);
+      closeTreeModal(store);
       return;
     }
 
