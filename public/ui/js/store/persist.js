@@ -8,7 +8,8 @@ export function loadState(){
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
     if (parsed.schemaVersion !== CURRENT_SCHEMA_VERSION) return null;
-    return parsed;
+    const { schemaVersion, ...rest } = parsed;
+    return rest;
   }catch(_e){
     return null;
   }
@@ -20,6 +21,11 @@ export function saveState(state){
   }catch(_e){
     // ignore
   }
+}
+
+export function persistState(state){
+  if (!state || typeof state !== "object") return;
+  saveState({ ...state, schemaVersion: CURRENT_SCHEMA_VERSION });
 }
 
 export function clearPersistedState(){
