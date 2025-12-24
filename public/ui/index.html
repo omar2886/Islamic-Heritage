@@ -1,16 +1,66 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Islamic Heritage</title>
-  <meta name="description" content="Islamic inheritance calculator UI" />
-  <link rel="stylesheet" href="./css/base.css" />
-  <link rel="stylesheet" href="./css/components.css" />
-  <link rel="stylesheet" href="./css/pages.css" />
+  <meta charset="UTF-8">
+  <title>Calculadora de Herencia Islámica</title>
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <div id="app" class="app-root"></div>
-  <script type="module" src="./js/app.js"></script>
+  <header>
+    <nav>
+      <a href="#wizard">Wizard</a>
+      <a href="#builder">Builder</a>
+      <a href="#results">Resultados</a>
+    </nav>
+  </header>
+  <main>
+    <section id="wizard">
+      <h2>Wizard</h2>
+      <form id="wizard-form">
+        <label>Género del causante:
+          <input type="radio" name="gender" value="M" checked> Hombre
+          <input type="radio" name="gender" value="F"> Mujer
+        </label>
+        <label><input type="checkbox" name="fatherAlive"> Padre vivo</label>
+        <label><input type="checkbox" name="motherAlive"> Madre viva</label>
+        <label id="husband-field" style="display:none;">
+          <input type="checkbox" name="husbandAlive"> Esposo presente
+        </label>
+        <label id="wives-field">
+          Número de esposas:
+          <input type="number" name="wivesCount" min="0" max="4" value="0">
+        </label>
+        <label>
+          Número de hijos (varones):
+          <input type="number" name="sonsCount" min="0" value="0">
+        </label>
+        <label>
+          Número de hijas:
+          <input type="number" name="daughtersCount" min="0" value="0">
+        </label>
+        <label>
+          Número de nietos:
+          <input type="number" name="grandsonsCount" min="0" value="0">
+        </label>
+        <label>
+          Número de nietas:
+          <input type="number" name="granddaughtersCount" min="0" value="0">
+        </label>
+        <button type="button" id="continue-to-builder">Continuar al builder</button>
+      </form>
+    </section>
+    <section id="builder" style="display:none;">
+      <h2>Builder</h2>
+      <div id="builder-content"></div>
+      <button id="calculate-btn">Calcular herencia</button>
+      <div id="builder-warnings"></div>
+    </section>
+    <section id="results" style="display:none;">
+      <h2>Resultados</h2>
+      <div id="results-content"></div>
+      <button id="back-to-builder">Volver al builder</button>
+    </section>
+  </main>
+  <script type="module" src="./main.js"></script>
 </body>
 </html>
