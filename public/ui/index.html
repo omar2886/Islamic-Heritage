@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Islamic Heritage UI (PR1 Smoke)</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div class="container">
+        <h1>Islamic Heritage UI</h1>
+        <p class="subtitle">PR1 Smoke: catálogo de roles + llamada a cálculo</p>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="card">
+        <h2>1) Conectividad</h2>
+        <div class="row">
+          <button id="btnLoadRoles" type="button">Cargar roles</button>
+          <button id="btnRunCalc" type="button">Ejecutar calc.php</button>
+          <label class="checkbox">
+            <input id="chkAutoPretty" type="checkbox" checked />
+            <span>Pretty JSON</span>
+          </label>
+        </div>
+        <p class="hint">
+          Endpoints relativos: <code>../api/roles.php</code> y <code>../api/calc.php</code>
+        </p>
+      </section>
+
+      <section class="grid">
+        <section class="card">
+          <h2>2) Payload JSON (editable)</h2>
+          <p class="hint">
+            Debe contener <code>heirs</code> como array de objetos <code>{role,count}</code>.
+            PR1 no envía flags de CLI.
+          </p>
+          <textarea id="txtPayload" spellcheck="false"></textarea>
+          <div class="row">
+            <button id="btnSetExample1" type="button">Ejemplo 1</button>
+            <button id="btnSetExample2" type="button">Ejemplo 2</button>
+            <button id="btnClear" type="button" class="secondary">Limpiar</button>
+          </div>
+          <div id="payloadError" class="error" hidden></div>
+        </section>
+
+        <section class="card">
+          <h2>3) Respuesta</h2>
+          <div class="monoBox">
+            <pre id="preResponse" class="mono"></pre>
+          </div>
+          <div id="netMeta" class="meta"></div>
+        </section>
+      </section>
+
+      <section class="card">
+        <h2>4) Catálogo de roles (debug)</h2>
+        <p class="hint">Se carga desde <code>../api/roles.php</code> y se cachea en memoria.</p>
+        <div class="monoBox">
+          <pre id="preRoles" class="mono"></pre>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container">
+        <small>PR1: cliente API + roles cache + smoke calc</small>
+      </div>
+    </footer>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
