@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Herencia Islámica - MVP</title>
+    <title>Islamic Inheritance - MVP</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -11,11 +11,18 @@
       <div class="container">
         <div class="headerRow">
           <div>
-            <h1>Herencia Islámica</h1>
-            <p class="subtitle">MVP UI: deceased-centric por conteos</p>
+            <h1 id="appTitle">Islamic Inheritance</h1>
+            <p id="appSubtitle" class="subtitle">MVP UI: deceased-centric by counts</p>
           </div>
           <div class="row">
-            <a href="./selftest/">Selftest</a>
+            <div class="row langBox">
+              <label id="langLabel" for="langSelect">Language</label>
+              <select id="langSelect" aria-label="Language">
+                <option value="en">English</option>
+                <option value="es">Español</option>
+              </select>
+            </div>
+            <a id="selftestLink" href="./selftest/">Selftest</a>
           </div>
         </div>
       </div>
@@ -24,31 +31,31 @@
     <main class="container">
       <section class="grid">
         <section class="card">
-          <h2>Entrada</h2>
+          <h2 id="inputTitle">Input</h2>
           <div id="mountForm"></div>
           <div class="rowEnd">
             <button id="btnReset" type="button" class="secondary">Reset</button>
-            <button id="btnCalc" type="button">Calcular</button>
+            <button id="btnCalc" type="button">Calculate</button>
           </div>
           <div id="bannerArea"></div>
-          <small class="hint">La UI valida lo básico; el core decide bloqueos y normalizaciones.</small>
+          <small id="inputHint" class="hint">The UI validates basics; the calculator applies blocks and normalizations.</small>
         </section>
 
         <section class="card">
-          <h2>Resultado</h2>
+          <h2 id="resultTitle">Results</h2>
           <div id="mountResult"></div>
         </section>
       </section>
 
       <details id="debugPanel">
-        <summary>Debug</summary>
+        <summary id="debugSummary">Debug</summary>
         <div id="mountDebug"></div>
       </details>
     </main>
 
     <footer class="footer">
       <div class="container">
-        <small>MVP UI</small>
+        <small id="footerText">MVP UI</small>
       </div>
     </footer>
 

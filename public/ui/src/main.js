@@ -7,6 +7,7 @@ import { buildPayload } from "./domain/adapter.js";
 import { renderForm } from "./ui/viewForm.js";
 import { renderResult } from "./ui/viewResults.js";
 import { renderDebug } from "./ui/viewDebug.js";
+import { initI18n, setLang, getLang, t } from "./ui/i18n.js";
 
 const mountForm = $("#mountForm");
 const mountResult = $("#mountResult");
@@ -14,6 +15,7 @@ const mountDebug = $("#mountDebug");
 const btnCalc = $("#btnCalc");
 const btnReset = $("#btnReset");
 const bannerArea = $("#bannerArea");
+const langSelect = $("#langSelect");
 
 const api = new ApiClient({
   rolesUrl: "../api/roles.php",
@@ -21,6 +23,32 @@ const api = new ApiClient({
 });
 
 let state = sanitizeState(createInitialState());
+
+function applyStaticText() {
+  const setText = (id, text) => {
+    const n = document.getElementById(id);
+    if (n) n.textContent = text;
+  };
+
+  setText("appTitle", t("app.title"));
+  setText("appSubtitle", t("app.subtitle"));
+  setText("langLabel", t("nav.language"));
+  setText("selftestLink", t("nav.selftest"));
+  setText("inputTitle", t("card.input"));
+  setText("resultTitle", t("card.results"));
+  setText("debugSummary", t("card.debug"));
+  setText("footerText", t("footer.mvp"));
+  setText("inputHint", t("hint.uiAuthority"));
+
+  if (btnReset) btnReset.textContent = t("button.reset");
+  if (btnCalc) btnCalc.textContent = t("button.calculate");
+  document.title = `${t("app.title")} - MVP`;
+
+  if (langSelect) {
+    const current = getLang();
+    if (langSelect.value !== current) langSelect.value = current;
+  }
+}
 
 function cssEscapeCompat(s) {
   if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(s);
@@ -129,6 +157,8 @@ function setState(patch, opts = { preserveFocus: true }) {
 
 const actions = {
   setSex: (v) => setState({ decedent: { ...state.decedent, sex: v } }),
+  setFiqhSchool: (v) =>
+    setState({ ui: { ...state.ui, fiqhSchool: String(v || "maliki") } }, { preserveFocus: false }),
   setHasDeceasedSon: (v) => setState({ uiOnly: { ...state.uiOnly, hasDeceasedSon: v } }),
   setHeirBool: (roleId, v) => setState({ heirs: { ...state.heirs, [roleId]: !!v } }),
   setHeirCount: (roleId, v) => {
@@ -160,20 +190,28 @@ function renderBanners(errors, warnings) {
   const banners = [];
 
   if (errors && errors.length) {
-    const lines = errors.map((e) => `${e.path}: ${e.msg}`);
+    const lines = errors.map((e) => {
+      const msg = e && e.msgKey ? t(e.msgKey, e.params || {}) : (e && e.msg ? e.msg : String(e));
+      const where = e && e.path ? `${e.path}: ` : "";
+      return where + msg;
+    });
     banners.push(
       el("div", { class: "banner error" }, [
-        el("div", { text: "Errores:" }),
+        el("div", { text: t("banner.errors") }),
         el("pre", { class: "mono", text: lines.join("\n") })
       ])
     );
   }
 
   if (warnings && warnings.length) {
-    const lines = warnings.map((w) => `${w.path}: ${w.msg}`);
+    const lines = warnings.map((w) => {
+      const msg = w && w.msgKey ? t(w.msgKey, w.params || {}) : (w && w.msg ? w.msg : String(w));
+      const where = w && w.path ? `${w.path}: ` : "";
+      return where + msg;
+    });
     banners.push(
       el("div", { class: "banner warn" }, [
-        el("div", { text: "Avisos:" }),
+        el("div", { text: t("banner.warnings") }),
         el("pre", { class: "mono", text: lines.join("\n") })
       ])
     );
@@ -247,6 +285,13 @@ function buildSnapshot(adapterBuiltPayload, fetchSentPayload, coreNormalizedInpu
 }
 
 async function onCalc() {
+  // UX: bring results card into view.
+  try {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (_) {
+    window.scrollTo(0, 0);
+  }
+
   renderBanners([], []);
   setState({ runtime: { isLoading: true, lastError: null } }, { preserveFocus: false });
 
@@ -290,8 +335,7 @@ async function onCalc() {
       { preserveFocus: false }
     );
 
-    renderResult(mountResult, state);
-} catch (e) {
+  } catch (e) {
     const msg = e && e.message ? e.message : String(e);
     setState({ runtime: { isLoading: false, lastError: msg } }, { preserveFocus: false });
     renderBanners([{ path: "calc", msg: e && e.message ? e.message : String(e) }], []);
@@ -308,12 +352,8 @@ function render(focusPos) {
   const roles = rolesCatalog.getRolesSync();
 
   renderForm(mountForm, state, actions);
+  renderResult(mountResult, state);
   renderDebug(mountDebug, state, roles, actions);
-
-  // Keep result if present
-  if (!state.runtime.lastResponse) {
-    setChildren(mountResult, [el("div", { class: "hint", text: "Sin cálculo todavía." })]);
-  }
 
   // errors/warnings live update for form edits
   const errors = validateHard(state, roles || []);
@@ -324,6 +364,17 @@ function render(focusPos) {
 }
 
 // Wiring
+initI18n();
+applyStaticText();
+
+if (langSelect) {
+  langSelect.addEventListener("change", (e) => {
+    setLang(e.target.value);
+    applyStaticText();
+    render(null);
+  });
+}
+
 btnCalc.addEventListener("click", onCalc);
 btnReset.addEventListener("click", onReset);
 

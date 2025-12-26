@@ -12,15 +12,27 @@ export function validateHard(state) {
   const errors = [];
 
   if (state.decedent.sex !== "male" && state.decedent.sex !== "female") {
-    errors.push({ path: "decedent.sex", msg: "Sexo del causante inválido." });
+    errors.push({
+      path: "decedent.sex",
+      msgKey: "err.invalidDecedentSex",
+      msg: "Sexo del causante inválido."
+    });
   }
 
   // Hard spouse-sex constraints are enforced in sanitizeState, but still validate UI consistency.
   if (state.decedent.sex === "male" && state.heirs.husband) {
-    errors.push({ path: "heirs.husband", msg: "Para causante masculino, no procede esposo." });
+    errors.push({
+      path: "heirs.husband",
+      msgKey: "err.maleNoHusband",
+      msg: "Para causante masculino, no procede esposo."
+    });
   }
   if (state.decedent.sex === "female" && Number(state.heirs.wife) > 0) {
-    errors.push({ path: "heirs.wife", msg: "Para causante femenino, no proceden esposas." });
+    errors.push({
+      path: "heirs.wife",
+      msgKey: "err.femaleNoWives",
+      msg: "Para causante femenino, no proceden esposas."
+    });
   }
 
 
@@ -36,18 +48,25 @@ export function validateHard(state) {
     if (n > 0) {
       errors.push({
         path: `heirs.${roleId}`,
-        msg: `El core ignora el role '${roleId}'. Ponlo a 0 para calcular.`
+        msgKey: "err.rejectedRoleUsed",
+        params: { role: roleId },
+        msg: `El cálculo ignora el role '${roleId}'. Ponlo a 0 para calcular.`
       });
     }
   }
 
   if (!hasAnyHeirInput(state)) {
-    errors.push({ path: "heirs", msg: "Debes indicar al menos un heredero." });
+    errors.push({
+      path: "heirs",
+      msgKey: "err.needAtLeastOneHeir",
+      msg: "Debes indicar al menos un heredero."
+    });
   }
 
   if (hasGrandchildrenViaSon(state) && state.uiOnly.hasDeceasedSon !== true) {
     errors.push({
       path: "uiOnly.hasDeceasedSon",
+      msgKey: "err.needDeceasedSon",
       msg: "Si indicas nietos via hijo, marca que existe al menos un hijo fallecido."
     });
   }
@@ -56,10 +75,18 @@ export function validateHard(state) {
   const c = String(state.estate.currency || "").trim();
 
   if (v !== "" && !isNumericStr(v)) {
-    errors.push({ path: "estate.value", msg: "Valor de herencia inválido (usa números)." });
+    errors.push({
+      path: "estate.value",
+      msgKey: "err.invalidEstateValue",
+      msg: "Valor de herencia inválido (usa números)."
+    });
   }
   if (c !== "" && !isCurrency3(c)) {
-    errors.push({ path: "estate.currency", msg: "Moneda inválida (3 letras mayúsculas)." });
+    errors.push({
+      path: "estate.currency",
+      msgKey: "err.invalidCurrency",
+      msg: "Moneda inválida (3 letras mayúsculas)."
+    });
   }
 
   return { ok: errors.length === 0, errors };
@@ -74,31 +101,36 @@ export function validateSoft(state) {
 
   if (state.heirs.father && siblings > 0) {
     warnings.push({
-      msg: `Padre presente: normalmente excluye hermanos. El core decidirá. (father=true y siblings>0)`
+      msgKey: "warn.fatherWithSiblings",
+      msg: `Padre presente: normalmente excluye hermanos. El cálculo decidirá. (father=true y siblings>0)`
     });
   }
 
   if ((Number(state.heirs.son) > 0 || Number(state.heirs.sons_son) > 0) && siblings > 0) {
     warnings.push({
-      msg: `Descendientes varones presentes: normalmente excluyen hermanos. El core decidirá. (descendantsMale>0 y siblings>0)`
+      msgKey: "warn.maleDescendantsWithSiblings",
+      msg: `Descendientes varones presentes: normalmente excluyen hermanos. El cálculo decidirá. (descendantsMale>0 y siblings>0)`
     });
   }
 
   if (descendants > 0 && uncles > 0) {
     warnings.push({
-      msg: `Descendientes presentes: normalmente excluyen colaterales agnáticos (tíos y rama). El core decidirá. (descendants>0 y uncles>0)`
+      msgKey: "warn.descendantsWithUncles",
+      msg: `Descendientes presentes: normalmente excluyen colaterales agnáticos (tíos y rama). El cálculo decidirá. (descendants>0 y uncles>0)`
     });
   }
 
   if (state.heirs.father && uncles > 0) {
     warnings.push({
-      msg: `Padre presente: normalmente excluye colaterales agnáticos (tíos y rama). El core decidirá. (father=true y uncles>0)`
+      msgKey: "warn.fatherWithUncles",
+      msg: `Padre presente: normalmente excluye colaterales agnáticos (tíos y rama). El cálculo decidirá. (father=true y uncles>0)`
     });
   }
 
   if (Number(state.heirs.son) > 0 && hasGrandchildrenViaSon(state)) {
     warnings.push({
-      msg: `Hijos varones presentes: normalmente bloquean nietos via hijo. El core decidirá. (son>0 y grandchildrenViaSon>0)`
+      msgKey: "warn.sonsWithGrandchildren",
+      msg: `Hijos varones presentes: normalmente bloquean nietos via hijo. El cálculo decidirá. (son>0 y grandchildrenViaSon>0)`
     });
   }
 

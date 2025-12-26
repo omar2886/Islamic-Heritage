@@ -19,7 +19,7 @@ function renderSnapshot(snapshot, pretty) {
     kv("Meta", meta, pretty),
     kv("Adapter built payload", snapshot.adapterBuiltPayload, pretty),
     kv("Fetch sent payload", snapshot.fetchSentPayload, pretty),
-    kv("Core normalized input", snapshot.coreNormalizedInput, pretty),
+    kv("Calculator normalized input", snapshot.coreNormalizedInput, pretty),
     diff ? kv("Diff", diff, pretty) : null
   ]);
 }

@@ -70,6 +70,7 @@ export function createInitialState() {
 
     ui: {
       prettyJson: false,
+      fiqhSchool: "maliki",
       sectionsOpen: buildDefaultSectionsOpen()
     },
 
@@ -118,6 +119,8 @@ export function sanitizeState(state) {
 
   // ui
   next.ui.prettyJson = Boolean(next.ui.prettyJson);
+  const school = String(next.ui.fiqhSchool || "maliki").toLowerCase();
+  next.ui.fiqhSchool = school === "hanafi" || school === "shafii" || school === "hanbali" ? school : "maliki";
   if (!next.ui.sectionsOpen || typeof next.ui.sectionsOpen !== "object") {
     next.ui.sectionsOpen = buildDefaultSectionsOpen();
   }

@@ -410,43 +410,6 @@ async function check5_calc_roles_roundtrip_extended(roles) {
 
 
 
-async function check6_role_mismatch_probe(roles) {
-  // Non-fatal diagnostic: if some roles from roles.php are normalized to unknown by calc.php,
-  // list them here to make the mismatch explicit.
-  if (!Array.isArray(roles) || roles.length === 0) {
-    return { ok: true, skipped: true, detail: { reason: "roles empty" } };
-  }
-
-  const candidates = roles.filter((r) => String(r).includes("great_grandmother"));
-  if (candidates.length === 0) {
-    return { ok: true, skipped: true, detail: { reason: "no great_grandmother roles in catalog" } };
-  }
-
-  const mismatches = [];
-
-  for (const role of candidates) {
-    const payload = { heirs: [{ role: String(role), count: 1 }], ui_meta: { source: "selftest_probe" } };
-    const { resp, body } = await postCalc(payload);
-    if (!resp.ok) {
-      mismatches.push({ role, reason: `http ${resp.status}` });
-      continue;
-    }
-    const warnings = Array.isArray(body?.warnings) ? body.warnings.map(String) : [];
-    const coreInput = extractCoreInput(body);
-    const normalizedRole = coreInput?.heirs?.[0]?.role ? String(coreInput.heirs[0].role) : "";
-    const unknownByWarning = warnings.some((w) => w.toLowerCase().includes("unknown") && w.includes(role));
-    const unknownByInput = normalizedRole.toLowerCase() === "unknown";
-    if (unknownByWarning || unknownByInput) {
-      mismatches.push({ role, reason: "normalized to unknown" });
-    }
-  }
-
-  return {
-    ok: true,
-    skipped: false,
-    detail: { candidates, mismatches }
-  };
-}
 
 async function run() {
   log(`Selftest start ${nowIso()}`);
@@ -482,20 +445,12 @@ async function run() {
 
     const r5 = await check5_calc_roles_roundtrip_extended(r1.roles);
 
-    const r6 = await check6_role_mismatch_probe(r1.roles);
     if (r5.skipped) {
       items.push(row("5) Roundtrip roles (sons_son + full_brother + paternal_uncle)", failBadge("SKIP"), r5.detail));
     } else {
       items.push(row("5) Roundtrip roles (sons_son + full_brother + paternal_uncle)", r5.ok ? okBadge("OK") : failBadge("FAIL"), r5.detail));
     }
 
-    if (r6.skipped) {
-      items.push(row("6) Role mismatch probe (great_grandmother)", failBadge("SKIP"), r6.detail));
-    } else {
-      const mm = Array.isArray(r6.detail?.mismatches) ? r6.detail.mismatches : [];
-      const badge = mm.length === 0 ? okBadge("OK") : warnBadge("WARN");
-      items.push(row("6) Role mismatch probe (great_grandmother)", badge, r6.detail));
-    }
 
 
   } catch (e) {

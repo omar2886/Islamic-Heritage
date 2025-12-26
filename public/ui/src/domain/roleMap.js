@@ -48,14 +48,12 @@ export const UI_SECTIONS = [
   },
   {
     id: "grandparents",
-    title: "Abuelos y bisabuelas",
+    title: "Abuelos y abuelas",
     defaultOpen: false,
     roles: [
       "paternal_grandfather",
       "paternal_grandmother",
       "maternal_grandmother",
-      "paternal_great_grandmother",
-      "maternal_great_grandmother"
     ]
   },
   {
@@ -101,8 +99,6 @@ export const ROLE_META = {
   paternal_grandmother: { id: "paternal_grandmother", label: "Abuela paterna", input: "bool" },
   maternal_grandmother: { id: "maternal_grandmother", label: "Abuela materna", input: "bool" },
 
-  paternal_great_grandmother: { id: "paternal_great_grandmother", label: "Bisabuela paterna", input: "bool" },
-  maternal_great_grandmother: { id: "maternal_great_grandmother", label: "Bisabuela materna", input: "bool" },
 
   paternal_uncle: { id: "paternal_uncle", label: "Tíos paternos", input: "count", min: 0, max: 99 },
   consanguine_paternal_uncle: { id: "consanguine_paternal_uncle", label: "Tíos paternos consanguíneos (por padre)", input: "count", min: 0, max: 99 },
