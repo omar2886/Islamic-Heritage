@@ -86,6 +86,9 @@ const DICT_EN = {
 
   "form.hasDeceasedSon": "Grandchildren through son: there is at least one deceased son",
   "form.hasDeceasedSonHint": "Required only if you enter grandchildren through a son.",
+  "form.grandchildrenLineageHint": "Grandchildren here are only through a son (paternal line). Grandchildren through daughters are not modeled in this core.",
+  "form.grandchildrenBlockedHint": "Note: If there are living sons, the core will block grandchildren through a son (hajb). This UI does not block it, it only warns.",
+  "form.grandparentsHint": "Note: This core includes paternal grandfather and grandmothers. Maternal grandfather is not supported as a role.",
 
   "roleCompat.loading": "Checking role compatibility with calc.php...",
   "roleCompat.error": "Role compatibility: error:",
@@ -163,7 +166,7 @@ const DICT_EN = {
 
   "results.interpretation": "How to interpret the table:",
   "results.help.groupTotal": "Group share: the fraction for the whole group.",
-  "results.help.each": "Each: per-person share when the calculation returns individual shares.",
+  "results.help.each": "Each: per-person share when it can be determined (some groups split equally, others depend on rules).",
   "results.help.origin": "Origin: FARD (fixed share) or ASABA (residual distribution).",
 
   "results.section.fixed": "Fixed shares (fard)",
@@ -179,6 +182,7 @@ const DICT_EN = {
   "results.notes": "Notes:",
   "results.warnings": "Warnings:",
   "results.blocksApplied": "Blocks applied:",
+  "results.blocks.affects": "affects:",
   "results.role": "Role",
   "results.share": "Share",
   "results.count": "Count",
@@ -192,7 +196,32 @@ const DICT_EN = {
   "results.blocks": "Blocks",
   "results.warnings": "Warnings",
   "results.technical": "Technical details (JSON)",
-  "results.responseNotOk": "Response ok=false"
+  "results.responseNotOk": "Response ok=false",
+
+  // Debug (UI)
+  "debug.noSnapshot": "(no snapshot yet)",
+  "debug.unknown": "(unknown)",
+  "debug.prettyJson": "Pretty JSON",
+  "debug.section.snapshot": "Snapshot",
+  "debug.section.roles": "Roles (roles.php)",
+  "debug.section.roleProbe": "Role compatibility",
+  "debug.section.payload": "Payload (last built)",
+  "debug.section.response": "Response (last)",
+  "debug.snapshot.meta": "Meta",
+  "debug.snapshot.built": "Built payload (adapter)",
+  "debug.snapshot.sent": "Sent payload (fetch)",
+  "debug.snapshot.normalized": "Normalized input (calculator)",
+  "debug.snapshot.diff": "Diff",
+  "debug.roleProbe.title": "Role compatibility (roles.php vs calc.php)",
+  "debug.roleProbe.probedAt": "probedAt",
+  "debug.roleProbe.accepted": "accepted",
+  "debug.roleProbe.rejected": "rejected",
+  "debug.roleProbe.noMismatches": "No mismatches detected.",
+  "debug.roleProbe.loading": "Role probe in progress...",
+  "debug.roleProbe.error": "Role probe error:",
+  "debug.roleProbe.none": "Role probe: not executed yet.",
+  "debug.roleProbe.button": "Re-run role probe"
+
 };
 
 const DICT_ES = {
@@ -281,6 +310,9 @@ const DICT_ES = {
 
   "form.hasDeceasedSon": "Nietos vía hijo: existe al menos un hijo varón fallecido",
   "form.hasDeceasedSonHint": "Requerido solo si indicas nietos vía hijo.",
+  "form.grandchildrenLineageHint": "Los nietos de esta sección son solo por línea del hijo varón del causante (nietos vía hijo). El core no modela nietos por hija.",
+  "form.grandchildrenBlockedHint": "Aviso: si hay hijos varones vivos, el core bloqueará los nietos vía hijo (hajb). La UI no lo bloquea, solo avisa.",
+  "form.grandparentsHint": "Nota: este core incluye abuelo paterno y abuelas. No existe rol de abuelo materno.",
 
   "roleCompat.loading": "Verificando compatibilidad de roles con calc.php...",
   "roleCompat.error": "Compatibilidad roles: error:",
@@ -358,7 +390,7 @@ const DICT_ES = {
 
   "results.interpretation": "Cómo interpretar la tabla:",
   "results.help.groupTotal": "Fracción (grupo): fracción total para el grupo.",
-  "results.help.each": "Cada uno: fracción por persona cuando el cálculo devuelve reparto individual.",
+  "results.help.each": "Cada uno: fracción por persona cuando se puede determinar (algunos grupos se reparten igual, otros dependen de las reglas).",
   "results.help.origin": "Origen: FARD (cuota fija) o ASABA (reparto del resto).",
 
   "results.section.fixed": "Repartos fijos (fard)",
@@ -374,6 +406,7 @@ const DICT_ES = {
   "results.notes": "Notas:",
   "results.warnings": "Avisos:",
   "results.blocksApplied": "Bloqueos aplicados:",
+  "results.blocks.affects": "afecta a:",
   "results.role": "Role",
   "results.share": "Fracción",
   "results.count": "Cantidad",
@@ -387,7 +420,32 @@ const DICT_ES = {
   "results.blocks": "Bloqueos",
   "results.warnings": "Avisos",
   "results.technical": "Detalles técnicos (JSON)",
-  "results.responseNotOk": "Respuesta ok=false"
+  "results.responseNotOk": "Respuesta ok=false",
+
+  // Debug (UI)
+  "debug.noSnapshot": "(sin snapshot todavía)",
+  "debug.unknown": "(desconocido)",
+  "debug.prettyJson": "JSON bonito",
+  "debug.section.snapshot": "Snapshot",
+  "debug.section.roles": "Roles (roles.php)",
+  "debug.section.roleProbe": "Compatibilidad de roles",
+  "debug.section.payload": "Payload (último construido)",
+  "debug.section.response": "Respuesta (última)",
+  "debug.snapshot.meta": "Meta",
+  "debug.snapshot.built": "Payload construido (adapter)",
+  "debug.snapshot.sent": "Payload enviado (fetch)",
+  "debug.snapshot.normalized": "Entrada normalizada (cálculo)",
+  "debug.snapshot.diff": "Diff",
+  "debug.roleProbe.title": "Compatibilidad de roles (roles.php vs calc.php)",
+  "debug.roleProbe.probedAt": "probedAt",
+  "debug.roleProbe.accepted": "aceptados",
+  "debug.roleProbe.rejected": "rechazados",
+  "debug.roleProbe.noMismatches": "No se detectan discrepancias.",
+  "debug.roleProbe.loading": "Comprobando compatibilidad de roles...",
+  "debug.roleProbe.error": "Error en compatibilidad de roles:",
+  "debug.roleProbe.none": "Compatibilidad de roles: todavía no ejecutada.",
+  "debug.roleProbe.button": "Recomprobar roles"
+
 };
 
 const DICTS = { en: DICT_EN, es: DICT_ES };

@@ -291,6 +291,13 @@ export function renderResult(mount, state) {
   const warnings = Array.isArray(output.warnings) ? output.warnings : [];
   const blocksApplied = Array.isArray(output?.audit?.blocks_applied) ? output.audit.blocks_applied : [];
   if (warnings.length || blocksApplied.length) {
+    const renderBlock = (b) => {
+      const reason = b && b.reason != null ? String(b.reason) : "";
+      const targets = Array.isArray(b?.targets) ? b.targets.map(String) : [];
+      const tail = targets.length ? ` (${t("results.blocks.affects")} ${targets.join(", ")})` : "";
+      return el("li", { text: `${reason}${tail}` });
+    };
+
     blocks.push(
       section(
         t("results.section.blocks"),
@@ -304,15 +311,7 @@ export function renderResult(mount, state) {
           blocksApplied.length
             ? el("div", {}, [
                 el("div", { class: "hint", text: t("results.blocksApplied") }),
-                el(
-                  "ul",
-                  {},
-                  blocksApplied.map((b) =>
-                    el("li", {
-                      text: `${b.rule_id}: ${b.reason} -> ${Array.isArray(b.targets) ? b.targets.join(", ") : ""}`
-                    })
-                  )
-                )
+                el("ul", {}, blocksApplied.map(renderBlock))
               ])
             : null
         ].filter(Boolean),

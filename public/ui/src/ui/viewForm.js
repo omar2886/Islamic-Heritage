@@ -60,6 +60,22 @@ function renderSection(state, actions, section) {
   const fields = section.roles.map((r) => renderRoleField(state, actions, r));
   const isOpen = !!state.ui.sectionsOpen?.[section.id];
 
+  // Extra context hints for a couple of sections where users commonly get confused.
+  const extraHints = [];
+
+  if (section.id === "grandparents") {
+    extraHints.push(el("div", { class: "hint", text: t("form.grandparentsHint") }));
+  }
+
+  if (section.id === "grandchildren") {
+    extraHints.push(el("div", { class: "hint", text: t("form.grandchildrenLineageHint") }));
+    const grandTotal = Number(state.heirs.sons_son || 0) + Number(state.heirs.sons_daughter || 0);
+    const sonsCount = Number(state.heirs.son || 0);
+    if (grandTotal > 0 && sonsCount > 0) {
+      extraHints.push(el("div", { class: "banner warn", text: t("form.grandchildrenBlockedHint") }));
+    }
+  }
+
   const sectionTitleKey = `section.${section.id}`;
   const sectionTitle = t(sectionTitleKey) === sectionTitleKey ? section.title : t(sectionTitleKey);
 
@@ -75,7 +91,7 @@ function renderSection(state, actions, section) {
         actions.setSectionOpen(section.id, e.currentTarget.open);
       }
     },
-    [el("summary", { text: sectionTitle }), el("div", {}, fields)]
+    [el("summary", { text: sectionTitle }), el("div", {}, [...extraHints, ...fields])]
   );
 }
 
