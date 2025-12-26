@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Selftest UI</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div class="container">
+        <div class="headerRow">
+          <div>
+            <h1>Selftest</h1>
+            <p class="subtitle">Verificación reproducible del contrato backend</p>
+          </div>
+          <div class="row">
+            <a href="../">Volver</a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="card">
+        <h2>Checks</h2>
+        <p class="hint">Se ejecutan automáticamente al cargar la página.</p>
+        <div id="mount"></div>
+      </section>
+
+      <details open>
+        <summary>Detalle copiable</summary>
+        <div class="monoBox">
+          <pre id="log" class="mono"></pre>
+        </div>
+      </details>
+    </main>
+
+    <script type="module" src="./selftest.js"></script>
+  </body>
+</html>

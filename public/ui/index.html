@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Herencia Islámica - MVP</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div class="container">
+        <div class="headerRow">
+          <div>
+            <h1>Herencia Islámica</h1>
+            <p class="subtitle">MVP UI: deceased-centric por conteos</p>
+          </div>
+          <div class="row">
+            <a href="./selftest/">Selftest</a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="grid">
+        <section class="card">
+          <h2>Entrada</h2>
+          <div id="mountForm"></div>
+          <div class="rowEnd">
+            <button id="btnReset" type="button" class="secondary">Reset</button>
+            <button id="btnCalc" type="button">Calcular</button>
+          </div>
+          <div id="bannerArea"></div>
+          <small class="hint">La UI valida lo básico; el core decide bloqueos y normalizaciones.</small>
+        </section>
+
+        <section class="card">
+          <h2>Resultado</h2>
+          <div id="mountResult"></div>
+        </section>
+      </section>
+
+      <details id="debugPanel">
+        <summary>Debug</summary>
+        <div id="mountDebug"></div>
+      </details>
+    </main>
+
+    <footer class="footer">
+      <div class="container">
+        <small>MVP UI</small>
+      </div>
+    </footer>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
