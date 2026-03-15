@@ -1,0 +1,26 @@
+{
+  "case_id": "M01_amounts_father_two_daughters_10000",
+  "input": {
+    "heirs": [
+      { "role": "father", "count": 1 },
+      { "role": "daughter", "count": 2 }
+    ],
+    "estate_value": 10000.00
+  },
+  "expected": {
+    "group_shares": {
+      "father": "1/3",
+      "daughters": "2/3"
+    },
+    "individual_shares": {
+      "daughters": ["1/3","1/3"]
+    },
+    "amounts_by_role": {
+      "father": "3333.34",
+      "daughters": "6666.66"
+    },
+    "currency": "USD",
+    "sum_final": "1/1",
+    "invariants": { "sum_to_one": true }
+  }
+}

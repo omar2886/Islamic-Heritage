@@ -1,0 +1,46 @@
+{
+  "case_id": "Z15_yaml_schema_ok",
+  "input": {
+    "heirs": [
+      {"role": "husband", "count": 1},
+      {"role": "daughter", "count": 1}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "husband": "1/4",
+      "daughters": {
+        "group": "3/4",
+        "individuals": ["3/4"]
+      }
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "spouses_excluded_from_radd": true,
+      "awl_preserves_ratios": true,
+      "no_blocked_receives_share": true,
+      "collective_matches_individuals": true,
+      "deterministic": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "husband": "1/4",
+      "daughters": "3/4"
+    },
+    "individual_shares": {
+      "husband": ["1/4"],
+      "daughters": ["3/4"]
+    },
+    "sum_fixed": "3/4",
+    "sum_fixed_normalized": "1/1",
+    "sum_final": "1/1",
+    "residual_before_asaba": "1/4",
+    "residual_consumed": "0/1",
+    "traces": [],
+    "meta": {
+      "rulebook_sha256": "615c27cfabe1465f7a12e49ffac42e401dd61157e6d34ee966088c95be3432fa",
+      "schema_version": "1"
+    }
+  }
+}

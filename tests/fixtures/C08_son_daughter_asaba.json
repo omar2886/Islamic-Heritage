@@ -1,0 +1,51 @@
+{
+  "case_id": "C08_son_daughter_asaba",
+  "input": {
+    "heirs": [
+      {"role": "son", "count": 1},
+      {"role": "daughter", "count": 1}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "son": {
+        "group": "2/3",
+        "individuals": ["2/3"]
+      },
+      "daughter": {
+        "group": "1/3",
+        "individuals": ["1/3"]
+      }
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "spouses_excluded_from_radd": true,
+      "awl_preserves_ratios": true,
+      "no_blocked_receives_share": true,
+      "collective_matches_individuals": true,
+      "deterministic": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "daughter": "1/3",
+      "son": "2/3"
+    },
+    "individual_shares": {
+      "daughter": ["1/3"],
+      "son": ["2/3"]
+    },
+    "sum_fixed": "0/1",
+    "sum_fixed_normalized": "0/1",
+    "sum_final": "1/1",
+    "residual_before_asaba": "1/1",
+    "residual_consumed": "1/1",
+    "traces": [
+      {
+        "rule_id": "asaba.precedence.children",
+        "targets": ["son", "daughter"],
+        "reason": "Son present; children absorb residual as 'asabah with 2:1 weighting."
+      }
+    ]
+  }
+}

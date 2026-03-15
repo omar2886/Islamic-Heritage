@@ -1,0 +1,37 @@
+{
+  "case_id": "Z05_negative_count_error",
+  "input": {
+    "heirs": [
+      {"role": "wife", "count": -1},
+      {"role": "daughter", "count": "1"}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "daughter": {
+        "group": "1/1",
+        "individuals": ["1/1"]
+      }
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "collective_matches_individuals": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "daughter": "1/1"
+    },
+    "individual_shares": {
+      "daughter": ["1/1"]
+    },
+    "errors": [
+      "count for role 'wives' must be a non-negative integer (received: -1)"
+    ],
+    "input_heirs": [
+      {"role": "daughter", "count": 1}
+    ],
+    "input_roles": ["daughter"],
+    "strict_exit_code": 2
+  }
+}

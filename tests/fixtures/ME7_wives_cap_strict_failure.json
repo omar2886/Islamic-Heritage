@@ -1,0 +1,24 @@
+{
+  "case_id": "ME7_wives_cap_strict_failure",
+  "input": {
+    "cli_flags": ["--strict"],
+    "heirs": [
+      {"role": "wives", "count": 5}
+    ]
+  },
+  "expected_cli": {
+    "group_shares": {
+      "wives": "1/4"
+    },
+    "warnings_contains": [
+      "merged 'wife' and 'wives' entries",
+      "normalized wives group",
+      "wives count > 4"
+    ],
+    "sum_final": "1/4",
+    "meta": {
+      "residual_policy": "bayt_al_mal"
+    },
+    "strict_exit_code": 2
+  }
+}

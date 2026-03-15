@@ -1,0 +1,41 @@
+{
+  "case_id": "Z04_merge_duplicates",
+  "input": {
+    "heirs": [
+      {"role": "wife", "count": 2},
+      {"role": "WIFE", "count": "1"},
+      {"role": "daughter", "count": 1}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "wives": {
+        "group": "1/8",
+        "individuals": ["1/24", "1/24", "1/24"]
+      },
+      "daughter": {
+        "group": "7/8",
+        "individuals": ["7/8"]
+      }
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "collective_matches_individuals": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "daughter": "7/8",
+      "wives": "1/8"
+    },
+    "individual_shares": {
+      "daughter": ["7/8"],
+      "wives": ["1/24", "1/24", "1/24"]
+    },
+    "input_heirs": [
+      {"role": "wives", "count": 3},
+      {"role": "daughter", "count": 1}
+    ],
+    "input_roles": ["wives", "daughter"]
+  }
+}

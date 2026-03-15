@@ -1,0 +1,20 @@
+{
+  "case_id": "UT220_uterines_blocked_by_son",
+  "input": {
+    "heirs": [
+      { "role": "son", "count": 1 },
+      { "role": "uterine_brother", "count": 1 }
+    ]
+  },
+  "expected_cli": {
+    "group_shares": {
+      "sons": "1/1",
+      "uterine_siblings": "0/1"
+    },
+    "sum_final": "1/1",
+    "meta": {
+      "residual_policy": "asaba",
+      "bayt_due": "0/1"
+    }
+  }
+}

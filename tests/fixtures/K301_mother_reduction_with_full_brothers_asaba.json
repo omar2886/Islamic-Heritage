@@ -1,0 +1,20 @@
+{
+  "case_id": "K301_mother_reduction_with_full_brothers_asaba",
+  "input": {
+    "heirs": [
+      { "role": "mother", "count": 1 },
+      { "role": "full_brother", "count": 2 }
+    ]
+  },
+  "expected": {
+    "group_shares": {
+      "mother": "1/6",
+      "full_brother": "5/6"
+    },
+    "individual_shares": {
+      "full_brother": ["5/12","5/12"]
+    },
+    "sum_final": "1/1",
+    "invariants": { "sum_to_one": true }
+  }
+}

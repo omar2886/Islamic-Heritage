@@ -1,0 +1,22 @@
+{
+  "case_id": "C13_maternal_grandmother_no_mother",
+  "input": {
+    "heirs": [
+      {"role": "maternal_grandmother", "count": 1},
+      {"role": "father", "count": 1}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "maternal_grandmother": "1/6",
+      "father": {
+        "group": "5/6",
+        "individuals": ["5/6"]
+      }
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "collective_matches_individuals": true
+    }
+  }
+}

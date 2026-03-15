@@ -1,0 +1,9 @@
+{
+  "heirs": [
+    {"role": "father", "count": 1},
+    {"role": "mother", "count": 1}
+  ],
+  "estate_value": "1000",
+  "amount": "1000",
+  "cli_flags": ["--explain","--audit"]
+}

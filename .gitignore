@@ -6,6 +6,11 @@
 /tests/.cache/
 /tests/e2e/artifacts/
 /node_modules/
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.vite/
+/logs/
+/public/ui-next/
 /playwright-report/
 /test-results/
 *.db

@@ -1,0 +1,23 @@
+{
+  "case_id": "Z30_audit_asaba_descendants_method",
+  "input": {
+    "heirs": [
+      { "role": "son", "count": 1 },
+      { "role": "daughter", "count": 1 }
+    ],
+    "cli_flags": ["--audit"]
+  },
+  "expected": {
+    "group_shares": {
+      "son": "2/3",
+      "daughter": "1/3"
+    },
+    "individual_shares": {
+      "son": ["2/3"],
+      "daughter": ["1/3"]
+    },
+    "sum_final": "1/1",
+    "invariants": { "sum_to_one": true },
+    "audit_asaba_method": "two_to_one"
+  }
+}

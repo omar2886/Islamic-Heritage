@@ -1,0 +1,34 @@
+{
+  "case_id": "WIV300_three_wives",
+  "input": {
+    "heirs": [
+      {"role": "wife", "count": 3}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "wives": {
+        "group": "1/4",
+        "individuals": ["1/12", "1/12", "1/12"]
+      }
+    },
+    "invariants": {
+      "spouses_excluded_from_radd": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "wives": "1/4"
+    },
+    "individual_shares": {
+      "wives": ["1/12", "1/12", "1/12"]
+    },
+    "sum_final": "1/4",
+    "residual_before_asaba": "3/4",
+    "residual_consumed": "0/1",
+    "meta": {
+      "residual_policy": "bayt_al_mal",
+      "bayt_due": "3/4"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "case_id": "C38_daughter_great_gdaughters_deeper_male",
+  "input": {
+    "heirs": [
+      { "role": "daughter", "count": 1 },
+      { "role": "sons_sons_daughter", "count": 2 },
+      { "role": "sons_sons_sons_son", "count": 1 }
+    ]
+  },
+  "expected": {
+    "group_shares": {
+      "daughter": "1/2",
+      "sons_sons_daughter": "1/6",
+      "sons_sons_sons_son": "1/3"
+    },
+    "individual_shares": {
+      "sons_sons_daughter": ["1/12", "1/12"],
+      "sons_sons_sons_son": ["1/3"]
+    },
+    "sum_final": "1/1",
+    "invariants": { "sum_to_one": true }
+  }
+}

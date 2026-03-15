@@ -1,0 +1,23 @@
+{
+  "case_id": "Z34_audit_asaba_sisters_with_daughters_method",
+  "input": {
+    "heirs": [
+      { "role": "daughter", "count": 1 },
+      { "role": "full_sister", "count": 1 }
+    ],
+    "cli_flags": ["--audit"]
+  },
+  "expected": {
+    "group_shares": {
+      "daughter": "1/2",
+      "full_sister": "1/2"
+    },
+    "individual_shares": {
+      "daughter": ["1/2"],
+      "full_sister": ["1/2"]
+    },
+    "sum_final": "1/1",
+    "invariants": { "sum_to_one": true },
+    "audit_asaba_method": "equal"
+  }
+}

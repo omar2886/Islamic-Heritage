@@ -1,0 +1,51 @@
+{
+  "case_id": "C25_wives_three_equal_split",
+  "input": {
+    "heirs": [
+      {"role": "wife", "count": 3},
+      {"role": "son", "count": 1}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "wives": {
+        "group": "1/8",
+        "individuals": ["1/24", "1/24", "1/24"]
+      },
+      "son": {
+        "group": "7/8",
+        "individuals": ["7/8"]
+      }
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "spouses_excluded_from_radd": true,
+      "awl_preserves_ratios": true,
+      "no_blocked_receives_share": true,
+      "collective_matches_individuals": true,
+      "deterministic": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "wives": "1/8",
+      "son": "7/8"
+    },
+    "individual_shares": {
+      "wives": ["1/24", "1/24", "1/24"],
+      "son": ["7/8"]
+    },
+    "sum_fixed": "1/8",
+    "sum_fixed_normalized": "1/8",
+    "sum_final": "1/1",
+    "residual_before_asaba": "7/8",
+    "residual_consumed": "7/8",
+    "traces": [
+      {
+        "rule_id": "asaba.precedence.children",
+        "targets": ["son"],
+        "reason": "Son present; children absorb residual as 'asabah with 2:1 weighting."
+      }
+    ]
+  }
+}

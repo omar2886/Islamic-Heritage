@@ -1,0 +1,47 @@
+{
+  "case_id": "Z11_logical_warnings",
+  "input": {
+    "heirs": [
+      {"role": "father", "count": 1},
+      {"role": "paternal_grandfather", "count": 1},
+      {"role": "son", "count": 1},
+      {"role": "sons_son", "count": 1},
+      {"role": "wife", "count": 5}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "father": "1/6",
+      "son": "17/24",
+      "wives": {
+        "group": "1/8",
+        "individuals": ["1/40", "1/40", "1/40", "1/40", "1/40"]
+      }
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "collective_matches_individuals": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "father": "1/6",
+      "son": "17/24",
+      "wives": "1/8"
+    },
+    "individual_shares": {
+      "father": ["1/6"],
+      "son": ["17/24"],
+      "sons_son": ["0/1"],
+      "wives": ["1/40", "1/40", "1/40", "1/40", "1/40"]
+    },
+    "warnings": [
+      "merged 'wife' and 'wives' entries into canonical 'wives' group (wife=5, wives=5, total=5)",
+      "normalized wives group to 'wives' (from label 'wife', count=5)",
+      "father present ⇒ paternal_grandfather will be blocked",
+      "son present ⇒ sons_son will be blocked",
+      "wives count > 4"
+    ],
+    "strict_exit_code": 2
+  }
+}

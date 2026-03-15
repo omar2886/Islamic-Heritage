@@ -1,0 +1,23 @@
+{
+  "case_id": "Z32_audit_asaba_full_siblings_method",
+  "input": {
+    "heirs": [
+      { "role": "full_brother", "count": 1 },
+      { "role": "full_sister", "count": 1 }
+    ],
+    "cli_flags": ["--audit"]
+  },
+  "expected": {
+    "group_shares": {
+      "full_brother": "1/3",
+      "full_sister": "2/3"
+    },
+    "individual_shares": {
+      "full_brother": ["1/3"],
+      "full_sister": ["2/3"]
+    },
+    "sum_final": "1/1",
+    "invariants": { "sum_to_one": true },
+    "audit_asaba_method": "asaba_full_siblings"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "case_id": "PGF100_father_blocks_pgf",
+  "input": {
+    "heirs": [
+      { "role": "father", "count": 1 },
+      { "role": "paternal_grandfather", "count": 1 }
+    ],
+    "cli_flags": ["--strict"]
+  },
+  "expected_cli": {
+    "group_shares": {
+      "father": "1/1",
+      "paternal_grandfather": "0/1"
+    },
+    "sum_final": "1/1",
+    "meta": {
+      "residual_policy": "asaba",
+      "bayt_due": "0/1"
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "case_id": "WIV301_three_wives_bayt",
+  "requires_env": {
+    "EMIT_BAYT_AL_MAL": "1"
+  },
+  "input": {
+    "heirs": [
+      {"role": "wife", "count": 3}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "wives": {
+        "group": "1/4",
+        "individuals": ["1/12", "1/12", "1/12"]
+      },
+      "bayt_al_mal": {
+        "group": "3/4",
+        "individuals": ["3/4"]
+      }
+    },
+    "invariants": {
+      "spouses_excluded_from_radd": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "bayt_al_mal": "3/4",
+      "wives": "1/4"
+    },
+    "individual_shares": {
+      "bayt_al_mal": ["3/4"],
+      "wives": ["1/12", "1/12", "1/12"]
+    },
+    "sum_final": "1/1",
+    "residual_before_asaba": "3/4",
+    "residual_consumed": "0/1",
+    "meta": {
+      "residual_policy": "bayt_al_mal",
+      "bayt_due": "3/4"
+    }
+  }
+}

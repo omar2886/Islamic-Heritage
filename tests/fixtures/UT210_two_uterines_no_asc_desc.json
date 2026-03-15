@@ -1,0 +1,18 @@
+{
+  "case_id": "UT210_two_uterines_no_asc_desc",
+  "input": {
+    "heirs": [
+      { "role": "uterine_brother", "count": 2 }
+    ]
+  },
+  "expected_cli": {
+    "group_shares": {
+      "uterine_siblings": "1/1"
+    },
+    "sum_final": "1/1",
+    "meta": {
+      "residual_policy": "radd",
+      "bayt_due": "0/1"
+    }
+  }
+}

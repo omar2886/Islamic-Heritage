@@ -1,0 +1,19 @@
+{
+  "case_id": "ME5_son_blocks_uterine",
+  "input": {
+    "heirs": [
+      {"role": "son", "count": 1},
+      {"role": "uterine_brother", "count": 1}
+    ]
+  },
+  "expected_cli": {
+    "group_shares": {
+      "son": "1/1",
+      "uterine_siblings": "0/1"
+    },
+    "sum_final": "1/1",
+    "meta": {
+      "residual_policy": "asaba"
+    }
+  }
+}

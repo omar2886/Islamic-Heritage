@@ -1,0 +1,22 @@
+{
+  "case_id": "L201_radd_husband_plus_daughter_exclude_spouse",
+  "input": {
+    "heirs": [
+      { "role": "husband",  "count": 1 },
+      { "role": "daughter", "count": 1 }
+    ],
+    "cli_flags": ["--audit"]
+  },
+  "expected": {
+    "group_shares": {
+      "husband":  "1/4",
+      "daughter": "3/4"
+    },
+    "sum_final": "1/1",
+    "invariants": {
+      "sum_to_one": true,
+      "spouses_excluded_from_radd": true
+    },
+    "audit_radd_residual": "1/4"
+  }
+}

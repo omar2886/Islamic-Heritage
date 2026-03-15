@@ -1,0 +1,30 @@
+{
+  "case_id": "C17_pgf_with_descendants",
+  "input": {
+    "heirs": [
+      {"role": "paternal_grandfather", "count": 1},
+      {"role": "mother", "count": 1},
+      {"role": "daughter", "count": 2}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "mother": {
+        "group": "1/6",
+        "individuals": ["1/6"]
+      },
+      "daughters": {
+        "group": "2/3",
+        "individuals": ["1/3", "1/3"]
+      },
+      "paternal_grandfather": {
+        "group": "1/6",
+        "individuals": ["1/6"]
+      }
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "collective_matches_individuals": true
+    }
+  }
+}

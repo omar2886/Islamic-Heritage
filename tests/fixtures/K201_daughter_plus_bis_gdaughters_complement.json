@@ -1,0 +1,23 @@
+{
+  "case_id": "K201_daughter_plus_bis_gdaughters_complement",
+  "input": {
+    "heirs": [
+      { "role": "daughter", "count": 1 },
+      { "role": "sons_sons_daughter", "count": 2 }
+    ]
+  },
+  "expected": {
+    "group_shares": {
+      "daughter": "3/4",
+      "sons_sons_daughter": "1/4"
+    },
+    "individual_shares": {
+      "sons_sons_daughter": ["1/8","1/8"]
+    },
+    "sum_final": "1/1",
+    "invariants": {
+      "sum_to_one": true,
+      "spouses_excluded_from_radd": true
+    }
+  }
+}

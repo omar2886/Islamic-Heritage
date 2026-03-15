@@ -1,0 +1,66 @@
+{
+  "case_id": "C02_four_wives_children_parents",
+  "input": {
+    "heirs": [
+      {"role": "wife", "count": 4},
+      {"role": "son", "count": 1},
+      {"role": "daughter", "count": 1},
+      {"role": "father", "count": 1},
+      {"role": "mother", "count": 1}
+    ]
+  },
+  "expected": {
+    "shares": {
+      "wives": {
+        "group": "1/8",
+        "individuals": ["1/32", "1/32", "1/32", "1/32"]
+      },
+      "mother": "1/6",
+      "father": "1/6",
+      "son": {
+        "group": "13/36",
+        "individuals": ["13/36"]
+      },
+      "daughter": {
+        "group": "13/72",
+        "individuals": ["13/72"]
+      }
+    },
+    "invariants": {
+      "sum_to_one": true,
+      "spouses_excluded_from_radd": true,
+      "awl_preserves_ratios": true,
+      "no_blocked_receives_share": true,
+      "collective_matches_individuals": true,
+      "deterministic": true
+    }
+  },
+  "expected_cli": {
+    "group_shares": {
+      "daughter": "13/72",
+      "father": "1/6",
+      "mother": "1/6",
+      "son": "13/36",
+      "wives": "1/8"
+    },
+    "individual_shares": {
+      "daughter": ["13/72"],
+      "father": ["1/6"],
+      "mother": ["1/6"],
+      "son": ["13/36"],
+      "wives": ["1/32", "1/32", "1/32", "1/32"]
+    },
+    "sum_fixed": "11/24",
+    "sum_fixed_normalized": "11/24",
+    "sum_final": "1/1",
+    "residual_before_asaba": "13/24",
+    "residual_consumed": "13/24",
+    "traces": [
+      {
+        "rule_id": "asaba.precedence.children",
+        "targets": ["son", "daughter"],
+        "reason": "Son present; children absorb residual as 'asabah with 2:1 weighting."
+      }
+    ]
+  }
+}

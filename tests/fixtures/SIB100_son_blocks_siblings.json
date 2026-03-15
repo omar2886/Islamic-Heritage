@@ -1,0 +1,18 @@
+{
+  "case_id": "SIB100_son_blocks_siblings",
+  "input": {
+    "heirs": [
+      { "role": "son", "count": 1 },
+      { "role": "full_brother", "count": 1 },
+      { "role": "full_sister", "count": 1 }
+    ],
+    "cli_flags": ["--strict"]
+  },
+  "expect": {
+    "group_shares": {
+      "son": "1/1",
+      "full_brother": "0/1",
+      "full_sister": "0/1"
+    }
+  }
+}

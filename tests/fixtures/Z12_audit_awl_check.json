@@ -1,0 +1,24 @@
+{
+  "case_id": "Z12_audit_awl_check",
+  "input": {
+    "heirs": [
+      { "role": "husband", "count": 1 },
+      { "role": "mother", "count": 1 },
+      { "role": "daughter", "count": 2 }
+    ],
+    "cli_flags": ["--audit"]
+  },
+  "expected": {
+    "group_shares": {
+      "husband": "3/13",
+      "mother": "2/13",
+      "daughters": "8/13"
+    },
+    "individual_shares": {
+      "daughters": ["4/13","4/13"]
+    },
+    "sum_final": "1/1",
+    "invariants": { "sum_to_one": true },
+    "audit_awl_factor": "13/12"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "case_id": "U204_daughter_plus_paternal_uncle",
+  "input": { "heirs": [
+    { "role": "daughter", "count": 1 },
+    { "role": "paternal_uncle", "count": 1 }
+  ] },
+  "expected": {
+    "group_shares": {
+      "daughter": "1/2",
+      "paternal_uncle": "1/2"
+    },
+    "sum_final": "1/1",
+    "invariants": { "sum_to_one": true }
+  }
+}

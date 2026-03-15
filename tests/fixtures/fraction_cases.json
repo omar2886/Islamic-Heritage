@@ -1,0 +1,101 @@
+[
+  {
+    "id": "parse_integer",
+    "operation": "parse",
+    "value": "5",
+    "expected": "5/1"
+  },
+  {
+    "id": "parse_negative_with_spaces",
+    "operation": "parse",
+    "value": " -10/20 ",
+    "expected": "-1/2"
+  },
+  {
+    "id": "parse_zero_fraction",
+    "operation": "parse",
+    "value": "0/5",
+    "expected": "0/1"
+  },
+  {
+    "id": "add_mixed_signs",
+    "operation": "add",
+    "a": "2/3",
+    "b": "-1/3",
+    "expected": "1/3"
+  },
+  {
+    "id": "subtract_to_negative",
+    "operation": "sub",
+    "a": "1/4",
+    "b": "3/4",
+    "expected": "-1/2"
+  },
+  {
+    "id": "multiply_large_values",
+    "operation": "mul",
+    "a": "99/100",
+    "b": "100/99",
+    "expected": "1/1"
+  },
+  {
+    "id": "reduce_fraction",
+    "operation": "reduce",
+    "value": "18/24",
+    "expected": "3/4"
+  },
+  {
+    "id": "divide_by_integer",
+    "operation": "div",
+    "a": "5/6",
+    "b": "-2",
+    "expected": "-5/12"
+  },
+  {
+    "id": "divide_zero_numerator",
+    "operation": "div",
+    "a": "0",
+    "b": "7/3",
+    "expected": "0/1"
+  },
+  {
+    "id": "divide_by_zero_error",
+    "operation": "div",
+    "a": "5/7",
+    "b": "0",
+    "expect_exception": "InvalidArgumentException"
+  },
+  {
+    "id": "compare_less_than",
+    "operation": "compare",
+    "a": "1/5",
+    "b": "1/4",
+    "expected": -1
+  },
+  {
+    "id": "compare_equal_after_reduction",
+    "operation": "compare",
+    "a": "4/8",
+    "b": "1/2",
+    "expected": 0
+  },
+  {
+    "id": "to_float_conversion",
+    "operation": "to_float",
+    "value": "1/8",
+    "expected": 0.125,
+    "tolerance": 1e-09
+  },
+  {
+    "id": "invalid_fraction_format",
+    "operation": "parse",
+    "value": "foo/bar",
+    "expect_exception": "InvalidArgumentException"
+  },
+  {
+    "id": "empty_string_error",
+    "operation": "parse",
+    "value": " ",
+    "expect_exception": "InvalidArgumentException"
+  }
+]
