@@ -24,3 +24,9 @@ python3 scripts/dev_subpath_server.py
 # o para un ciclo puntual
 python3 scripts/dev_subpath_server.py --once -- npx playwright test
 ```
+
+## Deployment
+
+For the current shared-hosting workflow, see:
+
+- `docs/DEPLOY_SHARED_HOSTING.md`
